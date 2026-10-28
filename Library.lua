@@ -400,8 +400,19 @@ function U.closeColorPicker()
 	U.openColorPicker = nil
 end
 function U.closeDropdown()
-	if U.openDropdown and U.openDropdown.Parent then U.openDropdown:Destroy() end
+	local d = U.openDropdown
 	U.openDropdown = nil
+	if not d or not d.Parent then return end
+	local w = d.AbsoluteSize.X
+	if w < 1 then w = d.Size.X.Offset end
+	if w < 1 then w = 100 end
+	local tw = U.Tween:Create(d, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Size = UDim2.fromOffset(w, 0)
+	})
+	tw:Play()
+	tw.Completed:Connect(function()
+		if d then pcall(function() d:Destroy() end) end
+	end)
 end
 function U.closeSettings()
 	if U.openSettings and U.openSettings.Parent then U.openSettings:Destroy() end
@@ -748,7 +759,7 @@ end
 function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt)
 	step = step or 1
 	local r = U.row(parent, order)
-	r.Size = UDim2.new(1, 0, 0, 28)
+	r.Size = UDim2.new(1, 0, 0, 32)
 	U.vflags[flag] = default
 
 	local name = Instance.new("TextLabel")
@@ -775,7 +786,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 6)
+	track.Size = UDim2.new(1, 0, 0, 12)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track, 1)
@@ -783,21 +794,31 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local fill = Instance.new("Frame")
 	fill.BackgroundColor3 = U.pulseColor()
 	fill.BorderSizePixel = 0
-	fill.Size = UDim2.fromScale((default - minV) / math.max(1e-6, maxV - minV), 1)
+	fill.ZIndex = 3
 	fill.Parent = track
 	U.registerPulse(fill, function() return true end)
-	fill.ZIndex = 3
-	do
-		local cap = Instance.new("Frame")
-		cap.Name = "SliderCap"
-		cap.BorderSizePixel = 0
-		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 12)
-		cap.AnchorPoint = Vector2.new(0.5, 0.5)
-		cap.Position = UDim2.new(1, 0, 0.5, 0)
-		cap.ZIndex = 5
-		cap.Parent = fill
+	local cap = Instance.new("Frame")
+	cap.Name = "SliderCap"
+	cap.BorderSizePixel = 0
+	cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+	cap.Size = UDim2.fromOffset(1, 12)
+	cap.AnchorPoint = Vector2.new(0.5, 0.5)
+	cap.ZIndex = 5
+	cap.Parent = track
+
+	local function layoutFill(t)
+		t = math.clamp(t, 0, 1)
+		local w = math.max(2, track.AbsoluteSize.X)
+		local h = math.max(2, track.AbsoluteSize.Y)
+		local fillW = math.floor((w - 2) * t + 0.5)
+		fill.Position = UDim2.fromOffset(1, 1)
+		fill.Size = UDim2.fromOffset(fillW, h - 2)
+		cap.Position = UDim2.fromOffset(1 + fillW, h * 0.5)
 	end
+	layoutFill((default - minV) / math.max(1e-6, maxV - minV))
+	task.defer(function()
+		layoutFill(((U.vflags[flag] or default) - minV) / math.max(1e-6, maxV - minV))
+	end)
 
 	local dragging = false
 	local function setFromX(x)
@@ -806,7 +827,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 		val = math.clamp(val, minV, maxV)
 		if step >= 1 then val = math.floor(val + 1e-6) end
 		U.vflags[flag] = val
-		fill.Size = UDim2.fromScale((val - minV) / math.max(1e-6, maxV - minV), 1)
+		layoutFill((val - minV) / math.max(1e-6, maxV - minV))
 		valLbl.Text = U.formatSliderVal(val, step, suffix, maxV, infAt)
 		U.fireFlag(flag)
 	end
@@ -827,7 +848,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	U.setters[flag] = function(v)
 		local val = math.clamp(tonumber(v) or default, minV, maxV)
 		U.vflags[flag] = val
-		fill.Size = UDim2.fromScale((val - minV) / math.max(1e-6, maxV - minV), 1)
+		layoutFill((val - minV) / math.max(1e-6, maxV - minV))
 		valLbl.Text = U.formatSliderVal(val, step, suffix, maxV, infAt)
 		U.fireFlag(flag)
 	end
@@ -1054,7 +1075,10 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 
 		local abs = box.AbsolutePosition
 		local gabs = U.gui.AbsolutePosition
-		listFrame.Position = UDim2.fromOffset(abs.X - gabs.X, abs.Y - gabs.Y + box.AbsoluteSize.Y)
+		local px = math.floor(abs.X - gabs.X + 0.5)
+		local py = math.floor(abs.Y - gabs.Y + box.AbsoluteSize.Y + 0.5)
+		width = math.floor(width + 0.5)
+		listFrame.Position = UDim2.fromOffset(px, py)
 
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
@@ -1670,7 +1694,7 @@ end
 function U.buildShell()
 	local nTabs = math.max(1, #U.TAB_NAMES)
 	local TAB_W = math.floor(U.BODY_W / nTabs)
-	local TAB_H = 44
+	local TAB_H = 31
 	U.TAB_W, U.TAB_H = TAB_W, TAB_H
 
 	U.gui = Instance.new("ScreenGui")
@@ -1848,10 +1872,19 @@ function U.buildConfig()
 				local name = v.__enum:match("KeyCode%.(.+)$") or v.__enum
 				local ok, enum = pcall(function() return Enum.KeyCode[name] end)
 				if ok then U.vflags[k] = enum end
-			elseif k ~= "__theme" then
+			elseif k ~= "__theme" and k ~= "__wmPos" then
 				U.vflags[k] = v
 				if U.setters[k] then U.setters[k](v) end
 			end
+		end
+
+		if type(data.__wmPos) == "table" and U.wm then
+			local x = tonumber(data.__wmPos[1]) or 0
+			local y = tonumber(data.__wmPos[2]) or 0
+			local ax = tonumber(data.__wmPos[3]) or 0
+			local ay = tonumber(data.__wmPos[4]) or 0
+			U.wm.AnchorPoint = Vector2.new(ax, ay)
+			U.wm.Position = UDim2.fromOffset(x, y)
 		end
 		
 		U.cycle.colorFlags = {}
@@ -2210,50 +2243,9 @@ function U.buildTabs()
 		btn.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
 
-	local tabExpanded = false
-	local baseH = U.TITLE_H + U.LINE_H + U.BODY_H
-	local expandedH = baseH + U.TAB_H
-	U.shell.Size = UDim2.fromOffset(U.BODY_W, baseH)
-
-	local function setTabsExpanded(open)
-		if tabExpanded == open then return end
-		tabExpanded = open
-		U.Tween:Create(U.shell, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = UDim2.fromOffset(U.BODY_W, open and expandedH or baseH),
-		}):Play()
-	end
-
-	local hoverZone = Instance.new("Frame")
-	hoverZone.Name = "TabHoverZone"
-	hoverZone.BackgroundTransparency = 1
-	hoverZone.BorderSizePixel = 0
-	hoverZone.Size = UDim2.new(1, 0, 0, 16)
-	hoverZone.Position = UDim2.new(0, 0, 1, -16)
-	hoverZone.ZIndex = 20
-	hoverZone.Parent = U.body
-
-	local tabHoverScore, closeToken = 0, 0
-	local function tabEnter()
-		tabHoverScore += 1
-		setTabsExpanded(true)
-	end
-	local function tabLeave()
-		tabHoverScore = math.max(0, tabHoverScore - 1)
-		closeToken += 1
-		local token = closeToken
-		task.delay(0.12, function()
-			if token ~= closeToken then return end
-			if tabHoverScore <= 0 then setTabsExpanded(false) end
-		end)
-	end
-	hoverZone.MouseEnter:Connect(tabEnter)
-	hoverZone.MouseLeave:Connect(tabLeave)
-	U.tabRail.MouseEnter:Connect(tabEnter)
-	U.tabRail.MouseLeave:Connect(tabLeave)
-	for _, btn in pairs(U.tabButtons) do
-		btn.MouseEnter:Connect(tabEnter)
-		btn.MouseLeave:Connect(tabLeave)
-	end
+	local totalH = U.TITLE_H + U.LINE_H + U.BODY_H + U.TAB_H
+	U.shell.Size = UDim2.fromOffset(U.BODY_W, totalH)
+	U.tabRail.Visible = true
 end
 
 function U.bindInput()
