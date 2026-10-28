@@ -1977,7 +1977,7 @@ function U.buildConfig()
 		local wgui = Instance.new("ScreenGui")
 		wgui.Name = "SimpleWatermark"
 		wgui.ResetOnSpawn = false
-		wgui.IgnoreGuiInset = true
+		wgui.IgnoreGuiInset = false
 		wgui.Parent = U.guiParent()
 		U.wmGui = wgui
 		local wm = Instance.new("Frame")
@@ -2077,27 +2077,37 @@ function U.buildConfig()
 		refreshWm()
 
 		do
-			local dragging, dragOffset
+			local GuiService = game:GetService("GuiService")
+			local dragging = false
+			local grabOffset = Vector2.zero
+			local function mouseInParent()
+				return U.UIS:GetMouseLocation() - GuiService:GetGuiInset()
+			end
 			wm.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
-					local mouse = U.UIS:GetMouseLocation()
-					local abs = wm.AbsolutePosition
-					wm.AnchorPoint = Vector2.new(0, 0)
-					wm.Position = UDim2.fromOffset(abs.X, abs.Y)
-					dragOffset = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
-					dragging = true
-					input.Changed:Connect(function()
-						if input.UserInputState == Enum.UserInputState.End then dragging = false end
-					end)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
 				end
+				local mouse = mouseInParent()
+				local abs = wm.AbsolutePosition
+				wm.AnchorPoint = Vector2.new(0, 0)
+				wm.Position = UDim2.fromOffset(abs.X, abs.Y)
+				grabOffset = mouse - abs
+				dragging = true
 			end)
 			U.UIS.InputChanged:Connect(function(input)
 				if not dragging then return end
-				if input.UserInputType == Enum.UserInputType.MouseMovement
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local mouse = mouseInParent()
+				wm.Position = UDim2.fromOffset(mouse.X - grabOffset.X, mouse.Y - grabOffset.Y)
+			end)
+			U.UIS.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
-					local mouse = U.UIS:GetMouseLocation()
-					wm.Position = UDim2.fromOffset(mouse.X - dragOffset.X, mouse.Y - dragOffset.Y)
+					dragging = false
 				end
 			end)
 		end
