@@ -305,7 +305,7 @@ function U.pushNotification(opts)
 	local text = opts.text or ""
 	local duration = opts.duration or 3
 	local nGui = Instance.new("ScreenGui")
-	nGui.Name = "SimpleNotif"
+	nGui.Name = "wavelength_notif"
 	nGui.IgnoreGuiInset = true
 	nGui.ResetOnSpawn = false
 	nGui.Parent = U.guiParent()
@@ -404,11 +404,15 @@ function U.closeDropdown()
 	local box = U.openDropdownBox
 	U.openDropdown = nil
 	U.openDropdownBox = nil
-	if box then
-		local bb = box:FindFirstChild("BBottom")
-		if bb then bb.Visible = true end
+	if not d or not d.Parent then
+		if box then
+			for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
+				local e = box:FindFirstChild(n)
+				if e then e.Visible = true end
+			end
+		end
+		return
 	end
-	if not d or not d.Parent then return end
 	local w = d.AbsoluteSize.X
 	if w < 1 then w = d.Size.X.Offset end
 	if w < 1 then w = 100 end
@@ -418,6 +422,12 @@ function U.closeDropdown()
 	tw:Play()
 	tw.Completed:Connect(function()
 		if d then pcall(function() d:Destroy() end) end
+		if box then
+			for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
+				local e = box:FindFirstChild(n)
+				if e then e.Visible = true end
+			end
+		end
 	end)
 end
 function U.closeSettings()
@@ -470,7 +480,7 @@ function U.shutdown()
 
 	pcall(function() U.closePopups() end)
 
-	for _, name in ipairs({ "SimpleWatermark", "SM_ESP", "SimpleNotifs" }) do
+	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
@@ -481,13 +491,13 @@ function U.shutdown()
 	
 	pcall(function()
 		local parent = U.guiParent and U.guiParent() or game:GetService("CoreGui")
-		for _, n in ipairs({ "SimpleMenu", "SimpleWatermark", "SM_ESP", "SimpleNotifs", "wavelength" }) do
+		for _, n in ipairs({ "wavelength", "wavelength_wm", "SM_ESP", "wavelength_notifs", "wavelength" }) do
 			local g = parent:FindFirstChild(n)
 			if g then g:Destroy() end
 		end
 		
 		for _, g in ipairs(parent:GetChildren()) do
-			if g:IsA("ScreenGui") and (g.Name == "SM_ESP" or g.Name == "SimpleWatermark") then
+			if g:IsA("ScreenGui") and (g.Name == "SM_ESP" or g.Name == "wavelength_wm") then
 				g:Destroy()
 			end
 		end
@@ -792,7 +802,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 10)
+	track.Size = UDim2.new(1, 0, 0, 8)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track, 1)
@@ -807,7 +817,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	cap.Name = "SliderCap"
 	cap.BorderSizePixel = 0
 	cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-	cap.Size = UDim2.fromOffset(1, 10)
+	cap.Size = UDim2.fromOffset(1, 8)
 	cap.AnchorPoint = Vector2.new(0.5, 0.5)
 	cap.ZIndex = 5
 	cap.Parent = track
@@ -895,7 +905,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 10)
+	track.Size = UDim2.new(1, 0, 0, 8)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track, 1)
@@ -911,7 +921,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local cap = Instance.new("Frame")
 		cap.BorderSizePixel = 0
 		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 10)
+		cap.Size = UDim2.fromOffset(1, 8)
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.ZIndex = 5
 		cap.Parent = track
@@ -981,14 +991,21 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	return r
 end
 
-function U.mkDropdown(parent, text, flag, options, default, multi, order)
+function U.mkDropdown(parent, text, flag, options, default, multi, order, limit)
 	local r = U.row(parent, order)
 	r.Size = UDim2.new(1, 0, 0, 36)
 	options = options or {}
+	if limit == nil then
+		limit = multi and 999 or 1
+	end
+	limit = math.max(1, math.floor(tonumber(limit) or 1))
+	multi = limit > 1
 	if multi then
-		U.vflags[flag] = type(default) == "table" and default or {}
+		local d = type(default) == "table" and default or (default ~= nil and { default } or {})
+		while #d > limit do table.remove(d, 1) end
+		U.vflags[flag] = d
 	else
-		U.vflags[flag] = default
+		U.vflags[flag] = type(default) == "table" and default[1] or default
 	end
 
 	local name = Instance.new("TextLabel")
@@ -1044,22 +1061,23 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			U.closeDropdown()
 		end
 		if #options == 0 then return end
-		local fullH = math.min(#options * 18, 140)
-		local width = math.max(100, box.AbsoluteSize.X)
-		local boxBottom = box:FindFirstChild("BBottom")
-		if boxBottom then boxBottom.Visible = false end
 
-		width = math.floor(box.AbsoluteSize.X + 0.5)
+		local fullH = math.min(#options * 18, 140)
+		local width = math.floor(box.AbsoluteSize.X + 0.5)
 		local abs = box.AbsolutePosition
 		local gabs = U.gui.AbsolutePosition
 		local px = math.floor(abs.X - gabs.X + 0.5)
 		local py = math.floor(abs.Y - gabs.Y + box.AbsoluteSize.Y + 0.5)
 
+		for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
+			local e = box:FindFirstChild(n)
+			if e then e.Visible = false end
+		end
+
 		local listFrame = Instance.new("Frame")
 		listFrame.Name = "DropdownList"
 		listFrame:SetAttribute("Flag", flag)
-		listFrame:SetAttribute("BoxRef", box:GetFullName())
-		listFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+		listFrame.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
 		listFrame.BorderSizePixel = 0
 		listFrame.ClipsDescendants = true
 		listFrame.Size = UDim2.fromOffset(width, 0)
@@ -1089,43 +1107,50 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			e.Parent = listFrame
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
-			return e
 		end
 		edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
 
-		U.openDropdownBox = box
-
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
 			b.AutoButtonColor = false
-			b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
+			b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(32, 32, 32)
 			b.BorderSizePixel = 0
 			b.Size = UDim2.new(1, 0, 0, 18)
 			b.FontFace = U.font
 			b.TextSize = U.TEXT_SZ
 			b.TextColor3 = U.theme.Text
 			b.TextXAlignment = Enum.TextXAlignment.Left
-			b.Text = "  " .. tostring(opt)
+			b.Text = tostring(opt)
 			b.ZIndex = 222
 			b.Parent = holder
+			local pad = Instance.new("UIPadding")
+			pad.PaddingLeft = UDim.new(0, 4)
+			pad.Parent = b
 			b.MouseEnter:Connect(function()
-				if not isSelected(opt) then b.BackgroundColor3 = Color3.fromRGB(34, 34, 34) end
+				if not isSelected(opt) then b.BackgroundColor3 = Color3.fromRGB(36, 36, 36) end
 			end)
 			b.MouseLeave:Connect(function()
-				b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
+				b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(32, 32, 32)
 			end)
 			b.MouseButton1Click:Connect(function()
 				if multi then
 					local cur = type(U.vflags[flag]) == "table" and table.clone(U.vflags[flag]) or {}
 					local found = table.find(cur, opt)
-					if found then table.remove(cur, found) else table.insert(cur, opt) end
+					if found then
+						table.remove(cur, found)
+					else
+						table.insert(cur, opt)
+						while #cur > limit do
+							table.remove(cur, 1)
+						end
+					end
 					U.vflags[flag] = cur
 					for _, ch in ipairs(holder:GetChildren()) do
 						if ch:IsA("TextButton") then
-							local o = string.sub(ch.Text, 3)
-							ch.BackgroundColor3 = isSelected(o) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
+							local o = ch.Text
+							ch.BackgroundColor3 = isSelected(o) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(32, 32, 32)
 						end
 					end
 				else
@@ -1138,6 +1163,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			end)
 		end
 		U.openDropdown = listFrame
+		U.openDropdownBox = box
 		U.armPopupOpen()
 		listFrame.InputBegan:Connect(function()
 			U.armPopupOpen()
@@ -1147,12 +1173,19 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 		}):Play()
 	end)
 	U.setters[flag] = function(v)
-		U.vflags[flag] = v
+		if multi and type(v) == "table" then
+			local cur = table.clone(v)
+			while #cur > limit do table.remove(cur, 1) end
+			U.vflags[flag] = cur
+		else
+			U.vflags[flag] = v
+		end
 		display()
 		U.fireFlag(flag)
 	end
 	return r
 end
+
 
 function U.mkTextbox(parent, text, flag, placeholder, order)
 	local r = U.row(parent, order)
@@ -1711,11 +1744,11 @@ end
 function U.buildShell()
 	local nTabs = math.max(1, #U.TAB_NAMES)
 	local TAB_W = math.floor(U.BODY_W / nTabs)
-	local TAB_H = 31
+	local TAB_H = 32
 	U.TAB_W, U.TAB_H = TAB_W, TAB_H
 
 	U.gui = Instance.new("ScreenGui")
-	U.gui.Name = "SimpleMenuExample"
+	U.gui.Name = "wavelength"
 	U.gui.ResetOnSpawn = false
 	U.gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	U.gui.IgnoreGuiInset = true
@@ -1813,7 +1846,7 @@ function U.buildShell()
 end
 
 function U.buildConfig()
-	local CONFIG_FOLDER = "SimpleMenuConfigs"
+	local CONFIG_FOLDER = "zwavelength"
 	local selectedConfig = nil
 	local configListFrame
 
@@ -1984,6 +2017,7 @@ function U.buildConfig()
 		configListFrame.Size = UDim2.new(1, 0, 0, 120)
 		configListFrame.LayoutOrder = 6
 		configListFrame.Parent = configsSec
+		U.controlStroke(configListFrame, 1)
 		local listLay = Instance.new("UIListLayout")
 		listLay.SortOrder = Enum.SortOrder.LayoutOrder
 		listLay.Parent = configListFrame
@@ -2025,7 +2059,7 @@ function U.buildConfig()
 
 	do
 		local wgui = Instance.new("ScreenGui")
-		wgui.Name = "SimpleWatermark"
+		wgui.Name = "wavelength_wm"
 		wgui.ResetOnSpawn = false
 		wgui.IgnoreGuiInset = false
 		wgui.Parent = U.guiParent()
@@ -2176,6 +2210,17 @@ function U.buildConfig()
 		end
 		U.shutdown()
 	end)
+
+	local credit = Instance.new("TextLabel")
+	credit.BackgroundTransparency = 1
+	credit.Size = UDim2.new(1, 0, 0, 14)
+	credit.FontFace = U.font
+	credit.TextSize = U.TEXT_SZ
+	credit.TextColor3 = Color3.fromRGB(90, 90, 90)
+	credit.TextXAlignment = Enum.TextXAlignment.Center
+	credit.Text = "wavelength ui by @illorsm"
+	credit.LayoutOrder = nextOrder()
+	credit.Parent = settingsSec
 end
 
 function U.buildTabs()
@@ -2481,7 +2526,9 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddDropdown(so)
 					so = so or {}
-					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true, nextOrder())
+					local limit = so.Limit or so.Amount
+					if limit == nil then limit = (so.Multi == true) and 999 or 1 end
+					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit)
 					U.subOf(child, flag)
 					return obj
 				end
@@ -2499,7 +2546,11 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddDropdown(o)
 				o = o or {}
-				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true, nextOrder())
+				local limit = o.Limit or o.Amount
+				if limit == nil then
+					limit = (o.Multi == true) and 999 or 1
+				end
+				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit)
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddButton(o)
