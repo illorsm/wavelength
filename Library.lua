@@ -21,6 +21,18 @@ U.theme = U.theme or {
 	SectionBg = Color3.fromRGB(18, 18, 18),
 }
 U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {} }
+
+function U.controlStroke(parent, thick)
+	local st = Instance.new("UIStroke")
+	st.Thickness = thick or 1
+	st.Color = U.theme.SectionBorder
+	st.LineJoinMode = Enum.LineJoinMode.Miter
+	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	st.Parent = parent
+	U.themeReg.sectionBorders[#U.themeReg.sectionBorders + 1] = st
+	return st
+end
+
 U.running = true
 U.vflags = U.vflags or {
 	NotificationPosition = "bottom right",
@@ -594,6 +606,7 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag)
 	box.BackgroundColor3 = on and U.pulseColor() or Color3.fromRGB(55, 55, 55)
 	box.BorderSizePixel = 0
 	box.Parent = r
+	U.controlStroke(box, 1)
 	U.registerPulse(box, function() return on end)
 
 	local t = Instance.new("TextLabel")
@@ -729,6 +742,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	track.Size = UDim2.new(1, 0, 0, 6)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
+	U.controlStroke(track, 1)
 
 	local fill = Instance.new("Frame")
 	fill.BackgroundColor3 = U.pulseColor()
@@ -736,6 +750,17 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	fill.Size = UDim2.fromScale((default - minV) / math.max(1e-6, maxV - minV), 1)
 	fill.Parent = track
 	U.registerPulse(fill, function() return true end)
+	do
+		local cap = Instance.new("Frame")
+		cap.Name = "SliderCap"
+		cap.BorderSizePixel = 0
+		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+		cap.Size = UDim2.fromOffset(1, 10)
+		cap.AnchorPoint = Vector2.new(0.5, 0.5)
+		cap.Position = UDim2.new(1, 0, 0.5, 0)
+		cap.ZIndex = 2
+		cap.Parent = fill
+	end
 
 	local dragging = false
 	local function setFromX(x)
@@ -803,6 +828,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 	box.TextColor3 = U.theme.Text
 	box.TextXAlignment = Enum.TextXAlignment.Left
 	box.Parent = r
+	U.controlStroke(box, 1)
 
 	local function display()
 		if multi then
@@ -1013,6 +1039,7 @@ function U.mkButton(parent, text, order)
 	btn.TextColor3 = U.theme.Text
 	btn.Text = text
 	btn.Parent = r
+	U.controlStroke(btn, 1)
 	return btn
 end
 
@@ -1872,6 +1899,8 @@ function U.buildTabs()
 		for n, btn in pairs(U.tabButtons) do
 			btn.BackgroundColor3 = (n == name) and Color3.fromRGB(28, 28, 28) or U.theme.Background
 			btn.TextColor3 = U.theme.Text
+			local acc = btn:FindFirstChild("TabAccent")
+			if acc then acc.Visible = (n == name) end
 		end
 		if not oldPage or not newPage then
 			for n, p in pairs(U.pageFrames) do
@@ -1908,6 +1937,16 @@ function U.buildTabs()
 		btn.TextColor3 = U.theme.Text
 		btn.Text = name
 		btn.Parent = U.tabRail
+		local tabAcc = Instance.new("Frame")
+		tabAcc.Name = "TabAccent"
+		tabAcc.BorderSizePixel = 0
+		tabAcc.Size = UDim2.new(1, 0, 0, 2)
+		tabAcc.Position = UDim2.new(0, 0, 1, -2)
+		tabAcc.BackgroundColor3 = U.pulseColor()
+		tabAcc.Visible = (name == U.currentTab)
+		tabAcc.ZIndex = 3
+		tabAcc.Parent = btn
+		U.registerPulse(tabAcc, function() return tabAcc.Visible end)
 		U.tabButtons[name] = btn
 		btn.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
@@ -2112,8 +2151,38 @@ function Library:CreateWindow(opts)
 		local tab = { Name = tabName, Window = self }
 		function tab:AddSection(sectionName, side, row, rows)
 			side = side or 1
+			self._colCount = self._colCount or { [1] = 0, [2] = 0 }
+			if not row then
+				self._colCount[side] = (self._colCount[side] or 0) + 1
+				row = self._colCount[side]
+			else
+				self._colCount[side] = math.max(self._colCount[side] or 0, row)
+			end
+			-- total rows on this side for height split
+			rows = rows or self._colCount[side]
+			-- update heights of existing sections on this side when count grows
 			local parent = U.pageFrames[tabName]
 			local content = U.section(parent, string.lower(tostring(sectionName)), side, row, rows)
+			-- reflow previous sections on same column when rows increases
+			if rows > 1 then
+				local w = math.floor((U.BODY_W - U.SEC_GAP * 3) / 2)
+				local x = (side == 1) and U.SEC_GAP or (U.SEC_GAP * 2 + w)
+				local totalH = U.BODY_H - U.SEC_GAP * 2
+				local h = math.floor((totalH - U.SEC_GAP * (rows - 1)) / rows)
+				local idx = 0
+				for _, ch in ipairs(parent:GetChildren()) do
+					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 then
+						-- section frames are opaque SectionBg
+						local pos = ch.Position
+						if pos.X.Offset == x then
+							idx += 1
+							local y = U.SEC_GAP + (idx - 1) * (h + U.SEC_GAP)
+							ch.Size = UDim2.fromOffset(w, h)
+							ch.Position = UDim2.fromOffset(x, y)
+						end
+					end
+				end
+			end
 			local sec = { _content = content, _n = 0, Tab = tab }
 			local function nextOrder()
 				sec._n += 1
