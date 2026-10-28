@@ -15,6 +15,7 @@ U.theme = U.theme or {
 	Text = Color3.fromRGB(235, 235, 235),
 	Border = Color3.fromRGB(0, 0, 0),
 	SectionBorder = Color3.fromRGB(0, 0, 0),
+	ElementBorder = Color3.fromRGB(0, 0, 0),
 	Accent1 = Color3.fromRGB(255, 255, 255),
 	Accent2 = Color3.fromRGB(0, 0, 0),
 	Background = Color3.fromRGB(36, 36, 36),
@@ -24,7 +25,9 @@ U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bg
 
 function U.controlStroke(parent, thick)
 	thick = thick or 1
-	local col = U.theme.SectionBorder
+	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
+	local col = U.theme.ElementBorder
+	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 	local function edge(name, size, pos)
 		local e = Instance.new("Frame")
 		e.Name = name
@@ -32,9 +35,9 @@ function U.controlStroke(parent, thick)
 		e.BackgroundColor3 = col
 		e.Size = size
 		e.Position = pos
-		e.ZIndex = (parent.ZIndex or 1) + 1
+		e.ZIndex = (parent.ZIndex or 1) + 2
 		e.Parent = parent
-		U.themeReg.sectionBorders[#U.themeReg.sectionBorders + 1] = e
+		U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		return e
 	end
 	edge("BTop", UDim2.new(1, 0, 0, thick), UDim2.fromOffset(0, 0))
@@ -237,6 +240,11 @@ function U.applyTheme()
 			else
 				st.BackgroundColor3 = U.theme.SectionBorder
 			end
+		end
+	end
+	for _, st in ipairs(U.themeReg.elementBorders or {}) do
+		if st and st.Parent then
+			st.BackgroundColor3 = U.theme.ElementBorder
 		end
 	end
 	for _, f in ipairs(U.themeReg.bgs) do
@@ -600,7 +608,7 @@ function U.section(parent, title, col, row, rows)
 	content.ScrollBarThickness = 0
 	content.CanvasSize = UDim2.fromOffset(0, 0)
 	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	content.ClipsDescendants = false
+	content.ClipsDescendants = true
 	content.Parent = f
 
 	local list = Instance.new("UIListLayout")
@@ -774,15 +782,16 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	fill.Size = UDim2.fromScale((default - minV) / math.max(1e-6, maxV - minV), 1)
 	fill.Parent = track
 	U.registerPulse(fill, function() return true end)
+	fill.ZIndex = 3
 	do
 		local cap = Instance.new("Frame")
 		cap.Name = "SliderCap"
 		cap.BorderSizePixel = 0
 		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 10)
+		cap.Size = UDim2.fromOffset(1, 12)
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.Position = UDim2.new(1, 0, 0.5, 0)
-		cap.ZIndex = 2
+		cap.ZIndex = 5
 		cap.Parent = fill
 	end
 
@@ -818,6 +827,122 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 		valLbl.Text = U.formatSliderVal(val, step, suffix, maxV, infAt)
 		U.fireFlag(flag)
 	end
+	return r
+end
+
+function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix)
+	step = step or 1
+	suffix = suffix or ""
+	local r = U.row(parent, order)
+	r.Size = UDim2.new(1, 0, 0, 28)
+	defMin = defMin or minV
+	defMax = defMax or maxV
+	if defMin > defMax then defMin, defMax = defMax, defMin end
+	U.vflags[flagMin] = defMin
+	U.vflags[flagMax] = defMax
+
+	local name = Instance.new("TextLabel")
+	name.BackgroundTransparency = 1
+	name.Size = UDim2.new(1, -90, 0, 12)
+	name.FontFace = U.font
+	name.TextSize = U.TEXT_SZ
+	name.TextColor3 = U.theme.Text
+	name.TextXAlignment = Enum.TextXAlignment.Left
+	name.Text = text
+	name.Parent = r
+
+	local valLbl = Instance.new("TextLabel")
+	valLbl.BackgroundTransparency = 1
+	valLbl.Size = UDim2.fromOffset(88, 12)
+	valLbl.Position = UDim2.new(1, -88, 0, 0)
+	valLbl.FontFace = U.font
+	valLbl.TextSize = U.TEXT_SZ
+	valLbl.TextColor3 = U.theme.Text
+	valLbl.TextXAlignment = Enum.TextXAlignment.Right
+	valLbl.Parent = r
+
+	local track = Instance.new("Frame")
+	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+	track.BorderSizePixel = 0
+	track.Size = UDim2.new(1, 0, 0, 6)
+	track.Position = UDim2.fromOffset(0, 16)
+	track.Parent = r
+	U.controlStroke(track, 1)
+
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = U.pulseColor()
+	fill.BorderSizePixel = 0
+	fill.ZIndex = 3
+	fill.Parent = track
+	U.registerPulse(fill, function() return true end)
+
+	local function mkCap()
+		local cap = Instance.new("Frame")
+		cap.BorderSizePixel = 0
+		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+		cap.Size = UDim2.fromOffset(1, 12)
+		cap.AnchorPoint = Vector2.new(0.5, 0.5)
+		cap.ZIndex = 5
+		cap.Parent = track
+		return cap
+	end
+	local capA, capB = mkCap(), mkCap()
+
+	local function snap(v)
+		if step >= 1 then return math.floor(v / step + 0.5) * step end
+		local places = #(tostring(step):match("%.(%d+)") or "1")
+		return tonumber(string.format("%." .. places .. "f", math.floor(v / step + 0.5) * step)) or v
+	end
+
+	local function refresh()
+		local a = math.clamp(U.vflags[flagMin] or minV, minV, maxV)
+		local b = math.clamp(U.vflags[flagMax] or maxV, minV, maxV)
+		if a > b then a, b = b, a end
+		U.vflags[flagMin], U.vflags[flagMax] = a, b
+		local ra = (a - minV) / math.max(1e-6, maxV - minV)
+		local rb = (b - minV) / math.max(1e-6, maxV - minV)
+		fill.Position = UDim2.new(ra, 0, 0, 0)
+		fill.Size = UDim2.new(math.max(0, rb - ra), 0, 1, 0)
+		capA.Position = UDim2.new(ra, 0, 0.5, 0)
+		capB.Position = UDim2.new(rb, 0, 0.5, 0)
+		valLbl.Text = tostring(a) .. suffix .. " - " .. tostring(b) .. suffix
+	end
+	refresh()
+
+	local drag = nil
+	local function at(x)
+		local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+		local v = snap(minV + (maxV - minV) * rel)
+		v = math.clamp(v, minV, maxV)
+		local a, b = U.vflags[flagMin], U.vflags[flagMax]
+		if drag == "min" then
+			a = math.min(v, b)
+		elseif drag == "max" then
+			b = math.max(v, a)
+		else
+			if math.abs(v - a) <= math.abs(v - b) then a = math.min(v, b) else b = math.max(v, a) end
+		end
+		U.vflags[flagMin], U.vflags[flagMax] = a, b
+		refresh()
+		U.fireFlag(flagMin)
+		U.fireFlag(flagMax)
+	end
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+		local rel = (input.Position.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X)
+		local a = (U.vflags[flagMin] - minV) / math.max(1e-6, maxV - minV)
+		local b = (U.vflags[flagMax] - minV) / math.max(1e-6, maxV - minV)
+		drag = (math.abs(rel - a) <= math.abs(rel - b)) and "min" or "max"
+		at(input.Position.X)
+	end)
+	U.UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then drag = nil end
+	end)
+	U.UIS.InputChanged:Connect(function(input)
+		if drag and input.UserInputType == Enum.UserInputType.MouseMovement then at(input.Position.X) end
+	end)
+	U.setters[flagMin] = function(v) U.vflags[flagMin] = v; refresh(); U.fireFlag(flagMin) end
+	U.setters[flagMax] = function(v) U.vflags[flagMax] = v; refresh(); U.fireFlag(flagMax) end
 	return r
 end
 
@@ -864,6 +989,14 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 	end
 	display()
 
+	local function isSelected(opt)
+		if multi then
+			local t = U.vflags[flag] or {}
+			return table.find(t, opt) ~= nil
+		end
+		return tostring(U.vflags[flag] or "") == tostring(opt)
+	end
+
 	box.MouseButton1Click:Connect(function()
 		U.closeColorPicker()
 		U.closeSettings()
@@ -874,41 +1007,67 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			end
 			U.closeDropdown()
 		end
+		local fullH = math.min(#options * 18, 140)
 		local listFrame = Instance.new("Frame")
 		listFrame.Name = "DropdownList"
 		listFrame:SetAttribute("Flag", flag)
 		listFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 		listFrame.BorderSizePixel = 0
-		listFrame.Size = UDim2.fromOffset(math.max(100, box.AbsoluteSize.X), math.min(#options * 18, 140))
+		listFrame.ClipsDescendants = true
+		listFrame.Size = UDim2.fromOffset(math.max(100, box.AbsoluteSize.X), 0)
 		listFrame.ZIndex = 220
 		listFrame.Parent = U.gui
-		local st = Instance.new("UIStroke")
-		st.Color = U.theme.Border
-		st.Parent = listFrame
+		local function edge(nm, size, pos)
+			local e = Instance.new("Frame")
+			e.Name = nm
+			e.BorderSizePixel = 0
+			e.BackgroundColor3 = U.theme.ElementBorder or U.theme.SectionBorder
+			e.Size = size
+			e.Position = pos
+			e.ZIndex = 222
+			e.Parent = listFrame
+			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
+			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
+		end
+		edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
+		edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
+		edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
 		local lay = Instance.new("UIListLayout")
 		lay.Parent = listFrame
 		local abs = box.AbsolutePosition
 		local gabs = U.gui.AbsolutePosition
-		listFrame.Position = UDim2.fromOffset(abs.X - gabs.X, abs.Y - gabs.Y + box.AbsoluteSize.Y + 2)
+		listFrame.Position = UDim2.fromOffset(abs.X - gabs.X, abs.Y - gabs.Y + box.AbsoluteSize.Y)
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
 			b.AutoButtonColor = false
-			b.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+			b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
 			b.BorderSizePixel = 0
 			b.Size = UDim2.new(1, 0, 0, 18)
 			b.FontFace = U.font
 			b.TextSize = U.TEXT_SZ
 			b.TextColor3 = U.theme.Text
 			b.TextXAlignment = Enum.TextXAlignment.Left
-			b.Text = "  " .. opt
+			b.Text = "  " .. tostring(opt)
 			b.ZIndex = 221
 			b.Parent = listFrame
+			b.MouseEnter:Connect(function()
+				if not isSelected(opt) then b.BackgroundColor3 = Color3.fromRGB(34, 34, 34) end
+			end)
+			b.MouseLeave:Connect(function()
+				b.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
+			end)
 			b.MouseButton1Click:Connect(function()
 				if multi then
-					local cur = U.vflags[flag] or {}
+					local cur = type(U.vflags[flag]) == "table" and table.clone(U.vflags[flag]) or {}
 					local found = table.find(cur, opt)
 					if found then table.remove(cur, found) else table.insert(cur, opt) end
 					U.vflags[flag] = cur
+					for _, ch in ipairs(listFrame:GetChildren()) do
+						if ch:IsA("TextButton") then
+							local o = string.sub(ch.Text, 3)
+							ch.BackgroundColor3 = isSelected(o) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
+						end
+					end
 				else
 					U.vflags[flag] = opt
 					box.Text = " " .. tostring(opt)
@@ -923,6 +1082,9 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 		listFrame.InputBegan:Connect(function()
 			U.armPopupOpen()
 		end)
+		U.Tween:Create(listFrame, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromOffset(math.max(100, box.AbsoluteSize.X), fullH)
+		}):Play()
 	end)
 	U.setters[flag] = function(v)
 		U.vflags[flag] = v
@@ -1137,6 +1299,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			U.refreshMenuTextColors()
 		elseif flagKey == "ThemeBorder" then U.theme.Border = c; U.applyTheme()
 		elseif flagKey == "ThemeSectionBorder" then U.theme.SectionBorder = c; U.applyTheme()
+		elseif flagKey == "ThemeElementBorder" then U.theme.ElementBorder = c; U.applyTheme()
 		elseif flagKey == "ThemeAccent1" then U.theme.Accent1 = c; U.applyTheme()
 		elseif flagKey == "ThemeAccent2" then U.theme.Accent2 = c; U.applyTheme()
 		end
@@ -1733,6 +1896,7 @@ function U.buildConfig()
 	U.attachPicker(U.mkColorRow(settingsSec, "text", nextOrder()), "ThemeText", U.theme.Text, true, "text color")
 	U.attachPicker(U.mkColorRow(settingsSec, "border", nextOrder()), "ThemeBorder", U.theme.Border, true, "border color")
 	U.attachPicker(U.mkColorRow(settingsSec, "section border", nextOrder()), "ThemeSectionBorder", U.theme.SectionBorder, true, "section border")
+	U.attachPicker(U.mkColorRow(settingsSec, "element border", nextOrder()), "ThemeElementBorder", U.theme.ElementBorder or U.theme.SectionBorder, true, "element border")
 	do
 		local accentRow = U.mkColorRow(settingsSec, "accent", nextOrder())
 		U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
@@ -2256,6 +2420,11 @@ function Library:CreateWindow(opts)
 				o = o or {}
 				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt)
 				return { Row = r, Flag = o.Flag or o.Name }
+			end
+			function sec:AddDoubleSlider(o)
+				o = o or {}
+				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "")
+				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
 			end
 			function sec:AddDropdown(o)
 				o = o or {}
