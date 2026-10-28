@@ -406,10 +406,8 @@ function U.closeDropdown()
 	U.openDropdownBox = nil
 	if not d or not d.Parent then
 		if box then
-			for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
-				local e = box:FindFirstChild(n)
-				if e then e.Visible = true end
-			end
+			local bb = box:FindFirstChild("BBottom")
+			if bb then bb.Visible = true end
 		end
 		return
 	end
@@ -423,10 +421,8 @@ function U.closeDropdown()
 	tw.Completed:Connect(function()
 		if d then pcall(function() d:Destroy() end) end
 		if box then
-			for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
-				local e = box:FindFirstChild(n)
-				if e then e.Visible = true end
-			end
+			local bb = box:FindFirstChild("BBottom")
+			if bb then bb.Visible = true end
 		end
 	end)
 end
@@ -1069,10 +1065,8 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit)
 		local px = math.floor(abs.X - gabs.X + 0.5)
 		local py = math.floor(abs.Y - gabs.Y + box.AbsoluteSize.Y + 0.5)
 
-		for _, n in ipairs({ "BBottom", "BLeft", "BRight" }) do
-			local e = box:FindFirstChild(n)
-			if e then e.Visible = false end
-		end
+		local boxBottom = box:FindFirstChild("BBottom")
+		if boxBottom then boxBottom.Visible = false end
 
 		local listFrame = Instance.new("Frame")
 		listFrame.Name = "DropdownList"
@@ -2014,13 +2008,44 @@ function U.buildConfig()
 		configListFrame = Instance.new("Frame")
 		configListFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 		configListFrame.BorderSizePixel = 0
+		configListFrame.ClipsDescendants = true
 		configListFrame.Size = UDim2.new(1, 0, 0, 120)
 		configListFrame.LayoutOrder = 6
 		configListFrame.Parent = configsSec
-		U.controlStroke(configListFrame, 1)
+		do
+			local col = U.theme.ElementBorder or U.theme.SectionBorder
+			local function edge(nm, size, pos)
+				local e = Instance.new("Frame")
+				e.Name = nm
+				e.BorderSizePixel = 0
+				e.BackgroundColor3 = col
+				e.Size = size
+				e.Position = pos
+				e.ZIndex = 3
+				e.Parent = configListFrame
+				U.themeReg.elementBorders = U.themeReg.elementBorders or {}
+				U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
+			end
+			edge("BTop", UDim2.new(1, 0, 0, 1), UDim2.fromOffset(0, 0))
+			edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
+			edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
+			edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
+		end
+		local configListInner = Instance.new("ScrollingFrame")
+		configListInner.Name = "Inner"
+		configListInner.BackgroundTransparency = 1
+		configListInner.BorderSizePixel = 0
+		configListInner.Size = UDim2.new(1, -4, 1, -4)
+		configListInner.Position = UDim2.fromOffset(2, 2)
+		configListInner.ScrollBarThickness = 0
+		configListInner.CanvasSize = UDim2.fromOffset(0, 0)
+		configListInner.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		configListInner.ClipsDescendants = true
+		configListInner.Parent = configListFrame
 		local listLay = Instance.new("UIListLayout")
 		listLay.SortOrder = Enum.SortOrder.LayoutOrder
-		listLay.Parent = configListFrame
+		listLay.Parent = configListInner
+		configListFrame = configListInner
 		refreshConfigList()
 	end
 
@@ -2213,14 +2238,20 @@ function U.buildConfig()
 
 	local credit = Instance.new("TextLabel")
 	credit.BackgroundTransparency = 1
-	credit.Size = UDim2.new(1, 0, 0, 14)
+	credit.Size = UDim2.new(1, -8, 0, 14)
+	credit.Position = UDim2.new(0, 4, 1, -16)
 	credit.FontFace = U.font
 	credit.TextSize = U.TEXT_SZ
 	credit.TextColor3 = Color3.fromRGB(90, 90, 90)
 	credit.TextXAlignment = Enum.TextXAlignment.Center
 	credit.Text = "wavelength ui by @illorsm"
-	credit.LayoutOrder = nextOrder()
-	credit.Parent = settingsSec
+	credit.ZIndex = 5
+	local secFrame = settingsSec.Parent
+	if secFrame and secFrame:IsA("GuiObject") then
+		credit.Parent = secFrame
+	else
+		credit.Parent = settingsSec
+	end
 end
 
 function U.buildTabs()
