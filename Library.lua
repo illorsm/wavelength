@@ -724,6 +724,10 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag)
 			fit(keyName(v))
 			U.fireFlag(keybindFlag)
 		end
+		U.keybindTargets = U.keybindTargets or {}
+		if flag then
+			U.keybindTargets[keybindFlag] = flag
+		end
 	end
 	return r
 end
@@ -1229,7 +1233,7 @@ function U.mkColorRow(parent, text, order)
 	return r
 end
 
-function U.mkButton(parent, text, order)
+function U.mkButton(parent, text, order, confirm)
 	local r = U.row(parent, order)
 	local btn = Instance.new("TextButton")
 	btn.AutoButtonColor = false
@@ -1242,7 +1246,36 @@ function U.mkButton(parent, text, order)
 	btn.Text = text
 	btn.Parent = r
 	U.controlStroke(btn, 1)
+	btn:SetAttribute("Confirm", confirm == true)
+	btn:SetAttribute("Label", text)
 	return btn
+end
+
+function U.bindButton(btn, callback)
+	if not btn or not callback then return end
+	local armed = false
+	local label = btn:GetAttribute("Label") or btn.Text
+	local confirm = btn:GetAttribute("Confirm") == true
+	btn.MouseButton1Click:Connect(function()
+		if not confirm then
+			pcall(callback)
+			return
+		end
+		if not armed then
+			armed = true
+			btn.Text = "are you sure?"
+			task.delay(3, function()
+				if btn and btn.Parent and armed then
+					armed = false
+					btn.Text = label
+				end
+			end)
+			return
+		end
+		armed = false
+		btn.Text = label
+		pcall(callback)
+	end)
 end
 
 function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
@@ -1339,6 +1372,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 				U.refreshMenuTextColors()
 			elseif flagKey == "ThemeBorder" then U.theme.Border = c; U.applyTheme()
 			elseif flagKey == "ThemeSectionBorder" then U.theme.SectionBorder = c; U.applyTheme()
+			elseif flagKey == "ThemeElementBorder" then U.theme.ElementBorder = c; U.applyTheme()
 			elseif flagKey == "ThemeAccent1" then U.theme.Accent1 = c; U.applyTheme()
 			elseif flagKey == "ThemeAccent2" then U.theme.Accent2 = c; U.applyTheme()
 			end
@@ -1636,7 +1670,7 @@ end
 function U.buildShell()
 	local nTabs = math.max(1, #U.TAB_NAMES)
 	local TAB_W = math.floor(U.BODY_W / nTabs)
-	local TAB_H = 22
+	local TAB_H = 44
 	U.TAB_W, U.TAB_H = TAB_W, TAB_H
 
 	U.gui = Instance.new("ScreenGui")
@@ -2135,7 +2169,8 @@ function U.buildTabs()
 		btn.AutoButtonColor = false
 		btn.BackgroundColor3 = (name == U.currentTab) and Color3.fromRGB(28, 28, 28) or U.theme.Background
 		btn.BorderSizePixel = 0
-		btn.Size = UDim2.fromOffset(U.TAB_W, U.TAB_H)
+		local bw = (i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W
+		btn.Size = UDim2.fromOffset(bw, U.TAB_H)
 		btn.Position = UDim2.fromOffset((i - 1) * U.TAB_W, 0)
 		btn.FontFace = U.font
 		btn.TextSize = U.TEXT_SZ
@@ -2259,22 +2294,15 @@ function U.bindInput()
 			U.gui.Enabled = U.menuOpen
 			if not U.menuOpen then U.closePopups() end
 		end
-		local vKey = U.vflags.VisualsKeybind
-		if vKey and input.KeyCode == vKey then
-			local cur = U.vflags.VisualsEnabled == true
-			if U.setters.VisualsEnabled then
-				U.setters.VisualsEnabled(not cur)
-			else
-				U.setFlag("VisualsEnabled", not cur)
-			end
-		end
-		local eKey = U.vflags.ExpanderKeybind
-		if eKey and input.KeyCode == eKey then
-			local cur = U.vflags.ExpanderEnabled == true
-			if U.setters.ExpanderEnabled then
-				U.setters.ExpanderEnabled(not cur)
-			else
-				U.setFlag("ExpanderEnabled", not cur)
+		for kbFlag, tFlag in pairs(U.keybindTargets or {}) do
+			local k = U.vflags[kbFlag]
+			if k and typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
+				local cur = U.vflags[tFlag] == true
+				if U.setters[tFlag] then
+					U.setters[tFlag](not cur)
+				else
+					U.setFlag(tFlag, not cur)
+				end
 			end
 		end
 	end)
@@ -2449,8 +2477,8 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddButton(o)
 				o = o or {}
-				local btn = U.mkButton(content, string.lower(tostring(o.Name or "button")), nextOrder())
-				if o.Callback then btn.MouseButton1Click:Connect(function() pcall(o.Callback) end) end
+				local btn = U.mkButton(content, string.lower(tostring(o.Name or "button")), nextOrder(), o.Confirm == true)
+				if o.Callback then U.bindButton(btn, o.Callback) end
 				return { Button = btn }
 			end
 			function sec:AddKeybind(o)
