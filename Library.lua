@@ -1,3 +1,5 @@
+
+
 getgenv()._SM = getgenv()._SM or {}
 local U = getgenv()._SM
 
@@ -20,7 +22,7 @@ U.theme = U.theme or {
 	Background = Color3.fromRGB(36, 36, 36),
 	SectionBg = Color3.fromRGB(18, 18, 18),
 }
-U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {} }
+U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, tabAccents = {} }
 
 function U.controlStroke(parent, thick)
 	local st = Instance.new("UIStroke")
@@ -125,11 +127,20 @@ task.spawn(function()
 				e.inst.BackgroundColor3 = c
 			end
 		end
+		if U.themeReg.tabAccents then
+			for i = #U.themeReg.tabAccents, 1, -1 do
+				local a = U.themeReg.tabAccents[i]
+				if not a or not a.Parent then
+					table.remove(U.themeReg.tabAccents, i)
+				elseif a.Visible then
+					a.BackgroundColor3 = c
+				end
+			end
+		end
 		task.wait(0.03)
 	end
 end)
 
--- Global color / transparency cycle (shared across all pickers, survives popup close)
 U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01 }
 function U.setCycleColor(flagKey, on)
 	if on then
@@ -222,7 +233,7 @@ end
 
 function U.refreshMenuTextColors()
 	local c = U.theme.Text
-	-- watermark first so it never lags behind the main menu scan
+	
 	if U.wmText then U.wmText.TextColor3 = c end
 	if U.wmGui then
 		for _, inst in ipairs(U.wmGui:GetDescendants()) do
@@ -240,9 +251,6 @@ function U.refreshMenuTextColors()
 	end
 end
 
-----------------------------------------------------------------
--- Notifications (own function scope)
-----------------------------------------------------------------
 function U.notifAnchor(pos)
 	pos = string.lower(tostring(pos or ""))
 	if pos == "top left" then return Vector2.new(0, 0), UDim2.fromOffset(14, 14), 1
@@ -280,7 +288,7 @@ function U.pushNotification(opts)
 	nGui.ResetOnSpawn = false
 	nGui.Parent = U.guiParent()
 
-	-- same sizing approach as watermark (text + padding)
+	
 	local w, h = 160, 22
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
@@ -293,7 +301,7 @@ function U.pushNotification(opts)
 		h = 22
 	end)
 
-	-- identical shell to watermark
+	
 	local frame = Instance.new("Frame")
 	frame.BackgroundColor3 = U.theme.Background
 	frame.BackgroundTransparency = 1
@@ -365,9 +373,6 @@ function U.pushNotification(opts)
 end
 U.onFlag("NotificationPosition", U.layoutNotifs)
 
-----------------------------------------------------------------
--- Popup helpers
-----------------------------------------------------------------
 function U.closeColorPicker()
 	if U.openColorPicker and U.openColorPicker.Parent then U.openColorPicker:Destroy() end
 	U.openColorPicker = nil
@@ -391,7 +396,7 @@ function U.shutdown()
 	U._shuttingDown = true
 	U.running = false
 
-	-- turn off feature flags so any residual checks stop acting
+	
 	local F = U.vflags
 	if F then
 		F.VisualsEnabled = false
@@ -427,21 +432,21 @@ function U.shutdown()
 	pcall(function() U.closePopups() end)
 
 	for _, name in ipairs({ "SimpleWatermark", "SM_ESP", "SimpleNotifs" }) do
-		-- destroy by reference if stored
+		
 	end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
 
-	-- sweep leftover guis from this script
+	
 	pcall(function()
 		local parent = U.guiParent and U.guiParent() or game:GetService("CoreGui")
 		for _, n in ipairs({ "SimpleMenu", "SimpleWatermark", "SM_ESP", "SimpleNotifs", "wavelength" }) do
 			local g = parent:FindFirstChild(n)
 			if g then g:Destroy() end
 		end
-		-- also CoreGui.RobloxGui style children
+		
 		for _, g in ipairs(parent:GetChildren()) do
 			if g:IsA("ScreenGui") and (g.Name == "SM_ESP" or g.Name == "SimpleWatermark") then
 				g:Destroy()
@@ -492,9 +497,6 @@ function U.clickHitsNamed(...)
 	return false
 end
 
-----------------------------------------------------------------
--- Builders (each function has its own local budget)
-----------------------------------------------------------------
 function U.row(parent, order)
 	local r = Instance.new("Frame")
 	r.BackgroundTransparency = 1
@@ -507,7 +509,7 @@ end
 function U.indentRow(r, px)
 	if not r then return r end
 	px = px or 12
-	-- inset from the left so right-anchored labels/sliders stay inside the section
+	
 	local pad = r:FindFirstChildOfClass("UIPadding")
 	if not pad then
 		pad = Instance.new("UIPadding")
@@ -559,7 +561,7 @@ function U.section(parent, title, col, row, rows)
 	secStroke.Parent = f
 	U.themeReg.sectionBorders[#U.themeReg.sectionBorders + 1] = secStroke
 
-	-- title drawn over the continuous top border (no gap / cutout)
+	
 	local hdr = Instance.new("TextLabel")
 	hdr.BackgroundTransparency = 1
 	hdr.BorderSizePixel = 0
@@ -935,6 +937,7 @@ function U.mkTextbox(parent, text, flag, placeholder, order)
 	box.Text = tostring(U.vflags[flag] or "")
 	box.ClearTextOnFocus = false
 	box.Parent = r
+	U.controlStroke(box, 1)
 	box.FocusLost:Connect(function()
 		U.setFlag(flag, box.Text)
 	end)
@@ -1063,7 +1066,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	sw.BorderSizePixel = 0
 	sw.ZIndex = 12
 	sw.Parent = rowFrame
-	-- 1px rim behind fill (same bounds, no size growth; visible only when fill is transparent)
+	
 	local swRim = Instance.new("Frame")
 	swRim.Name = "SwatchRim"
 	swRim.BackgroundTransparency = 1
@@ -1082,11 +1085,11 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		e.Parent = swRim
 		rimParts[#rimParts + 1] = e
 	end
-	addRim(UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1)) -- top
-	addRim(UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1)) -- bottom
-	addRim(UDim2.fromOffset(0, 0), UDim2.new(0, 1, 1, 0)) -- left
-	addRim(UDim2.new(1, -1, 0, 0), UDim2.new(0, 1, 1, 0)) -- right
-	-- fill on top (full size); transparency reveals the rim
+	addRim(UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1)) 
+	addRim(UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1)) 
+	addRim(UDim2.fromOffset(0, 0), UDim2.new(0, 1, 1, 0)) 
+	addRim(UDim2.new(1, -1, 0, 0), UDim2.new(0, 1, 1, 0)) 
+	
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
 	swFill.BorderSizePixel = 0
@@ -1430,9 +1433,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	return sw
 end
 
-----------------------------------------------------------------
--- Shell + pages
-----------------------------------------------------------------
 function U.buildShell()
 	local TAB_W = math.floor(U.BODY_W / #U.TAB_NAMES)
 	local TAB_H = math.max(16, math.floor(TAB_W / 4))
@@ -1536,7 +1536,6 @@ function U.buildShell()
 	end
 end
 
-
 function U.buildConfig()
 	local CONFIG_FOLDER = "SimpleMenuConfigs"
 	local selectedConfig = nil
@@ -1619,7 +1618,7 @@ function U.buildConfig()
 				if U.setters[k] then U.setters[k](v) end
 			end
 		end
-		-- re-register cycle toggles so loaded configs actually cycle colors/alpha
+		
 		U.cycle.colorFlags = {}
 		U.cycle.alphaFlags = {}
 		for k, v in pairs(U.vflags) do
@@ -1870,7 +1869,6 @@ function U.buildConfig()
 	end)
 end
 
-
 function U.buildTabs()
 	U.tabRail = Instance.new("Frame")
 	U.tabRail.Name = "TabRail"
@@ -1942,11 +1940,12 @@ function U.buildTabs()
 		tabAcc.BorderSizePixel = 0
 		tabAcc.Size = UDim2.new(1, 0, 0, 2)
 		tabAcc.Position = UDim2.new(0, 0, 1, -2)
-		tabAcc.BackgroundColor3 = U.pulseColor()
+		tabAcc.BackgroundColor3 = U.theme.Accent1
 		tabAcc.Visible = (name == U.currentTab)
 		tabAcc.ZIndex = 3
 		tabAcc.Parent = btn
-		U.registerPulse(tabAcc, function() return tabAcc.Visible end)
+		U.themeReg.tabAccents = U.themeReg.tabAccents or {}
+		U.themeReg.tabAccents[#U.themeReg.tabAccents + 1] = tabAcc
 		U.tabButtons[name] = btn
 		btn.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
@@ -2074,11 +2073,6 @@ function U.bindInput()
 	end)
 end
 
-
-
-----------------------------------------------------------------
--- Public library API (same UI, no visual changes)
-----------------------------------------------------------------
 local Library = {}
 Library.__index = Library
 Library.Flags = U.vflags
@@ -2107,7 +2101,7 @@ function Library:CreateWindow(opts)
 		end
 	end
 
-	-- rebuild shell if needed
+	
 	if U.gui then pcall(function() U.gui:Destroy() end) end
 	U.buildShell()
 	if U.titleBar then
@@ -2130,7 +2124,7 @@ function Library:CreateWindow(opts)
 	function win:AddTab(tabName)
 		tabName = string.lower(tostring(tabName))
 		if not U.pageFrames[tabName] then
-			-- allow adding tabs not in initial list
+			
 			U.TAB_NAMES[#U.TAB_NAMES + 1] = tabName
 			local p = Instance.new("Frame")
 			p.Name = tabName
@@ -2158,12 +2152,12 @@ function Library:CreateWindow(opts)
 			else
 				self._colCount[side] = math.max(self._colCount[side] or 0, row)
 			end
-			-- total rows on this side for height split
+			
 			rows = rows or self._colCount[side]
-			-- update heights of existing sections on this side when count grows
+			
 			local parent = U.pageFrames[tabName]
 			local content = U.section(parent, string.lower(tostring(sectionName)), side, row, rows)
-			-- reflow previous sections on same column when rows increases
+			
 			if rows > 1 then
 				local w = math.floor((U.BODY_W - U.SEC_GAP * 3) / 2)
 				local x = (side == 1) and U.SEC_GAP or (U.SEC_GAP * 2 + w)
@@ -2172,7 +2166,7 @@ function Library:CreateWindow(opts)
 				local idx = 0
 				for _, ch in ipairs(parent:GetChildren()) do
 					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 then
-						-- section frames are opaque SectionBg
+						
 						local pos = ch.Position
 						if pos.X.Offset == x then
 							idx += 1
@@ -2203,7 +2197,7 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddKeybind(ko)
 					ko = ko or {}
-					-- keybind already supported via KeybindFlag on mkToggle; attach extra if needed
+					
 					if ko.Flag then
 						local kb = U.mkKeybind(content, "", ko.Flag, ko.Default or Enum.KeyCode.Unknown, nextOrder())
 						U.subOf(kb, flag)
@@ -2215,7 +2209,7 @@ function Library:CreateWindow(opts)
 					local child = U.mkToggle(content, string.lower(tostring(so.Name or "toggle")), so.Flag or so.Name, nextOrder(), so.Default == true)
 					U.subOf(child, flag)
 					if so.Callback then U.onFlag(so.Flag or so.Name, function() pcall(so.Callback, U.vflags[so.Flag or so.Name]) end) end
-					return sec -- return sec-like for chaining simplicity
+					return sec 
 				end
 				function obj:AddSlider(so)
 					so = so or {}
@@ -2292,11 +2286,11 @@ function Library:CreateWindow(opts)
 	end
 
 	function win:AddSettingsTab()
-		-- ensure config tab exists
+		
 		if not U.pageFrames["config"] then
 			self:AddTab("config")
 		end
-		-- use original buildConfig
+		
 		if U.buildConfig then
 			U.buildConfig()
 		end
@@ -2315,7 +2309,5 @@ function Library:CreateWindow(opts)
 
 	return win
 end
-
--- keep buildConfig available for AddSettingsTab
 
 return Library
