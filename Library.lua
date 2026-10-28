@@ -401,7 +401,13 @@ function U.closeColorPicker()
 end
 function U.closeDropdown()
 	local d = U.openDropdown
+	local box = U.openDropdownBox
 	U.openDropdown = nil
+	U.openDropdownBox = nil
+	if box then
+		local bb = box:FindFirstChild("BBottom")
+		if bb then bb.Visible = true end
+	end
 	if not d or not d.Parent then return end
 	local w = d.AbsoluteSize.X
 	if w < 1 then w = d.Size.X.Offset end
@@ -786,7 +792,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 12)
+	track.Size = UDim2.new(1, 0, 0, 10)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track, 1)
@@ -801,7 +807,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	cap.Name = "SliderCap"
 	cap.BorderSizePixel = 0
 	cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-	cap.Size = UDim2.fromOffset(1, 12)
+	cap.Size = UDim2.fromOffset(1, 10)
 	cap.AnchorPoint = Vector2.new(0.5, 0.5)
 	cap.ZIndex = 5
 	cap.Parent = track
@@ -859,7 +865,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	step = step or 1
 	suffix = suffix or ""
 	local r = U.row(parent, order)
-	r.Size = UDim2.new(1, 0, 0, 28)
+	r.Size = UDim2.new(1, 0, 0, 32)
 	defMin = defMin or minV
 	defMax = defMax or maxV
 	if defMin > defMax then defMin, defMax = defMax, defMin end
@@ -889,7 +895,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 6)
+	track.Size = UDim2.new(1, 0, 0, 10)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track, 1)
@@ -905,7 +911,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local cap = Instance.new("Frame")
 		cap.BorderSizePixel = 0
 		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 12)
+		cap.Size = UDim2.fromOffset(1, 10)
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.ZIndex = 5
 		cap.Parent = track
@@ -926,10 +932,14 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		U.vflags[flagMin], U.vflags[flagMax] = a, b
 		local ra = (a - minV) / math.max(1e-6, maxV - minV)
 		local rb = (b - minV) / math.max(1e-6, maxV - minV)
-		fill.Position = UDim2.new(ra, 0, 0, 0)
-		fill.Size = UDim2.new(math.max(0, rb - ra), 0, 1, 0)
-		capA.Position = UDim2.new(ra, 0, 0.5, 0)
-		capB.Position = UDim2.new(rb, 0, 0.5, 0)
+		local w = math.max(2, track.AbsoluteSize.X)
+		local h = math.max(2, track.AbsoluteSize.Y)
+		local x0 = 1 + math.floor((w - 2) * ra + 0.5)
+		local x1 = 1 + math.floor((w - 2) * rb + 0.5)
+		fill.Position = UDim2.fromOffset(x0, 1)
+		fill.Size = UDim2.fromOffset(math.max(0, x1 - x0), h - 2)
+		capA.Position = UDim2.fromOffset(x0, h * 0.5)
+		capB.Position = UDim2.fromOffset(x1, h * 0.5)
 		valLbl.Text = tostring(a) .. suffix .. " - " .. tostring(b) .. suffix
 	end
 	refresh()
@@ -1036,20 +1046,31 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 		if #options == 0 then return end
 		local fullH = math.min(#options * 18, 140)
 		local width = math.max(100, box.AbsoluteSize.X)
+		local boxBottom = box:FindFirstChild("BBottom")
+		if boxBottom then boxBottom.Visible = false end
+
+		width = math.floor(box.AbsoluteSize.X + 0.5)
+		local abs = box.AbsolutePosition
+		local gabs = U.gui.AbsolutePosition
+		local px = math.floor(abs.X - gabs.X + 0.5)
+		local py = math.floor(abs.Y - gabs.Y + box.AbsoluteSize.Y + 0.5)
+
 		local listFrame = Instance.new("Frame")
 		listFrame.Name = "DropdownList"
 		listFrame:SetAttribute("Flag", flag)
+		listFrame:SetAttribute("BoxRef", box:GetFullName())
 		listFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 		listFrame.BorderSizePixel = 0
 		listFrame.ClipsDescendants = true
 		listFrame.Size = UDim2.fromOffset(width, 0)
+		listFrame.Position = UDim2.fromOffset(px, py)
 		listFrame.ZIndex = 220
 		listFrame.Parent = U.gui
 
 		local holder = Instance.new("Frame")
 		holder.BackgroundTransparency = 1
 		holder.BorderSizePixel = 0
-		holder.Size = UDim2.new(1, 0, 0, fullH)
+		holder.Size = UDim2.fromOffset(width, fullH)
 		holder.ZIndex = 221
 		holder.Parent = listFrame
 		local lay = Instance.new("UIListLayout")
@@ -1068,17 +1089,13 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			e.Parent = listFrame
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
+			return e
 		end
 		edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
 
-		local abs = box.AbsolutePosition
-		local gabs = U.gui.AbsolutePosition
-		local px = math.floor(abs.X - gabs.X + 0.5)
-		local py = math.floor(abs.Y - gabs.Y + box.AbsoluteSize.Y + 0.5)
-		width = math.floor(width + 0.5)
-		listFrame.Position = UDim2.fromOffset(px, py)
+		U.openDropdownBox = box
 
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
