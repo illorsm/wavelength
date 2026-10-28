@@ -949,6 +949,7 @@ end
 function U.mkDropdown(parent, text, flag, options, default, multi, order)
 	local r = U.row(parent, order)
 	r.Size = UDim2.new(1, 0, 0, 36)
+	options = options or {}
 	if multi then
 		U.vflags[flag] = type(default) == "table" and default or {}
 	else
@@ -1007,24 +1008,38 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			end
 			U.closeDropdown()
 		end
+		if #options == 0 then return end
 		local fullH = math.min(#options * 18, 140)
+		local width = math.max(100, box.AbsoluteSize.X)
 		local listFrame = Instance.new("Frame")
 		listFrame.Name = "DropdownList"
 		listFrame:SetAttribute("Flag", flag)
 		listFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 		listFrame.BorderSizePixel = 0
 		listFrame.ClipsDescendants = true
-		listFrame.Size = UDim2.fromOffset(math.max(100, box.AbsoluteSize.X), 0)
+		listFrame.Size = UDim2.fromOffset(width, 0)
 		listFrame.ZIndex = 220
 		listFrame.Parent = U.gui
+
+		local holder = Instance.new("Frame")
+		holder.BackgroundTransparency = 1
+		holder.BorderSizePixel = 0
+		holder.Size = UDim2.new(1, 0, 0, fullH)
+		holder.ZIndex = 221
+		holder.Parent = listFrame
+		local lay = Instance.new("UIListLayout")
+		lay.SortOrder = Enum.SortOrder.LayoutOrder
+		lay.Parent = holder
+
+		local borderCol = U.theme.ElementBorder or U.theme.SectionBorder
 		local function edge(nm, size, pos)
 			local e = Instance.new("Frame")
 			e.Name = nm
 			e.BorderSizePixel = 0
-			e.BackgroundColor3 = U.theme.ElementBorder or U.theme.SectionBorder
+			e.BackgroundColor3 = borderCol
 			e.Size = size
 			e.Position = pos
-			e.ZIndex = 222
+			e.ZIndex = 223
 			e.Parent = listFrame
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
@@ -1032,11 +1047,11 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 		edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
-		local lay = Instance.new("UIListLayout")
-		lay.Parent = listFrame
+
 		local abs = box.AbsolutePosition
 		local gabs = U.gui.AbsolutePosition
 		listFrame.Position = UDim2.fromOffset(abs.X - gabs.X, abs.Y - gabs.Y + box.AbsoluteSize.Y)
+
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
 			b.AutoButtonColor = false
@@ -1048,8 +1063,8 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			b.TextColor3 = U.theme.Text
 			b.TextXAlignment = Enum.TextXAlignment.Left
 			b.Text = "  " .. tostring(opt)
-			b.ZIndex = 221
-			b.Parent = listFrame
+			b.ZIndex = 222
+			b.Parent = holder
 			b.MouseEnter:Connect(function()
 				if not isSelected(opt) then b.BackgroundColor3 = Color3.fromRGB(34, 34, 34) end
 			end)
@@ -1062,7 +1077,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 					local found = table.find(cur, opt)
 					if found then table.remove(cur, found) else table.insert(cur, opt) end
 					U.vflags[flag] = cur
-					for _, ch in ipairs(listFrame:GetChildren()) do
+					for _, ch in ipairs(holder:GetChildren()) do
 						if ch:IsA("TextButton") then
 							local o = string.sub(ch.Text, 3)
 							ch.BackgroundColor3 = isSelected(o) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(28, 28, 28)
@@ -1083,7 +1098,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order)
 			U.armPopupOpen()
 		end)
 		U.Tween:Create(listFrame, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = UDim2.fromOffset(math.max(100, box.AbsoluteSize.X), fullH)
+			Size = UDim2.fromOffset(width, fullH)
 		}):Play()
 	end)
 	U.setters[flag] = function(v)
@@ -1619,8 +1634,9 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 end
 
 function U.buildShell()
-	local TAB_W = math.floor(U.BODY_W / #U.TAB_NAMES)
-	local TAB_H = math.max(16, math.floor(TAB_W / 4))
+	local nTabs = math.max(1, #U.TAB_NAMES)
+	local TAB_W = math.floor(U.BODY_W / nTabs)
+	local TAB_H = 22
 	U.TAB_W, U.TAB_H = TAB_W, TAB_H
 
 	U.gui = Instance.new("ScreenGui")
