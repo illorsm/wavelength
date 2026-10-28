@@ -2027,8 +2027,14 @@ function U.buildConfig()
 		local fps = 60
 		task.spawn(function()
 			local frames = 0
-			U.Run.RenderStepped:Connect(function() if U.running then frames += 1 end end)
-			while U.running do task.wait(1); fps = frames; frames = 0 end
+			U.Run.RenderStepped:Connect(function()
+				if U.running then frames += 1 end
+			end)
+			while U.running do
+				task.wait(1)
+				fps = frames
+				frames = 0
+			end
 		end)
 
 		local Stats = game:GetService("Stats")
@@ -2036,13 +2042,13 @@ function U.buildConfig()
 			local ok, v = pcall(function()
 				return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
 			end)
+			if ok and typeof(v) == "number" then return v end
+			ok, v = pcall(function()
+				return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValueString():match("%d+") or 0)
+			end)
 			return ok and v or 0
 		end
 		local function getRobloxFps()
-			local ok, v = pcall(function()
-				return math.floor(workspace:GetRealPhysicsFPS())
-			end)
-			if ok and v and v > 0 then return v end
 			return fps
 		end
 
@@ -2071,15 +2077,16 @@ function U.buildConfig()
 		refreshWm()
 
 		do
-			local dragging, d0, p0
+			local dragging, dragOffset
 			wm.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
-					dragging = true
-					d0 = input.Position
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					local mouse = U.UIS:GetMouseLocation()
 					local abs = wm.AbsolutePosition
 					wm.AnchorPoint = Vector2.new(0, 0)
 					wm.Position = UDim2.fromOffset(abs.X, abs.Y)
-					p0 = wm.Position
+					dragOffset = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
+					dragging = true
 					input.Changed:Connect(function()
 						if input.UserInputState == Enum.UserInputState.End then dragging = false end
 					end)
@@ -2087,9 +2094,10 @@ function U.buildConfig()
 			end)
 			U.UIS.InputChanged:Connect(function(input)
 				if not dragging then return end
-				if input.UserInputType == Enum.UserInputType.MouseMovement then
-					local d = input.Position - d0
-					wm.Position = UDim2.fromOffset(p0.X.Offset + d.X, p0.Y.Offset + d.Y)
+				if input.UserInputType == Enum.UserInputType.MouseMovement
+					or input.UserInputType == Enum.UserInputType.Touch then
+					local mouse = U.UIS:GetMouseLocation()
+					wm.Position = UDim2.fromOffset(mouse.X - dragOffset.X, mouse.Y - dragOffset.Y)
 				end
 			end)
 		end
