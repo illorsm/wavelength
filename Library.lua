@@ -1,5 +1,3 @@
-
-
 getgenv()._SM = getgenv()._SM or {}
 local U = getgenv()._SM
 
@@ -25,14 +23,24 @@ U.theme = U.theme or {
 U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, tabAccents = {} }
 
 function U.controlStroke(parent, thick)
-	local st = Instance.new("UIStroke")
-	st.Thickness = thick or 1
-	st.Color = U.theme.SectionBorder
-	st.LineJoinMode = Enum.LineJoinMode.Miter
-	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	st.Parent = parent
-	U.themeReg.sectionBorders[#U.themeReg.sectionBorders + 1] = st
-	return st
+	thick = thick or 1
+	local col = U.theme.SectionBorder
+	local function edge(name, size, pos)
+		local e = Instance.new("Frame")
+		e.Name = name
+		e.BorderSizePixel = 0
+		e.BackgroundColor3 = col
+		e.Size = size
+		e.Position = pos
+		e.ZIndex = (parent.ZIndex or 1) + 1
+		e.Parent = parent
+		U.themeReg.sectionBorders[#U.themeReg.sectionBorders + 1] = e
+		return e
+	end
+	edge("BTop", UDim2.new(1, 0, 0, thick), UDim2.fromOffset(0, 0))
+	edge("BBottom", UDim2.new(1, 0, 0, thick), UDim2.new(0, 0, 1, -thick))
+	edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(0, 0))
+	edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, -thick, 0, 0))
 end
 
 U.running = true
@@ -132,7 +140,7 @@ task.spawn(function()
 				local a = U.themeReg.tabAccents[i]
 				if not a or not a.Parent then
 					table.remove(U.themeReg.tabAccents, i)
-				elseif a.Visible then
+				else
 					a.BackgroundColor3 = c
 				end
 			end
@@ -223,7 +231,13 @@ function U.applyTheme()
 		if st.Parent then st.Color = U.theme.Border end
 	end
 	for _, st in ipairs(U.themeReg.sectionBorders) do
-		if st.Parent then st.Color = U.theme.SectionBorder end
+		if st and st.Parent then
+			if st:IsA("UIStroke") then
+				st.Color = U.theme.SectionBorder
+			else
+				st.BackgroundColor3 = U.theme.SectionBorder
+			end
+		end
 	end
 	for _, f in ipairs(U.themeReg.bgs) do
 		if f.Parent then f.BackgroundColor3 = U.theme.Background end
@@ -586,12 +600,20 @@ function U.section(parent, title, col, row, rows)
 	content.ScrollBarThickness = 0
 	content.CanvasSize = UDim2.fromOffset(0, 0)
 	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	content.ClipsDescendants = false
 	content.Parent = f
 
 	local list = Instance.new("UIListLayout")
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 	list.Padding = UDim.new(0, 4)
 	list.Parent = content
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 1)
+	pad.PaddingRight = UDim.new(0, 1)
+	pad.PaddingTop = UDim.new(0, 1)
+	pad.PaddingBottom = UDim.new(0, 2)
+	pad.Parent = content
 	return content
 end
 
@@ -1838,7 +1860,12 @@ function U.buildConfig()
 			local dragging, d0, p0
 			wm.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 then
-					dragging = true; d0 = input.Position; p0 = wm.Position
+					dragging = true
+					d0 = input.Position
+					local abs = wm.AbsolutePosition
+					wm.AnchorPoint = Vector2.new(0, 0)
+					wm.Position = UDim2.fromOffset(abs.X, abs.Y)
+					p0 = wm.Position
 					input.Changed:Connect(function()
 						if input.UserInputState == Enum.UserInputState.End then dragging = false end
 					end)
