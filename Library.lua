@@ -55,6 +55,100 @@ function U.controlStroke(parent, thick)
 	edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, -thick, 0, 0))
 end
 
+
+U.vflags.Tooltips = (U.vflags.Tooltips == nil) and true or U.vflags.Tooltips
+
+function U.ensureTooltip()
+	if U.tooltipFrame and U.tooltipFrame.Parent then return end
+	if not U.gui then return end
+	local f = Instance.new("Frame")
+	f.Name = "Tooltip"
+	f.BackgroundColor3 = U.theme.Background
+	f.BorderSizePixel = 0
+	f.Visible = false
+	f.ZIndex = 250
+	f.Parent = U.gui
+	U.controlStroke(f, 1)
+	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
+	U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = f
+	local lab = Instance.new("TextLabel")
+	lab.BackgroundTransparency = 1
+	lab.Position = UDim2.fromOffset(6, 3)
+	lab.Size = UDim2.new(1, -12, 1, -6)
+	lab.FontFace = U.font
+	lab.TextSize = U.TEXT_SZ
+	lab.TextColor3 = U.theme.Text
+	lab.TextXAlignment = Enum.TextXAlignment.Left
+	lab.TextYAlignment = Enum.TextYAlignment.Center
+	lab.Text = ""
+	lab.Parent = f
+	U.tooltipFrame = f
+	U.tooltipLabel = lab
+end
+
+function U.hideTooltip()
+	if U.tooltipFrame then U.tooltipFrame.Visible = false end
+	U._tooltipText = nil
+end
+
+function U.showTooltip(text)
+	if U.vflags.Tooltips == false then U.hideTooltip(); return end
+	if type(text) ~= "string" or text == "" then U.hideTooltip(); return end
+	U.ensureTooltip()
+	if not U.tooltipFrame then return end
+	U._tooltipText = text
+	U.tooltipLabel.Text = text
+	U.tooltipLabel.TextColor3 = U.theme.Text
+	U.tooltipFrame.BackgroundColor3 = U.theme.Background
+	local w = 80
+	pcall(function()
+		local measure = Instance.new("GetTextBoundsParams")
+		measure.Text = text
+		measure.Font = U.font
+		measure.Size = U.TEXT_SZ
+		measure.Width = 320
+		local bounds = U.Text:GetTextBoundsAsync(measure)
+		w = math.max(40, math.ceil(bounds.X) + 12)
+	end)
+	U.tooltipFrame.Size = UDim2.fromOffset(w, 20)
+	U.tooltipFrame.Visible = true
+	U.updateTooltipPos()
+end
+
+function U.updateTooltipPos()
+	if not U.tooltipFrame or not U.tooltipFrame.Visible then return end
+	local pos = U.UIS:GetMouseLocation()
+	local x = pos.X + 14
+	local y = pos.Y + 14
+	if U.gui and not U.gui.IgnoreGuiInset then
+		local inset = game:GetService("GuiService"):GetGuiInset()
+		x = pos.X - inset.X + 14
+		y = pos.Y - inset.Y + 14
+	end
+	U.tooltipFrame.Position = UDim2.fromOffset(x, y)
+end
+
+function U.bindTooltip(obj, text)
+	if not obj or type(text) ~= "string" or text == "" then return end
+	obj.MouseEnter:Connect(function()
+		U.showTooltip(text)
+	end)
+	obj.MouseLeave:Connect(function()
+		U.hideTooltip()
+	end)
+end
+
+task.spawn(function()
+	while true do
+		if not U.running then break end
+		if U.tooltipFrame and U.tooltipFrame.Visible then
+			U.updateTooltipPos()
+		end
+		task.wait(0.03)
+	end
+end)
+
+
 U.running = true
 U.vflags = U.vflags or {
 	NotificationPosition = "bottom right",
@@ -735,8 +829,9 @@ function U.section(parent, title, col, row, rows)
 	return content
 end
 
-function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindListText)
+function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindListText, tooltip)
 	local r = U.row(parent, order)
+	if tooltip then U.bindTooltip(r, tooltip) end
 	local on = default == true
 	if flag then U.vflags[flag] = on end
 
@@ -960,10 +1055,11 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	return r
 end
 
-function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix)
+function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix, tooltip)
 	step = step or 1
 	suffix = suffix or ""
 	local r = U.row(parent, order)
+	if tooltip then U.bindTooltip(r, tooltip) end
 	r.Size = UDim2.new(1, 0, 0, 32)
 	defMin = defMin or minV
 	defMax = defMax or maxV
@@ -1274,8 +1370,9 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit)
 end
 
 
-function U.mkTextbox(parent, text, flag, placeholder, order)
+function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	local r = U.row(parent, order)
+	if tooltip then U.bindTooltip(r, tooltip) end
 	r.Size = UDim2.new(1, 0, 0, 36)
 	U.vflags[flag] = U.vflags[flag] or ""
 
@@ -1459,34 +1556,13 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	sw.BorderSizePixel = 0
 	sw.ZIndex = 12
 	sw.Parent = rowFrame
-	
-	local swRim = Instance.new("Frame")
-	swRim.Name = "SwatchRim"
-	swRim.BackgroundTransparency = 1
-	swRim.BorderSizePixel = 0
-	swRim.Size = UDim2.fromScale(1, 1)
-	swRim.ZIndex = 12
-	swRim.Parent = sw
-	local rimParts = {}
-	local function addRim(pos, size)
-		local e = Instance.new("Frame")
-		e.BorderSizePixel = 0
-		e.BackgroundColor3 = defaultColor
-		e.Position = pos
-		e.Size = size
-		e.ZIndex = 12
-		e.Parent = swRim
-		rimParts[#rimParts + 1] = e
-	end
-	addRim(UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 1)) 
-	addRim(UDim2.new(0, 0, 1, -1), UDim2.new(1, 0, 0, 1)) 
-	addRim(UDim2.fromOffset(0, 0), UDim2.new(0, 1, 1, 0)) 
-	addRim(UDim2.new(1, -1, 0, 0), UDim2.new(0, 1, 1, 0)) 
-	
+	U.controlStroke(sw, 1)
+
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
 	swFill.BorderSizePixel = 0
-	swFill.Size = UDim2.fromScale(1, 1)
+	swFill.Size = UDim2.new(1, -2, 1, -2)
+	swFill.Position = UDim2.fromOffset(1, 1)
 	swFill.BackgroundColor3 = defaultColor
 	swFill.BackgroundTransparency = (not noAlpha) and (U.vflags[alphaKey] or 0) or 0
 	swFill.ZIndex = 13
@@ -1495,7 +1571,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local function apply()
 		local c = Color3.fromHSV(h, sat, val)
 		U.vflags[flagKey] = c
-		for _, e in ipairs(rimParts) do e.BackgroundColor3 = c end
 		swFill.BackgroundColor3 = c
 		if not noAlpha then
 			swFill.BackgroundTransparency = U.vflags[alphaKey] or 0
@@ -1522,7 +1597,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			h, sat, val = v:ToHSV()
 			local c = Color3.fromHSV(h, sat, val)
 			U.vflags[flagKey] = c
-			for _, e in ipairs(rimParts) do e.BackgroundColor3 = c end
 			swFill.BackgroundColor3 = c
 			if not noAlpha then
 				swFill.BackgroundTransparency = U.vflags[alphaKey] or 0
@@ -1947,11 +2021,10 @@ function U.buildShell()
 		p.Parent = U.pages
 		U.pageFrames[n] = p
 	end
-	if U.pageFrames.combat then
-		U.pageFrames.combat.Visible = true
-	elseif U.TAB_NAMES[1] and U.pageFrames[U.TAB_NAMES[1]] then
-		U.pageFrames[U.TAB_NAMES[1]].Visible = true
-		U.currentTab = U.TAB_NAMES[1]
+	local first = U.TAB_NAMES[1]
+	if first and U.pageFrames[first] then
+		U.pageFrames[first].Visible = true
+		U.currentTab = first
 	end
 end
 
@@ -1976,37 +2049,49 @@ function U.dockKeybinds()
 	local sp = U.shell.Position
 	local sw = U.shell.Size.X.Offset
 	if sw < 2 then sw = U.BODY_W end
-	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-	U.kbPanel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
+	local h = U.kbPanel.Size.Y.Offset
+	if h < 2 then h = 22 end
+	U.kbPanel.AnchorPoint = Vector2.new(1, 0)
+	U.kbPanel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw, sp.Y.Scale, sp.Y.Offset - h - gap)
 end
 
 function U.ensureSnapGhosts()
 	if not U.gui then return end
+	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
 	if not U.wmSnapGhost or not U.wmSnapGhost.Parent then
 		local g = Instance.new("Frame")
 		g.Name = "WmSnapGhost"
-		g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-		g.BackgroundTransparency = 0.55
+		g.BackgroundColor3 = U.theme.Background
+		g.BackgroundTransparency = 0
 		g.BorderSizePixel = 0
 		g.Visible = false
 		g.ZIndex = 40
 		g.Parent = U.gui
 		U.wmSnapGhost = g
+		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
 	end
 	if not U.kbSnapGhost or not U.kbSnapGhost.Parent then
 		local g = Instance.new("Frame")
 		g.Name = "KbSnapGhost"
-		g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-		g.BackgroundTransparency = 0.55
+		g.BackgroundColor3 = U.theme.Background
+		g.BackgroundTransparency = 0
 		g.BorderSizePixel = 0
 		g.Visible = false
 		g.ZIndex = 40
 		g.Parent = U.gui
 		U.kbSnapGhost = g
+		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
 	end
+	if U.wmSnapGhost then U.wmSnapGhost.BackgroundColor3 = U.theme.Background end
+	if U.kbSnapGhost then U.kbSnapGhost.BackgroundColor3 = U.theme.Background end
 end
 
 function U.showSnapGhost(kind)
+	if U.menuOpen == false then
+		U.hideSnapGhost("wm")
+		U.hideSnapGhost("kb")
+		return
+	end
 	U.ensureSnapGhosts()
 	if not U.shell then return end
 	local gap = U.dockGap or 6
@@ -2027,7 +2112,8 @@ function U.showSnapGhost(kind)
 		if h < 2 then h = 28 end
 		if w < 2 then w = 120 end
 		U.kbSnapGhost.Size = UDim2.fromOffset(w, h)
-		U.kbSnapGhost.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
+		U.kbSnapGhost.AnchorPoint = Vector2.new(1, 0)
+		U.kbSnapGhost.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw, sp.Y.Scale, sp.Y.Offset - h - gap)
 		U.kbSnapGhost.Visible = true
 	end
 end
@@ -2038,6 +2124,7 @@ function U.hideSnapGhost(kind)
 end
 
 function U.overlapsSnap(kind, frame)
+	if U.menuOpen == false then return false end
 	if not frame or not U.shell then return false end
 	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
 	if not ghost or not ghost.Visible then
@@ -2392,6 +2479,10 @@ function U.buildConfig()
 		syncMsg()
 	end
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
+	U.mkToggle(settingsSec, "tooltips", "Tooltips", nextOrder(), true)
+	U.onFlag("Tooltips", function()
+		if U.vflags.Tooltips == false then U.hideTooltip() end
+	end)
 
 	do
 		local wm = Instance.new("Frame")
@@ -2584,8 +2675,8 @@ function U.buildConfig()
 			kbList.Name = "List"
 			kbList.BackgroundTransparency = 1
 			kbList.BorderSizePixel = 0
-			kbList.Position = UDim2.fromOffset(6, 6)
-			kbList.Size = UDim2.new(1, -12, 1, -12)
+			kbList.Position = UDim2.fromOffset(6, 8)
+			kbList.Size = UDim2.new(1, -12, 1, -14)
 			kbList.Parent = kb
 			local kbLay = Instance.new("UIListLayout")
 			kbLay.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2624,9 +2715,13 @@ function U.buildConfig()
 					maxW = math.max(maxW, #line * 7)
 					count += 1
 				end
-				U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
-				kbList.Position = UDim2.fromOffset(pad, pad)
-				kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
+				local accentH = 2
+				local rowH = 14
+				local rowGap = 2
+				local contentH = (count > 0) and (count * rowH + math.max(0, count - 1) * rowGap) or rowH
+				U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), accentH + pad * 2 + contentH)
+				kbList.Position = UDim2.fromOffset(pad, accentH + pad)
+				kbList.Size = UDim2.new(1, -pad * 2, 1, -(accentH + pad * 2))
 				if U.kbDocked then U.dockKeybinds() end
 				U.syncFloatingVisibility()
 				U._kbRefreshing = false
@@ -2721,7 +2816,7 @@ function U.buildTabs()
 	U.tabRail.Parent = U.shell
 
 	U.tabButtons = {}
-	U.currentTab = "combat"
+	U.currentTab = U.TAB_NAMES[1] or "combat"
 
 	local tabIndex = {}
 	for i, n in ipairs(U.TAB_NAMES) do tabIndex[n] = i end
@@ -2856,7 +2951,12 @@ function U.bindInput()
 		local key = U.vflags.MenuKeybind or Enum.KeyCode.RightShift
 		if input.KeyCode == key then
 			U.menuOpen = not U.menuOpen
-			if not U.menuOpen then U.closePopups() end
+			if not U.menuOpen then
+				U.closePopups()
+				U.hideSnapGhost("wm")
+				U.hideSnapGhost("kb")
+				U.hideTooltip()
+			end
 			U.syncFloatingVisibility()
 			if U.menuOpen then
 				if U.wmDocked then U.dockWatermark() end
@@ -2989,7 +3089,7 @@ function Library:CreateWindow(opts)
 			function sec:AddToggle(o)
 				o = o or {}
 				local flag = o.Flag or o.Name
-				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text)
+				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text, o.Tooltip or o.tooltip)
 				if o.Callback then
 					U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end)
 				end
@@ -3020,7 +3120,7 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddSlider(so)
 					so = so or {}
-					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", so.InfAt)
+					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", so.InfAt, so.Tooltip or so.tooltip)
 					U.subOf(child, flag)
 					return obj
 				end
@@ -3028,7 +3128,7 @@ function Library:CreateWindow(opts)
 					so = so or {}
 					local limit = so.Limit or so.Amount
 					if limit == nil then limit = (so.Multi == true) and 999 or 1 end
-					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit)
+					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, so.Tooltip or so.tooltip)
 					U.subOf(child, flag)
 					return obj
 				end
@@ -3036,12 +3136,12 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddSlider(o)
 				o = o or {}
-				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt)
+				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt, o.Tooltip or o.tooltip)
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddDoubleSlider(o)
 				o = o or {}
-				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "")
+				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", o.Tooltip or o.tooltip)
 				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
 			end
 			function sec:AddDropdown(o)
@@ -3050,13 +3150,14 @@ function Library:CreateWindow(opts)
 				if limit == nil then
 					limit = (o.Multi == true) and 999 or 1
 				end
-				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit)
+				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, o.Tooltip or o.tooltip)
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddButton(o)
 				o = o or {}
 				local btn = U.mkButton(content, string.lower(tostring(o.Name or "button")), nextOrder(), o.Confirm == true)
 				if o.Callback then U.bindButton(btn, o.Callback) end
+				if o.Tooltip or o.tooltip then U.bindTooltip(btn, o.Tooltip or o.tooltip) end
 				return { Button = btn }
 			end
 			function sec:AddColorpicker(o)
@@ -3072,6 +3173,7 @@ function Library:CreateWindow(opts)
 				lab.Text = string.lower(tostring(o.Name or "color"))
 				lab.Parent = r
 				U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.fromRGB(255,255,255), o.NoAlpha == true, o.Name or "color")
+				if o.Tooltip or o.tooltip then U.bindTooltip(r, o.Tooltip or o.tooltip) end
 				return { Row = r }
 			end
 			function sec:AddLabel(o)
@@ -3086,11 +3188,12 @@ function Library:CreateWindow(opts)
 				lab.TextXAlignment = Enum.TextXAlignment.Left
 				lab.Text = string.lower(tostring(o.Name or ""))
 				lab.Parent = r
+				if o.Tooltip or o.tooltip then U.bindTooltip(r, o.Tooltip or o.tooltip) end
 				return { Row = r }
 			end
 			function sec:AddTextbox(o)
 				o = o or {}
-				local r = U.mkTextbox(content, string.lower(tostring(o.Name or "text")), o.Flag or o.Name, o.Placeholder or "", nextOrder())
+				local r = U.mkTextbox(content, string.lower(tostring(o.Name or "text")), o.Flag or o.Name, o.Placeholder or "", nextOrder(), o.Tooltip or o.tooltip)
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			return sec
