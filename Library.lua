@@ -1,7 +1,8 @@
 
 
-getgenv()._SM = getgenv()._SM or {}
-local U = getgenv()._SM
+local _genv = (typeof(getgenv) == "function" and getgenv()) or _G
+_genv._SM = _genv._SM or {}
+local U = _genv._SM
 
 do
 	U.Players = game:GetService("Players")
@@ -81,12 +82,15 @@ end
 
 function U.loadFont()
 	local ok, font = pcall(function()
+		if typeof(isfile) ~= "function" or typeof(writefile) ~= "function" or typeof(getcustomasset) ~= "function" then
+			return Font.fromEnum(Enum.Font.Code)
+		end
 		local id = "ProggyClean.ttf"
 		if not isfile(id) then
 			writefile(id, game:HttpGet("https://github.com/i77lhm/storage/raw/refs/heads/main/fonts/ProggyClean.ttf"))
 		end
 		local fontFile = "ProggyClean_ExampleUI.font"
-		if isfile(fontFile) then delfile(fontFile) end
+		if isfile(fontFile) and typeof(delfile) == "function" then delfile(fontFile) end
 		writefile(fontFile, U.Http:JSONEncode({
 			name = "ProggyClean_ExampleUI",
 			faces = {{ name = "Normal", weight = 400, style = "Normal", assetId = getcustomasset(id) }},
