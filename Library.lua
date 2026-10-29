@@ -23,7 +23,7 @@ U.theme = U.theme or {
 	Background = Color3.fromRGB(36, 36, 36),
 	SectionBg = Color3.fromRGB(18, 18, 18),
 }
-U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, sectionBgs = {}, tabAccents = {} }
+U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {} }
 U.wmDocked = true
 U.kbDocked = true
 U.dockGap = 6
@@ -289,14 +289,13 @@ function U.applyTheme()
 			st.BackgroundColor3 = U.theme.ElementBorder
 		end
 	end
-	for _, f in ipairs(U.themeReg.bgs) do
-		if f.Parent then f.BackgroundColor3 = U.theme.Background end
+	for _, f in ipairs(U.themeReg.bodyBgs or {}) do
+		if f and f.Parent then f.BackgroundColor3 = U.theme.Background end
 	end
+	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = U.theme.Background end
+	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = U.theme.Background end
 	for _, f in ipairs(U.themeReg.sectionBgs or {}) do
 		if f and f.Parent then f.BackgroundColor3 = U.theme.SectionBg end
-	end
-	if U.kbPanel and U.kbPanel.Parent then
-		U.kbPanel.BackgroundColor3 = U.theme.Background
 	end
 	if U.refreshMenuTextColors then U.refreshMenuTextColors() end
 	if U.refreshKeybindList then U.refreshKeybindList() end
@@ -364,7 +363,7 @@ function U.pushNotification(opts)
 	nGui.Parent = U.guiParent()
 
 	
-	local w, h = 160, 22
+	local w, h = 160, 26
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
 		measure.Text = text
@@ -373,7 +372,7 @@ function U.pushNotification(opts)
 		measure.Width = 420
 		local bounds = U.Text:GetTextBoundsAsync(measure)
 		w = math.max(80, math.ceil(bounds.X) + 16)
-		h = 22
+		h = 26
 	end)
 
 	
@@ -412,7 +411,7 @@ function U.pushNotification(opts)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Position = UDim2.fromOffset(6, 2)
-	label.Size = UDim2.new(1, -12, 1, -2)
+	label.Size = UDim2.new(1, -12, 0, 18)
 	label.FontFace = U.font
 	label.TextSize = U.TEXT_SZ
 	label.TextColor3 = U.theme.Text
@@ -420,6 +419,30 @@ function U.pushNotification(opts)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Text = text
 	label.Parent = frame
+
+	local timerWrap = Instance.new("Frame")
+	timerWrap.Name = "Timer"
+	timerWrap.BackgroundTransparency = 1
+	timerWrap.BorderSizePixel = 0
+	timerWrap.Position = UDim2.new(0, 2, 1, -5)
+	timerWrap.Size = UDim2.new(1, -4, 0, 3)
+	timerWrap.ZIndex = 3
+	timerWrap.Parent = frame
+	local timerFill = Instance.new("Frame")
+	timerFill.Name = "Fill"
+	timerFill.BorderSizePixel = 0
+	timerFill.BackgroundColor3 = U.theme.Accent1
+	timerFill.Size = UDim2.fromScale(1, 1)
+	timerFill.Position = UDim2.fromOffset(0, 0)
+	timerFill.ZIndex = 4
+	timerFill.Parent = timerWrap
+	local timerStroke = Instance.new("UIStroke")
+	timerStroke.Thickness = 1
+	timerStroke.Color = U.theme.Border
+	timerStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	timerStroke.Transparency = 1
+	timerStroke.Parent = timerFill
+	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
 
 	local entry = { frame = frame, gui = nGui, h = h }
 	table.insert(U.activeNotifs, entry)
@@ -430,6 +453,13 @@ function U.pushNotification(opts)
 	U.Tween:Create(st, fadeIn, { Transparency = 0 }):Play()
 	U.Tween:Create(bar, fadeIn, { BackgroundTransparency = 0 }):Play()
 	U.Tween:Create(label, fadeIn, { TextTransparency = 0 }):Play()
+	U.Tween:Create(timerStroke, fadeIn, { Transparency = 0 }):Play()
+
+	local shrink = U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+		Size = UDim2.new(0, 0, 1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+	})
+	shrink:Play()
 
 	task.delay(duration, function()
 		local fadeOut = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -437,6 +467,8 @@ function U.pushNotification(opts)
 		U.Tween:Create(st, fadeOut, { Transparency = 1 }):Play()
 		U.Tween:Create(bar, fadeOut, { BackgroundTransparency = 1 }):Play()
 		U.Tween:Create(label, fadeOut, { TextTransparency = 1 }):Play()
+		U.Tween:Create(timerFill, fadeOut, { BackgroundTransparency = 1 }):Play()
+		U.Tween:Create(timerStroke, fadeOut, { Transparency = 1 }):Play()
 		t1:Play()
 		t1.Completed:Wait()
 		for i, e in ipairs(U.activeNotifs) do
@@ -532,7 +564,11 @@ function U.shutdown()
 	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
-	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
+	if U.floatHost then pcall(function() U.floatHost:Destroy() end) U.floatHost = nil end
+	if U.wmGui and U.wmGui ~= U.gui then pcall(function() U.wmGui:Destroy() end) end
+	U.wmGui = nil
+	U.kbPanel = nil
+	U.wm = nil
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
@@ -1834,15 +1870,14 @@ function U.buildShell()
 
 	U.shell = Instance.new("Frame")
 	U.shell.Name = "Shell"
-	U.shell.BackgroundColor3 = U.theme.Background
+	U.shell.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 	U.shell.BorderSizePixel = 0
 	U.shell.ClipsDescendants = true
 	U.shell.Active = true
 	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.BODY_H + U.LINE_H)
 	U.shell.Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -(U.TITLE_H + U.BODY_H) / 2)
 	U.shell.Parent = U.gui
-	U.themeReg.bgs[#U.themeReg.bgs + 1] = U.shell
-
+	
 	local shellStroke = Instance.new("UIStroke")
 	shellStroke.Thickness = 2
 	shellStroke.Color = U.theme.Border
@@ -1869,11 +1904,10 @@ function U.buildShell()
 	end)
 
 	U.titleBar = Instance.new("Frame")
-	U.titleBar.BackgroundColor3 = U.theme.Background
+	U.titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 	U.titleBar.BorderSizePixel = 0
 	U.titleBar.Active = true
-	U.themeReg.bgs[#U.themeReg.bgs + 1] = U.titleBar
-	U.titleBar.Size = UDim2.new(1, 0, 0, U.TITLE_H)
+		U.titleBar.Size = UDim2.new(1, 0, 0, U.TITLE_H)
 	U.titleBar.Position = UDim2.fromOffset(0, U.LINE_H)
 	U.titleBar.Parent = U.shell
 
@@ -1890,10 +1924,12 @@ function U.buildShell()
 
 	U.body = Instance.new("Frame")
 	U.body.Name = "Body"
-	U.body.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+	U.body.BackgroundColor3 = U.theme.Background
 	U.body.BorderSizePixel = 0
 	U.body.Size = UDim2.fromOffset(U.BODY_W, U.BODY_H)
 	U.body.Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H)
+	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
+	U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = U.body
 	U.body.ClipsDescendants = true
 	U.body.Active = true
 	U.body.Parent = U.shell
@@ -1927,25 +1963,77 @@ end
 function U.dockWatermark()
 	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
 	if U.vflags.Watermark ~= true then return end
-	if not U.shell then return end
-	local h = U.wm.Size.Y.Offset
-	if h < 2 then h = 22 end
+	if not U.shell or not U.shell.Parent then return end
+	local h = math.max(22, U.wm.Size.Y.Offset)
 	local gap = U.dockGap or 6
-	local sp = U.shell.Position
+	local sp = U.shell.AbsolutePosition
 	U.wm.AnchorPoint = Vector2.new(0, 0)
-	U.wm.Position = UDim2.new(sp.X.Scale, sp.X.Offset, sp.Y.Scale, sp.Y.Offset - h - gap)
+	U.wm.Position = UDim2.fromOffset(math.floor(sp.X + 0.5), math.floor(sp.Y - h - gap + 0.5))
 end
 
 function U.dockKeybinds()
 	if not U.kbDocked or not U.kbPanel or not U.kbPanel.Parent then return end
 	if U.vflags.KeybindsList ~= true then return end
-	if not U.shell then return end
+	if not U.shell or not U.shell.Parent then return end
 	local gap = U.dockGap or 6
-	local sp = U.shell.Position
-	local sw = U.shell.Size.X.Offset
-	if sw < 2 then sw = U.BODY_W end
+	local sp = U.shell.AbsolutePosition
+	local ss = U.shell.AbsoluteSize
 	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-	U.kbPanel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
+	U.kbPanel.Position = UDim2.fromOffset(math.floor(sp.X + ss.X + gap + 0.5), math.floor(sp.Y + 0.5))
+end
+
+function U.dockSlotRect(kind)
+	if not U.shell or not U.shell.Parent then return nil end
+	local sp = U.shell.AbsolutePosition
+	local ss = U.shell.AbsoluteSize
+	local gap = U.dockGap or 6
+	if kind == "wm" then
+		local h = (U.wm and math.max(22, U.wm.Size.Y.Offset)) or 22
+		local w = (U.wm and math.max(40, U.wm.Size.X.Offset)) or 80
+		return sp.X, sp.Y - h - gap, w, h
+	else
+		local h = (U.kbPanel and math.max(22, U.kbPanel.Size.Y.Offset)) or 28
+		local w = (U.kbPanel and math.max(48, U.kbPanel.Size.X.Offset)) or 120
+		return sp.X + ss.X + gap, sp.Y, w, h
+	end
+end
+
+function U.showSnapGhost(kind)
+	local r = U.dockSlotRect(kind)
+	if not r then return end
+	local x, y, w, h = r
+	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
+	if not ghost then return end
+	ghost.Size = UDim2.fromOffset(w, h)
+	ghost.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	ghost.Visible = true
+end
+
+function U.hideSnapGhost(kind)
+	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
+	if ghost then ghost.Visible = false end
+end
+
+function U.overlapsSnap(kind, frame)
+	local r = U.dockSlotRect(kind)
+	if not r or not frame then return false end
+	local x, y, w, h = r
+	local p = frame.AbsolutePosition
+	local s = frame.AbsoluteSize
+	local cx, cy = p.X + s.X * 0.5, p.Y + s.Y * 0.5
+	return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+end
+
+function U.syncFloatingVisibility()
+	local menuOn = U.menuOpen ~= false
+	if U.wm then
+		local on = U.vflags.Watermark == true
+		U.wm.Visible = on and (menuOn or not U.wmDocked)
+	end
+	if U.kbPanel then
+		local on = U.vflags.KeybindsList == true
+		U.kbPanel.Visible = on and (menuOn or not U.kbDocked)
+	end
 end
 
 function U.keyNameOf(k)
@@ -2040,18 +2128,22 @@ function U.buildConfig()
 		data.__theme = {
 			Text = { U.theme.Text.R, U.theme.Text.G, U.theme.Text.B },
 			Border = { U.theme.Border.R, U.theme.Border.G, U.theme.Border.B },
+			SectionBorder = { U.theme.SectionBorder.R, U.theme.SectionBorder.G, U.theme.SectionBorder.B },
+			ElementBorder = { (U.theme.ElementBorder or U.theme.SectionBorder).R, (U.theme.ElementBorder or U.theme.SectionBorder).G, (U.theme.ElementBorder or U.theme.SectionBorder).B },
+			SectionBg = { U.theme.SectionBg.R, U.theme.SectionBg.G, U.theme.SectionBg.B },
 			Accent1 = { U.theme.Accent1.R, U.theme.Accent1.G, U.theme.Accent1.B },
 			Accent2 = { U.theme.Accent2.R, U.theme.Accent2.G, U.theme.Accent2.B },
 			Background = { U.theme.Background.R, U.theme.Background.G, U.theme.Background.B },
 		}
+		data.__wmDocked = U.wmDocked == true
+		data.__kbDocked = U.kbDocked == true
 		if U.wm and U.wm.Parent then
-			local p = U.wm.Position
-			if p.X.Scale ~= 0 or p.Y.Scale ~= 0 then
-				local abs = U.wm.AbsolutePosition
-				data.__wmPos = { abs.X, abs.Y, 0, 0 }
-			else
-				data.__wmPos = { p.X.Offset, p.Y.Offset, 0, 0 }
-			end
+			local abs = U.wm.AbsolutePosition
+			data.__wmPos = { abs.X, abs.Y }
+		end
+		if U.kbPanel and U.kbPanel.Parent then
+			local abs = U.kbPanel.AbsolutePosition
+			data.__kbPos = { abs.X, abs.Y }
 		end
 		if U.cycle.alphaBreak ~= nil then
 			data.__alphaBreak = U.cycle.alphaBreak
@@ -2077,40 +2169,49 @@ function U.buildConfig()
 				local name = v.__enum:match("KeyCode%.(.+)$") or v.__enum
 				local ok, enum = pcall(function() return Enum.KeyCode[name] end)
 				if ok then U.vflags[k] = enum end
-			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" then
+			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__kbPos"
+				and k ~= "__wmDocked" and k ~= "__kbDocked" and k ~= "__alphaBreak" then
 				U.vflags[k] = v
 				if U.setters[k] then U.setters[k](v) end
 			end
 		end
 
+		if data.__wmDocked ~= nil then U.wmDocked = data.__wmDocked == true end
+		if data.__kbDocked ~= nil then U.kbDocked = data.__kbDocked == true end
 		if type(data.__wmPos) == "table" and U.wm then
 			local x = tonumber(data.__wmPos[1]) or 0
 			local y = tonumber(data.__wmPos[2]) or 0
 			U.wm.AnchorPoint = Vector2.new(0, 0)
 			U.wm.Position = UDim2.fromOffset(x, y)
 		end
+		if type(data.__kbPos) == "table" and U.kbPanel then
+			local x = tonumber(data.__kbPos[1]) or 0
+			local y = tonumber(data.__kbPos[2]) or 0
+			U.kbPanel.AnchorPoint = Vector2.new(0, 0)
+			U.kbPanel.Position = UDim2.fromOffset(x, y)
+		end
 		if type(data.__alphaBreak) == "number" then
 			U.setAlphaBreak(data.__alphaBreak)
-		elseif data.__alphaBreak == false or data.__alphaBreak == nil then
-			if data.__alphaBreak == false then U.setAlphaBreak(nil) end
+		elseif data.__alphaBreak == false then
+			U.setAlphaBreak(nil)
 		end
-		
+
 		U.cycle.colorFlags = {}
 		U.cycle.alphaFlags = {}
 		for k, v in pairs(U.vflags) do
 			if type(k) == "string" and v == true then
 				if k:sub(-10) == "CycleColor" then
-					local flagKey = k:sub(1, -11)
-					U.setCycleColor(flagKey, true)
+					U.setCycleColor(k:sub(1, -11), true)
 				elseif k:sub(-10) == "CycleAlpha" then
-					local flagKey = k:sub(1, -11)
-					U.setCycleAlpha(flagKey, true)
+					U.setCycleAlpha(k:sub(1, -11), true)
 				end
 			end
 		end
 		U.applyTheme()
-		U.shell.BackgroundColor3 = U.theme.Background
-		U.titleBar.BackgroundColor3 = U.theme.Background
+		if U.wmDocked then U.dockWatermark() end
+		if U.kbDocked then U.dockKeybinds() end
+		U.syncFloatingVisibility()
+		if U.refreshKeybindList then U.refreshKeybindList() end
 		U.refreshMenuTextColors()
 	end
 
@@ -2250,6 +2351,27 @@ function U.buildConfig()
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 
 	do
+		local floatHost = Instance.new("ScreenGui")
+		floatHost.Name = "wavelength_float"
+		floatHost.ResetOnSpawn = false
+		floatHost.IgnoreGuiInset = true
+		floatHost.DisplayOrder = 100
+		floatHost.Parent = U.guiParent()
+		U.floatHost = floatHost
+
+		local function makeGhost()
+			local g = Instance.new("Frame")
+			g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+			g.BackgroundTransparency = 0.55
+			g.BorderSizePixel = 0
+			g.Visible = false
+			g.ZIndex = 1
+			g.Parent = floatHost
+			return g
+		end
+		U.wmSnapGhost = makeGhost()
+		U.kbSnapGhost = makeGhost()
+
 		local wm = Instance.new("Frame")
 		wm.Name = "Watermark"
 		wm.BackgroundColor3 = U.theme.Background
@@ -2259,11 +2381,10 @@ function U.buildConfig()
 		wm.Size = UDim2.fromOffset(80, 22)
 		wm.Active = true
 		wm.Visible = false
-		wm.ZIndex = 50
-		wm.Parent = U.gui
+		wm.ZIndex = 10
+		wm.Parent = floatHost
 		U.wm = wm
-		U.wmGui = U.gui
-		U.themeReg.bgs[#U.themeReg.bgs + 1] = wm
+		U.wmGui = floatHost
 		local wst = Instance.new("UIStroke")
 		wst.Thickness = 2
 		wst.Color = U.theme.Border
@@ -2274,7 +2395,7 @@ function U.buildConfig()
 		wbar.Size = UDim2.new(1, 0, 0, 2)
 		wbar.BorderSizePixel = 0
 		wbar.BackgroundColor3 = Color3.new(1, 1, 1)
-		wbar.ZIndex = 2
+		wbar.ZIndex = 11
 		wbar.Parent = wm
 		local wg = Instance.new("UIGradient")
 		wg.Color = U.accentSequence()
@@ -2310,7 +2431,6 @@ function U.buildConfig()
 				frames = 0
 			end
 		end)
-
 		local Stats = game:GetService("Stats")
 		local function getRobloxPing()
 			local ok, v = pcall(function()
@@ -2328,8 +2448,10 @@ function U.buildConfig()
 
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
-			wm.Visible = on
-			if not on then return end
+			if not on then
+				wm.Visible = false
+				return
+			end
 			local parts = {}
 			for _, item in ipairs(U.vflags.WatermarkItems or {}) do
 				if item == "message" then parts[#parts + 1] = tostring(U.vflags.WatermarkMessage or "")
@@ -2350,165 +2472,187 @@ function U.buildConfig()
 			wtxt.Position = UDim2.fromOffset(6, 2)
 			wtxt.Size = UDim2.new(1, -12, 1, -2)
 			if U.wmDocked then U.dockWatermark() end
+			U.syncFloatingVisibility()
 		end
 		U.onFlag("Watermark", function()
 			refreshWm()
 			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
+			U.syncFloatingVisibility()
 		end)
 		U.onFlag("WatermarkItems", refreshWm)
 		U.onFlag("WatermarkMessage", refreshWm)
 		task.spawn(function()
-			while U.running do task.wait(0.25); if U.vflags.Watermark then refreshWm() end end
-		end)
-		refreshWm()
-
-		do
-			local dragging, dragStart, startPos
-			wm.InputBegan:Connect(function(input)
-				if input.UserInputType ~= Enum.UserInputType.MouseButton1
-					and input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-				dragging = true
-				dragStart = input.Position
-				startPos = wm.Position
-				U.wmDocked = false
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then dragging = false end
-				end)
-			end)
-			U.UIS.InputChanged:Connect(function(input)
-				if not dragging then return end
-				if input.UserInputType ~= Enum.UserInputType.MouseMovement
-					and input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-				local d = input.Position - dragStart
-				wm.Position = UDim2.new(
-					startPos.X.Scale, startPos.X.Offset + d.X,
-					startPos.Y.Scale, startPos.Y.Offset + d.Y
-				)
-			end)
-
-			local kb = Instance.new("Frame")
-			kb.Name = "KeybindsPanel"
-			kb.BackgroundColor3 = U.theme.Background
-			kb.BorderSizePixel = 0
-			kb.Position = UDim2.fromOffset(0, 0)
-			kb.Size = UDim2.fromOffset(120, 28)
-			kb.Active = true
-			kb.Visible = false
-			kb.ZIndex = 50
-			kb.Parent = U.gui
-			U.kbPanel = kb
-			U.themeReg.bgs[#U.themeReg.bgs + 1] = kb
-			local kst = Instance.new("UIStroke")
-			kst.Thickness = 2
-			kst.Color = U.theme.Border
-			kst.LineJoinMode = Enum.LineJoinMode.Miter
-			kst.Parent = kb
-			U.themeReg.borders[#U.themeReg.borders + 1] = kst
-			local kbar = Instance.new("Frame")
-			kbar.Size = UDim2.new(1, 0, 0, 2)
-			kbar.BorderSizePixel = 0
-			kbar.BackgroundColor3 = Color3.new(1, 1, 1)
-			kbar.ZIndex = 51
-			kbar.Parent = kb
-			local kg = Instance.new("UIGradient")
-			kg.Color = U.accentSequence()
-			kg.Parent = kbar
-			U.themeReg.accents[#U.themeReg.accents + 1] = kg
-			task.spawn(function()
-				while kbar.Parent do
-					kg.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
-					task.wait(0.03)
-				end
-			end)
-			local kbList = Instance.new("Frame")
-			kbList.Name = "List"
-			kbList.BackgroundTransparency = 1
-			kbList.BorderSizePixel = 0
-			kbList.Position = UDim2.fromOffset(6, 6)
-			kbList.Size = UDim2.new(1, -12, 1, -12)
-			kbList.Parent = kb
-			local kbLay = Instance.new("UIListLayout")
-			kbLay.SortOrder = Enum.SortOrder.LayoutOrder
-			kbLay.Padding = UDim.new(0, 2)
-			kbLay.Parent = kbList
-
-			function U.refreshKeybindList()
-				if U._kbRefreshing or not U.kbPanel then return end
-				U._kbRefreshing = true
-				local on = U.vflags.KeybindsList == true
-				U.kbPanel.Visible = on
-				if not on then
-					U._kbRefreshing = false
-					return
-				end
-				for _, c in ipairs(kbList:GetChildren()) do
-					if c:IsA("TextLabel") then c:Destroy() end
-				end
-				local pad = 6
-				local maxW = 40
-				local count = 0
-				for i, e in ipairs(U.keybindListEntries or {}) do
-					local key = U.keyNameOf(U.vflags[e.keyFlag])
-					local line = tostring(e.listText) .. " [" .. key .. "]"
-					local row = Instance.new("TextLabel")
-					row.BackgroundTransparency = 1
-					row.Size = UDim2.new(1, 0, 0, 14)
-					row.FontFace = U.font
-					row.TextSize = U.TEXT_SZ
-					row.TextXAlignment = Enum.TextXAlignment.Left
-					row.Text = line
-					row.LayoutOrder = i
-					row.Parent = kbList
-					local enabled = U.vflags[e.toggleFlag] == true
-					row.TextColor3 = enabled and U.theme.Text or (U.GRAY_TEXT or Color3.fromRGB(90, 90, 90))
-					row:SetAttribute("KbActive", enabled)
-					maxW = math.max(maxW, #line * 7)
-					count += 1
-				end
-				U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
-				kbList.Position = UDim2.fromOffset(pad, pad)
-				kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
-				if U.kbDocked then U.dockKeybinds() end
-				U._kbRefreshing = false
+			while U.running do
+				task.wait(0.25)
+				if U.vflags.Watermark then refreshWm() end
 			end
+		end)
 
-			U.onFlag("KeybindsList", function()
-				U.refreshKeybindList()
-				if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
+		local wmDragging, wmDragStart, wmStartPos
+		wm.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			wmDragging = true
+			wmDragStart = input.Position
+			wmStartPos = wm.Position
+			U.wmDocked = false
+			U.showSnapGhost("wm")
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					wmDragging = false
+					if U.overlapsSnap("wm", wm) then
+						U.wmDocked = true
+						U.dockWatermark()
+					end
+					U.hideSnapGhost("wm")
+					U.syncFloatingVisibility()
+				end
 			end)
+		end)
+		U.UIS.InputChanged:Connect(function(input)
+			if not wmDragging then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			local d = input.Position - wmDragStart
+			wm.Position = UDim2.new(
+				wmStartPos.X.Scale, wmStartPos.X.Offset + d.X,
+				wmStartPos.Y.Scale, wmStartPos.Y.Offset + d.Y
+			)
+			U.showSnapGhost("wm")
+		end)
 
-			local kbDragging, kbDragStart, kbStartPos
-			kb.InputBegan:Connect(function(input)
-				if input.UserInputType ~= Enum.UserInputType.MouseButton1
-					and input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-				kbDragging = true
-				kbDragStart = input.Position
-				kbStartPos = kb.Position
-				U.kbDocked = false
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then kbDragging = false end
-				end)
-			end)
-			U.UIS.InputChanged:Connect(function(input)
-				if not kbDragging then return end
-				if input.UserInputType ~= Enum.UserInputType.MouseMovement
-					and input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-				local d = input.Position - kbDragStart
-				kb.Position = UDim2.new(
-					kbStartPos.X.Scale, kbStartPos.X.Offset + d.X,
-					kbStartPos.Y.Scale, kbStartPos.Y.Offset + d.Y
-				)
-			end)
+		local kb = Instance.new("Frame")
+		kb.Name = "KeybindsPanel"
+		kb.BackgroundColor3 = U.theme.Background
+		kb.BorderSizePixel = 0
+		kb.Position = UDim2.fromOffset(0, 0)
+		kb.Size = UDim2.fromOffset(120, 28)
+		kb.Active = true
+		kb.Visible = false
+		kb.ZIndex = 10
+		kb.Parent = floatHost
+		U.kbPanel = kb
+		local kst = Instance.new("UIStroke")
+		kst.Thickness = 2
+		kst.Color = U.theme.Border
+		kst.LineJoinMode = Enum.LineJoinMode.Miter
+		kst.Parent = kb
+		U.themeReg.borders[#U.themeReg.borders + 1] = kst
+		local kbar = Instance.new("Frame")
+		kbar.Size = UDim2.new(1, 0, 0, 2)
+		kbar.BorderSizePixel = 0
+		kbar.BackgroundColor3 = Color3.new(1, 1, 1)
+		kbar.ZIndex = 11
+		kbar.Parent = kb
+		local kg = Instance.new("UIGradient")
+		kg.Color = U.accentSequence()
+		kg.Parent = kbar
+		U.themeReg.accents[#U.themeReg.accents + 1] = kg
+		task.spawn(function()
+			while kbar.Parent do
+				kg.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
+				task.wait(0.03)
+			end
+		end)
+		local kbList = Instance.new("Frame")
+		kbList.Name = "List"
+		kbList.BackgroundTransparency = 1
+		kbList.BorderSizePixel = 0
+		kbList.Position = UDim2.fromOffset(6, 6)
+		kbList.Size = UDim2.new(1, -12, 1, -12)
+		kbList.Parent = kb
+		local kbLay = Instance.new("UIListLayout")
+		kbLay.SortOrder = Enum.SortOrder.LayoutOrder
+		kbLay.Padding = UDim.new(0, 2)
+		kbLay.Parent = kbList
+
+		function U.refreshKeybindList()
+			if U._kbRefreshing or not U.kbPanel then return end
+			U._kbRefreshing = true
+			local on = U.vflags.KeybindsList == true
+			if not on then
+				U.kbPanel.Visible = false
+				U._kbRefreshing = false
+				return
+			end
+			for _, c in ipairs(kbList:GetChildren()) do
+				if c:IsA("TextLabel") then c:Destroy() end
+			end
+			local pad = 6
+			local maxW = 40
+			local count = 0
+			for i, e in ipairs(U.keybindListEntries or {}) do
+				local key = U.keyNameOf(U.vflags[e.keyFlag])
+				local line = tostring(e.listText) .. " [" .. key .. "]"
+				local row = Instance.new("TextLabel")
+				row.BackgroundTransparency = 1
+				row.Size = UDim2.new(1, 0, 0, 14)
+				row.FontFace = U.font
+				row.TextSize = U.TEXT_SZ
+				row.TextXAlignment = Enum.TextXAlignment.Left
+				row.Text = line
+				row.LayoutOrder = i
+				row.Parent = kbList
+				local enabled = U.vflags[e.toggleFlag] == true
+				row.TextColor3 = enabled and U.theme.Text or (U.GRAY_TEXT or Color3.fromRGB(90, 90, 90))
+				row:SetAttribute("KbActive", enabled)
+				maxW = math.max(maxW, #line * 7)
+				count += 1
+			end
+			U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
+			kbList.Position = UDim2.fromOffset(pad, pad)
+			kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
+			if U.kbDocked then U.dockKeybinds() end
+			U.syncFloatingVisibility()
+			U._kbRefreshing = false
 		end
-	end
+
+		U.onFlag("KeybindsList", function()
+			U.refreshKeybindList()
+			if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
+			U.syncFloatingVisibility()
+		end)
+
+		local kbDragging, kbDragStart, kbStartPos
+		kb.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			kbDragging = true
+			kbDragStart = input.Position
+			kbStartPos = kb.Position
+			U.kbDocked = false
+			U.showSnapGhost("kb")
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					kbDragging = false
+					if U.overlapsSnap("kb", kb) then
+						U.kbDocked = true
+						U.dockKeybinds()
+					end
+					U.hideSnapGhost("kb")
+					U.syncFloatingVisibility()
+				end
+			end)
+		end)
+		U.UIS.InputChanged:Connect(function(input)
+			if not kbDragging then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			local d = input.Position - kbDragStart
+			kb.Position = UDim2.new(
+				kbStartPos.X.Scale, kbStartPos.X.Offset + d.X,
+				kbStartPos.Y.Scale, kbStartPos.Y.Offset + d.Y
+			)
+			U.showSnapGhost("kb")
+		end)
 
 	local unloadBtn = U.mkButton(settingsSec, "unload", nextOrder())
 	local unloadArmed = false
@@ -2546,7 +2690,7 @@ end
 function U.buildTabs()
 	U.tabRail = Instance.new("Frame")
 	U.tabRail.Name = "TabRail"
-	U.tabRail.BackgroundColor3 = U.theme.Background
+	U.tabRail.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 	U.tabRail.BorderSizePixel = 0
 	U.tabRail.Active = true
 	U.tabRail.Size = UDim2.new(1, 0, 0, U.TAB_H)
@@ -2569,7 +2713,7 @@ function U.buildTabs()
 		local newPage = U.pageFrames[to]
 		U.currentTab = name
 		for n, btn in pairs(U.tabButtons) do
-			btn.BackgroundColor3 = (n == name) and Color3.fromRGB(28, 28, 28) or U.theme.Background
+			btn.BackgroundColor3 = (n == name) and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(28, 28, 28)
 			btn.TextColor3 = U.theme.Text
 			local acc = btn:FindFirstChild("TabAccent")
 			if acc then acc.Visible = (n == name) end
@@ -2600,7 +2744,7 @@ function U.buildTabs()
 		local btn = Instance.new("TextButton")
 		btn.Name = name
 		btn.AutoButtonColor = false
-		btn.BackgroundColor3 = (name == U.currentTab) and Color3.fromRGB(28, 28, 28) or U.theme.Background
+		btn.BackgroundColor3 = (name == U.currentTab) and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(28, 28, 28)
 		btn.BorderSizePixel = 0
 		local bw = (i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W
 		btn.Size = UDim2.fromOffset(bw, U.TAB_H)
@@ -2691,6 +2835,11 @@ function U.bindInput()
 			U.menuOpen = not U.menuOpen
 			U.gui.Enabled = U.menuOpen
 			if not U.menuOpen then U.closePopups() end
+			U.syncFloatingVisibility()
+			if U.menuOpen then
+				if U.wmDocked then U.dockWatermark() end
+				if U.kbDocked then U.dockKeybinds() end
+			end
 		end
 		for kbFlag, tFlag in pairs(U.keybindTargets or {}) do
 			local k = U.vflags[kbFlag]
