@@ -62,22 +62,32 @@ if U.vflags.Tooltips == nil then
 end
 
 function U.ensureTooltip()
-	if U.tooltipFrame and U.tooltipFrame.Parent then return end
-	if not U.gui then return end
+	if U.tooltipGui and U.tooltipGui.Parent and U.tooltipFrame and U.tooltipFrame.Parent then
+		return
+	end
+	local host = Instance.new("ScreenGui")
+	host.Name = "wavelength_tooltip"
+	host.ResetOnSpawn = false
+	host.IgnoreGuiInset = true
+	host.DisplayOrder = 200
+	host.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	host.Parent = U.guiParent()
+	U.tooltipGui = host
+
 	local f = Instance.new("Frame")
 	f.Name = "Tooltip"
 	f.BackgroundColor3 = U.theme.Background
 	f.BorderSizePixel = 0
 	f.Visible = false
 	f.ZIndex = 250
-	f.Parent = U.gui
+	f.Parent = host
 	U.controlStroke(f, 1)
 	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
 	U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = f
 	local lab = Instance.new("TextLabel")
 	lab.BackgroundTransparency = 1
-	lab.Position = UDim2.fromOffset(6, 3)
-	lab.Size = UDim2.new(1, -12, 1, -6)
+	lab.Position = UDim2.fromOffset(6, 2)
+	lab.Size = UDim2.new(1, -12, 1, -4)
 	lab.FontFace = U.font
 	lab.TextSize = U.TEXT_SZ
 	lab.TextColor3 = U.theme.Text
@@ -94,6 +104,28 @@ function U.hideTooltip()
 	U._tooltipText = nil
 end
 
+function U.measureTextWidth(text)
+	local w = #tostring(text) * 7 + 12
+	pcall(function()
+		local measure = Instance.new("GetTextBoundsParams")
+		measure.Text = tostring(text)
+		measure.Font = U.font
+		measure.Size = U.TEXT_SZ
+		measure.Width = 10000
+		local bounds = U.Text:GetTextBoundsAsync(measure)
+		if bounds and bounds.X then
+			w = math.ceil(bounds.X) + 14
+		end
+	end)
+	pcall(function()
+		local b = U.Text:GetTextSize(tostring(text), U.TEXT_SZ, Enum.Font.Code, Vector2.new(10000, 50))
+		if b and b.X and b.X + 14 > w then
+			w = math.ceil(b.X) + 14
+		end
+	end)
+	return math.max(40, w)
+end
+
 function U.showTooltip(text)
 	if U.vflags.Tooltips == false then U.hideTooltip(); return end
 	if type(text) ~= "string" or text == "" then U.hideTooltip(); return end
@@ -103,17 +135,7 @@ function U.showTooltip(text)
 	U.tooltipLabel.Text = text
 	U.tooltipLabel.TextColor3 = U.theme.Text
 	U.tooltipFrame.BackgroundColor3 = U.theme.Background
-	local w = 80
-	pcall(function()
-		local measure = Instance.new("GetTextBoundsParams")
-		measure.Text = text
-		measure.Font = U.font
-		measure.Size = U.TEXT_SZ
-		measure.Width = 320
-		local bounds = U.Text:GetTextBoundsAsync(measure)
-		w = math.max(40, math.ceil(bounds.X) + 12)
-	end)
-	U.tooltipFrame.Size = UDim2.fromOffset(w, 20)
+	U.tooltipFrame.Size = UDim2.fromOffset(U.measureTextWidth(text), 20)
 	U.tooltipFrame.Visible = true
 	U.updateTooltipPos()
 end
@@ -121,19 +143,12 @@ end
 function U.updateTooltipPos()
 	if not U.tooltipFrame or not U.tooltipFrame.Visible then return end
 	local pos = U.UIS:GetMouseLocation()
-	local x = pos.X + 14
-	local y = pos.Y + 14
-	if U.gui and not U.gui.IgnoreGuiInset then
-		local inset = game:GetService("GuiService"):GetGuiInset()
-		x = pos.X - inset.X + 14
-		y = pos.Y - inset.Y + 14
-	end
-	U.tooltipFrame.Position = UDim2.fromOffset(x, y)
+	U.tooltipFrame.Position = UDim2.fromOffset(pos.X + 14, pos.Y + 16)
 end
 
 function U.bindTooltip(obj, text)
 	if obj == nil or type(text) ~= "string" or text == "" then return end
-	if not obj.MouseEnter or not obj.MouseLeave then return end
+	if typeof(obj) ~= "Instance" then return end
 	obj.MouseEnter:Connect(function()
 		U.showTooltip(text)
 	end)
@@ -142,20 +157,22 @@ function U.bindTooltip(obj, text)
 	end)
 end
 
-task.spawn(function()
-	while true do
-		if not U.running then break end
-		if U.tooltipFrame and U.tooltipFrame.Visible then
-			U.updateTooltipPos()
+if not U._tooltipLoop then
+	U._tooltipLoop = true
+	task.spawn(function()
+		while true do
+			if U.tooltipFrame and U.tooltipFrame.Visible then
+				U.updateTooltipPos()
+			end
+			task.wait(0.01)
 		end
-		task.wait(0.03)
-	end
-end)
+	end)
+end
 
 
 U.running = true
 U.vflags = U.vflags or {
-	NotificationPosition = "bottom right",
+	NotificationPosition = "center",
 	MenuKeybind = Enum.KeyCode.RightShift,
 }
 U.setters = U.setters or {}
@@ -327,6 +344,7 @@ task.spawn(function()
 		if anyC or anyA then
 			if anyC then
 				U.cycle.hue = (U.cycle.hue + U.cycle.step) % 1
+				local needTheme = false
 				for flagKey in pairs(U.cycle.colorFlags) do
 					local cur = U.vflags[flagKey]
 					local s, v = 1, 1
@@ -336,8 +354,36 @@ task.spawn(function()
 					end
 					local nc = Color3.fromHSV(U.cycle.hue, s, v)
 					U.vflags[flagKey] = nc
-					if U.setters[flagKey] then U.setters[flagKey](nc) end
+					if U.setters[flagKey] then
+						U.setters[flagKey](nc)
+					end
+					if flagKey == "ThemeBackground" then
+						U.theme.Background = nc
+						needTheme = true
+					elseif flagKey == "ThemeSectionBg" then
+						U.theme.SectionBg = nc
+						needTheme = true
+					elseif flagKey == "ThemeBorder" then
+						U.theme.Border = nc
+						needTheme = true
+					elseif flagKey == "ThemeSectionBorder" then
+						U.theme.SectionBorder = nc
+						needTheme = true
+					elseif flagKey == "ThemeElementBorder" then
+						U.theme.ElementBorder = nc
+						needTheme = true
+					elseif flagKey == "ThemeText" then
+						U.theme.Text = nc
+						needTheme = true
+					elseif flagKey == "ThemeAccent1" then
+						U.theme.Accent1 = nc
+						needTheme = true
+					elseif flagKey == "ThemeAccent2" then
+						U.theme.Accent2 = nc
+						needTheme = true
+					end
 				end
+				if needTheme then U.applyTheme() end
 			end
 			if anyA then
 				if U.cycle.alphaDir == nil then U.cycle.alphaDir = 1 end
@@ -462,7 +508,7 @@ function U.pushNotification(opts)
 	nGui.Parent = U.guiParent()
 
 	
-	local w, h = 160, 26
+	local w, h = 160, 22
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
 		measure.Text = text
@@ -471,16 +517,22 @@ function U.pushNotification(opts)
 		measure.Width = 420
 		local bounds = U.Text:GetTextBoundsAsync(measure)
 		w = math.max(80, math.ceil(bounds.X) + 16)
-		h = 26
+		h = 22
 	end)
 
 	
+	local holder = Instance.new("Frame")
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.Size = UDim2.fromOffset(w, h + 5)
+	holder.Parent = nGui
+
 	local frame = Instance.new("Frame")
 	frame.BackgroundColor3 = U.theme.Background
 	frame.BackgroundTransparency = 1
 	frame.BorderSizePixel = 0
 	frame.Size = UDim2.fromOffset(w, h)
-	frame.Parent = nGui
+	frame.Parent = holder
 
 	local st = Instance.new("UIStroke")
 	st.Thickness = 2
@@ -510,7 +562,7 @@ function U.pushNotification(opts)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Position = UDim2.fromOffset(6, 2)
-	label.Size = UDim2.new(1, -12, 0, 18)
+	label.Size = UDim2.new(1, -12, 1, -2)
 	label.FontFace = U.font
 	label.TextSize = U.TEXT_SZ
 	label.TextColor3 = U.theme.Text
@@ -523,10 +575,10 @@ function U.pushNotification(opts)
 	timerWrap.Name = "Timer"
 	timerWrap.BackgroundTransparency = 1
 	timerWrap.BorderSizePixel = 0
-	timerWrap.Position = UDim2.new(0, 2, 1, -5)
-	timerWrap.Size = UDim2.new(1, -4, 0, 3)
+	timerWrap.Position = UDim2.fromOffset(0, h + 2)
+	timerWrap.Size = UDim2.new(1, 0, 0, 3)
 	timerWrap.ZIndex = 3
-	timerWrap.Parent = frame
+	timerWrap.Parent = holder
 	local timerFill = Instance.new("Frame")
 	timerFill.Name = "Fill"
 	timerFill.BorderSizePixel = 0
@@ -543,7 +595,7 @@ function U.pushNotification(opts)
 	timerStroke.Parent = timerFill
 	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
 
-	local entry = { frame = frame, gui = nGui, h = h }
+	local entry = { frame = holder, gui = nGui, h = h + 5 }
 	table.insert(U.activeNotifs, entry)
 	U.layoutNotifs()
 
@@ -553,6 +605,7 @@ function U.pushNotification(opts)
 	U.Tween:Create(bar, fadeIn, { BackgroundTransparency = 0 }):Play()
 	U.Tween:Create(label, fadeIn, { TextTransparency = 0 }):Play()
 	U.Tween:Create(timerStroke, fadeIn, { Transparency = 0 }):Play()
+	U.Tween:Create(timerFill, fadeIn, { BackgroundTransparency = 0 }):Play()
 
 	U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
 		Size = UDim2.new(0, 0, 1, 0),
@@ -662,6 +715,7 @@ function U.shutdown()
 	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
+	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui = nil U.tooltipFrame = nil end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
@@ -948,12 +1002,17 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindList
 end
 
 function U.formatSliderVal(val, step, suffix, maxV, infAt)
-	if infAt and val >= maxV then return "inf" end
+	if infAt and val >= maxV then return "inf" .. (suffix or "") end
+	step = tonumber(step) or 1
 	local s
 	if step >= 1 then
 		s = tostring(math.floor(val + 1e-6))
 	else
-		local decimals = (step < 0.1) and 2 or 1
+		local decimals = 1
+		local t = tostring(step)
+		local frac = t:match("%.(%d+)")
+		if frac then decimals = math.max(1, #frac) end
+		if step < 0.1 then decimals = math.max(decimals, 2) end
 		local mult = 10 ^ decimals
 		s = string.format("%." .. decimals .. "f", math.floor(val * mult + 0.5) / mult)
 	end
@@ -1140,7 +1199,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		fill.Size = UDim2.fromOffset(math.max(0, x1 - x0), h - 2)
 		capA.Position = UDim2.fromOffset(x0, h * 0.5)
 		capB.Position = UDim2.fromOffset(x1, h * 0.5)
-		valLbl.Text = tostring(a) .. suffix .. " - " .. tostring(b) .. suffix
+		valLbl.Text = U.formatSliderVal(a, step, "", maxV, nil) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, nil)
 	end
 	refresh()
 
@@ -1562,13 +1621,12 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	sw.BorderSizePixel = 0
 	sw.ZIndex = 12
 	sw.Parent = rowFrame
-	U.controlStroke(sw, 1)
 
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
 	swFill.BorderSizePixel = 0
-	swFill.Size = UDim2.new(1, -2, 1, -2)
-	swFill.Position = UDim2.fromOffset(1, 1)
+	swFill.Size = UDim2.fromScale(1, 1)
+	swFill.Position = UDim2.fromOffset(0, 0)
 	swFill.BackgroundColor3 = defaultColor
 	swFill.BackgroundTransparency = (not noAlpha) and (U.vflags[alphaKey] or 0) or 0
 	swFill.ZIndex = 13
@@ -2068,11 +2126,12 @@ function U.ensureSnapGhosts()
 		local g = Instance.new("Frame")
 		g.Name = "WmSnapGhost"
 		g.BackgroundColor3 = U.theme.Background
-		g.BackgroundTransparency = 0
+		g.BackgroundTransparency = 0.35
 		g.BorderSizePixel = 0
 		g.Visible = false
 		g.ZIndex = 40
 		g.Parent = U.gui
+		U.controlStroke(g, 1)
 		U.wmSnapGhost = g
 		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
 	end
@@ -2080,16 +2139,23 @@ function U.ensureSnapGhosts()
 		local g = Instance.new("Frame")
 		g.Name = "KbSnapGhost"
 		g.BackgroundColor3 = U.theme.Background
-		g.BackgroundTransparency = 0
+		g.BackgroundTransparency = 0.35
 		g.BorderSizePixel = 0
 		g.Visible = false
 		g.ZIndex = 40
 		g.Parent = U.gui
+		U.controlStroke(g, 1)
 		U.kbSnapGhost = g
 		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
 	end
-	if U.wmSnapGhost then U.wmSnapGhost.BackgroundColor3 = U.theme.Background end
-	if U.kbSnapGhost then U.kbSnapGhost.BackgroundColor3 = U.theme.Background end
+	if U.wmSnapGhost then
+		U.wmSnapGhost.BackgroundColor3 = U.theme.Background
+		U.wmSnapGhost.BackgroundTransparency = 0.35
+	end
+	if U.kbSnapGhost then
+		U.kbSnapGhost.BackgroundColor3 = U.theme.Background
+		U.kbSnapGhost.BackgroundTransparency = 0.35
+	end
 end
 
 function U.showSnapGhost(kind)
@@ -2899,7 +2965,12 @@ function U.buildTabs()
 end
 
 function U.bindInput()
-	U.UIS.InputBegan:Connect(function(input)
+	U._conns = U._conns or {}
+	local function track(conn)
+		U._conns[#U._conns + 1] = conn
+		return conn
+	end
+	track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1
 			and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
@@ -2980,7 +3051,7 @@ function U.bindInput()
 				end
 			end
 		end
-	end)
+	end))
 end
 
 local Library = {}
@@ -3011,8 +3082,39 @@ function Library:CreateWindow(opts)
 		end
 	end
 
+	-- full reset so re-execute works (keybinds, unload, etc.)
+	U._shuttingDown = false
+	U.running = true
+	U.menuOpen = true
+	U.hideTooltip()
+	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui = nil U.tooltipFrame = nil end
+	if U._conns then
+		for _, c in ipairs(U._conns) do
+			pcall(function() c:Disconnect() end)
+		end
+	end
+	U._conns = {}
+	U.keybindTargets = {}
+	U.keybindListEntries = {}
+	U.flagListeners = {}
+	U.setters = {}
+	U.pulseReg = {}
+	U.themeReg = {
+		accents = {}, borders = {}, sectionBorders = {}, elementBorders = {},
+		bgs = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {},
+	}
+	U.openColorPicker = nil
+	U.openDropdown = nil
+	U.openDropdownBox = nil
+	U.openSettings = nil
+	U.wm = nil
+	U.kbPanel = nil
+	U.wmSnapGhost = nil
+	U.kbSnapGhost = nil
+	U.wmDocked = true
+	U.kbDocked = true
 	
-	if U.gui then pcall(function() U.gui:Destroy() end) end
+	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	U.buildShell()
 	if U.titleBar then
 		for _, ch in ipairs(U.titleBar:GetChildren()) do
