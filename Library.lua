@@ -56,7 +56,10 @@ function U.controlStroke(parent, thick)
 end
 
 
-U.vflags.Tooltips = (U.vflags.Tooltips == nil) and true or U.vflags.Tooltips
+U.vflags = U.vflags or {}
+if U.vflags.Tooltips == nil then
+	U.vflags.Tooltips = true
+end
 
 function U.ensureTooltip()
 	if U.tooltipFrame and U.tooltipFrame.Parent then return end
@@ -129,7 +132,8 @@ function U.updateTooltipPos()
 end
 
 function U.bindTooltip(obj, text)
-	if not obj or type(text) ~= "string" or text == "" then return end
+	if obj == nil or type(text) ~= "string" or text == "" then return end
+	if not obj.MouseEnter or not obj.MouseLeave then return end
 	obj.MouseEnter:Connect(function()
 		U.showTooltip(text)
 	end)
@@ -956,9 +960,10 @@ function U.formatSliderVal(val, step, suffix, maxV, infAt)
 	return s .. (suffix or "")
 end
 
-function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt)
+function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt, tooltip)
 	step = step or 1
 	local r = U.row(parent, order)
+	if tooltip then U.bindTooltip(r, tooltip) end
 	r.Size = UDim2.new(1, 0, 0, 32)
 	U.vflags[flag] = default
 
@@ -1176,8 +1181,9 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	return r
 end
 
-function U.mkDropdown(parent, text, flag, options, default, multi, order, limit)
+function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
 	local r = U.row(parent, order)
+	if tooltip then U.bindTooltip(r, tooltip) end
 	r.Size = UDim2.new(1, 0, 0, 36)
 	options = options or {}
 	if limit == nil then
@@ -3089,7 +3095,7 @@ function Library:CreateWindow(opts)
 			function sec:AddToggle(o)
 				o = o or {}
 				local flag = o.Flag or o.Name
-				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text, o.Tooltip or o.tooltip)
+				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text, (o and (o.Tooltip or o.tooltip)))
 				if o.Callback then
 					U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end)
 				end
@@ -3120,7 +3126,7 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddSlider(so)
 					so = so or {}
-					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", so.InfAt, so.Tooltip or so.tooltip)
+					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", so.InfAt, (so and (so.Tooltip or so.tooltip)))
 					U.subOf(child, flag)
 					return obj
 				end
@@ -3128,7 +3134,7 @@ function Library:CreateWindow(opts)
 					so = so or {}
 					local limit = so.Limit or so.Amount
 					if limit == nil then limit = (so.Multi == true) and 999 or 1 end
-					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, so.Tooltip or so.tooltip)
+					local child = U.mkDropdown(content, string.lower(tostring(so.Name or "dropdown")), so.Flag or so.Name, so.Items or {}, so.Default, so.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, (so and (so.Tooltip or so.tooltip)))
 					U.subOf(child, flag)
 					return obj
 				end
@@ -3136,12 +3142,12 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddSlider(o)
 				o = o or {}
-				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt, o.Tooltip or o.tooltip)
+				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt, (o and (o.Tooltip or o.tooltip)))
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddDoubleSlider(o)
 				o = o or {}
-				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", o.Tooltip or o.tooltip)
+				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", (o and (o.Tooltip or o.tooltip)))
 				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
 			end
 			function sec:AddDropdown(o)
@@ -3150,14 +3156,14 @@ function Library:CreateWindow(opts)
 				if limit == nil then
 					limit = (o.Multi == true) and 999 or 1
 				end
-				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, o.Tooltip or o.tooltip)
+				local r = U.mkDropdown(content, string.lower(tostring(o.Name or "dropdown")), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, (o and (o.Tooltip or o.tooltip)))
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddButton(o)
 				o = o or {}
 				local btn = U.mkButton(content, string.lower(tostring(o.Name or "button")), nextOrder(), o.Confirm == true)
 				if o.Callback then U.bindButton(btn, o.Callback) end
-				if o.Tooltip or o.tooltip then U.bindTooltip(btn, o.Tooltip or o.tooltip) end
+				if (o and (o.Tooltip or o.tooltip)) then U.bindTooltip(btn, (o and (o.Tooltip or o.tooltip))) end
 				return { Button = btn }
 			end
 			function sec:AddColorpicker(o)
@@ -3173,7 +3179,7 @@ function Library:CreateWindow(opts)
 				lab.Text = string.lower(tostring(o.Name or "color"))
 				lab.Parent = r
 				U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.fromRGB(255,255,255), o.NoAlpha == true, o.Name or "color")
-				if o.Tooltip or o.tooltip then U.bindTooltip(r, o.Tooltip or o.tooltip) end
+				if (o and (o.Tooltip or o.tooltip)) then U.bindTooltip(r, (o and (o.Tooltip or o.tooltip))) end
 				return { Row = r }
 			end
 			function sec:AddLabel(o)
@@ -3188,12 +3194,12 @@ function Library:CreateWindow(opts)
 				lab.TextXAlignment = Enum.TextXAlignment.Left
 				lab.Text = string.lower(tostring(o.Name or ""))
 				lab.Parent = r
-				if o.Tooltip or o.tooltip then U.bindTooltip(r, o.Tooltip or o.tooltip) end
+				if (o and (o.Tooltip or o.tooltip)) then U.bindTooltip(r, (o and (o.Tooltip or o.tooltip))) end
 				return { Row = r }
 			end
 			function sec:AddTextbox(o)
 				o = o or {}
-				local r = U.mkTextbox(content, string.lower(tostring(o.Name or "text")), o.Flag or o.Name, o.Placeholder or "", nextOrder(), o.Tooltip or o.tooltip)
+				local r = U.mkTextbox(content, string.lower(tostring(o.Name or "text")), o.Flag or o.Name, o.Placeholder or "", nextOrder(), (o and (o.Tooltip or o.tooltip)))
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			return sec
