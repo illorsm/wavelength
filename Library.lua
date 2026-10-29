@@ -1,3 +1,5 @@
+
+
 getgenv()._SM = getgenv()._SM or {}
 local U = getgenv()._SM
 
@@ -818,7 +820,7 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindList
 		end
 		local lt = keybindListText
 		if (not lt or lt == "") and text and text ~= "" then lt = text end
-		if lt and lt ~= "" then
+		if lt and lt ~= "" and flag then
 			U.registerKeybindList(lt, keybindFlag, flag)
 		end
 	end
@@ -1290,12 +1292,9 @@ function U.mkTextbox(parent, text, flag, placeholder, order)
 	return r
 end
 
-function U.mkKeybind(parent, text, flag, default, order, listText, toggleFlag)
+function U.mkKeybind(parent, text, flag, default, order)
 	local r = U.row(parent, order)
 	U.vflags[flag] = default
-	if listText and listText ~= "" then
-		U.registerKeybindList(listText, flag, toggleFlag)
-	end
 
 	local name = Instance.new("TextLabel")
 	name.BackgroundTransparency = 1
@@ -1346,7 +1345,6 @@ function U.mkKeybind(parent, text, flag, default, order, listText, toggleFlag)
 					U.vflags[flag] = input.KeyCode
 					fitKey(keyName(input.KeyCode))
 					U.fireFlag(flag)
-		if U.refreshKeybindList then U.refreshKeybindList() end
 				end
 				listening = false
 				conn:Disconnect()
@@ -1942,8 +1940,7 @@ function U.dockWatermark()
 	if U.vflags.Watermark ~= true then return end
 	if not U.shell or not U.shell.Parent then return end
 	local sp = U.shell.AbsolutePosition
-	local h = U.wm.AbsoluteSize.Y
-	if h < 2 then h = 22 end
+	local h = math.max(22, U.wm.AbsoluteSize.Y)
 	local gap = U.dockGap or 6
 	U.wm.AnchorPoint = Vector2.new(0, 0)
 	U.wm.Position = UDim2.fromOffset(math.floor(sp.X + 0.5), math.floor(sp.Y - h - gap + 0.5))
@@ -1967,7 +1964,7 @@ function U.keyNameOf(k)
 end
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
-	if not listText or listText == "" or not keyFlag then return end
+	if not listText or listText == "" or not keyFlag or not toggleFlag then return end
 	U.keybindListEntries = U.keybindListEntries or {}
 	U._kbListen = U._kbListen or {}
 	for _, e in ipairs(U.keybindListEntries) do
@@ -1989,7 +1986,7 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 			if U.refreshKeybindList then U.refreshKeybindList() end
 		end)
 	end
-	if toggleFlag and not U._kbListen[toggleFlag] then
+	if not U._kbListen[toggleFlag] then
 		U._kbListen[toggleFlag] = true
 		U.onFlag(toggleFlag, function()
 			if U.refreshKeybindList then U.refreshKeybindList() end
@@ -2355,25 +2352,23 @@ function U.buildConfig()
 			if out == "" then out = " " end
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			wtxt.Size = UDim2.fromOffset(4000, 20)
+			wtxt.Size = UDim2.fromOffset(4000, 18)
 			local tw = 0
 			pcall(function()
 				tw = math.ceil(wtxt.TextBounds.X)
 			end)
-			if tw < 8 then
-				tw = #out * 8
-			end
-			tw = math.max(48, tw + 18)
+			if tw < 8 then tw = math.max(8, #out * 7) end
+			tw = math.max(40, tw + 12)
 			wm.Size = UDim2.fromOffset(tw, 22)
-			wtxt.Size = UDim2.new(1, -12, 1, -2)
 			wtxt.Position = UDim2.fromOffset(6, 2)
+			wtxt.Size = UDim2.new(1, -12, 1, -2)
 			if U.wmDocked then U.dockWatermark() end
 		end
 		U.onFlag("Watermark", function()
 			refreshWm()
 			if U.vflags.Watermark and U.wmDocked then
 				task.defer(U.dockWatermark)
-				task.delay(0.05, function()
+				task.delay(0.03, function()
 					if U.wmDocked and U.vflags.Watermark then U.dockWatermark() end
 				end)
 			end
@@ -2386,9 +2381,6 @@ function U.buildConfig()
 		refreshWm()
 
 		do
-			local function mouseInParent()
-				return U.UIS:GetMouseLocation()
-			end
 			local dragging = false
 			local grabOffset = Vector2.zero
 			wm.InputBegan:Connect(function(input)
@@ -2396,11 +2388,11 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = mouseInParent()
+				local mouse = U.UIS:GetMouseLocation()
 				local abs = wm.AbsolutePosition
 				wm.AnchorPoint = Vector2.new(0, 0)
 				wm.Position = UDim2.fromOffset(abs.X, abs.Y)
-				grabOffset = mouse - abs
+				grabOffset = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
 				dragging = true
 				U.wmDocked = false
 			end)
@@ -2410,7 +2402,7 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = mouseInParent()
+				local mouse = U.UIS:GetMouseLocation()
 				wm.Position = UDim2.fromOffset(mouse.X - grabOffset.X, mouse.Y - grabOffset.Y)
 			end)
 			U.UIS.InputEnded:Connect(function(input)
@@ -2499,10 +2491,7 @@ function U.buildConfig()
 					row.Text = line
 					row.LayoutOrder = i
 					row.Parent = kbList
-					local enabled = true
-					if e.toggleFlag then
-						enabled = U.vflags[e.toggleFlag] == true
-					end
+					local enabled = U.vflags[e.toggleFlag] == true
 					if enabled then
 						row.TextColor3 = U.theme.Text
 						row:SetAttribute("KbActive", true)
@@ -2533,7 +2522,7 @@ function U.buildConfig()
 				U.refreshKeybindList()
 				if U.vflags.KeybindsList and U.kbDocked then
 					task.defer(U.dockKeybinds)
-					task.delay(0.05, function()
+					task.delay(0.03, function()
 						if U.kbDocked and U.vflags.KeybindsList then U.dockKeybinds() end
 					end)
 				end
@@ -2546,11 +2535,11 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = mouseInParent()
+				local mouse = U.UIS:GetMouseLocation()
 				local abs = kb.AbsolutePosition
 				kb.AnchorPoint = Vector2.new(0, 0)
 				kb.Position = UDim2.fromOffset(abs.X, abs.Y)
-				kbGrab = mouse - abs
+				kbGrab = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
 				kbDragging = true
 				U.kbDocked = false
 			end)
@@ -2560,7 +2549,7 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = mouseInParent()
+				local mouse = U.UIS:GetMouseLocation()
 				kb.Position = UDim2.fromOffset(mouse.X - kbGrab.X, mouse.Y - kbGrab.Y)
 			end)
 			U.UIS.InputEnded:Connect(function(input)
@@ -2893,10 +2882,14 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddKeybind(ko)
 					ko = ko or {}
-					if ko.Flag then
-						local listText = ko.Text or ko.ListText or ko.Name or ""
-						local kb = U.mkKeybind(content, "", ko.Flag, ko.Default or Enum.KeyCode.Unknown, nextOrder(), listText, flag)
-						U.subOf(kb, flag)
+					local kbFlag = ko.Flag or (flag .. "Key")
+					local listText = ko.Text or ko.ListText or ko.Name or ""
+					-- re-create toggle keybind via registration (keybind UI already on toggle row via KeybindFlag preferred)
+					U.vflags[kbFlag] = ko.Default or Enum.KeyCode.Unknown
+					U.keybindTargets = U.keybindTargets or {}
+					U.keybindTargets[kbFlag] = flag
+					if listText ~= "" then
+						U.registerKeybindList(listText, kbFlag, flag)
 					end
 					return obj
 				end
@@ -2947,12 +2940,6 @@ function Library:CreateWindow(opts)
 				local btn = U.mkButton(content, string.lower(tostring(o.Name or "button")), nextOrder(), o.Confirm == true)
 				if o.Callback then U.bindButton(btn, o.Callback) end
 				return { Button = btn }
-			end
-			function sec:AddKeybind(o)
-				o = o or {}
-				local listText = o.Text or o.ListText or o.Name
-				local r = U.mkKeybind(content, string.lower(tostring(o.Name or "key")), o.Flag or o.Name, o.Default or Enum.KeyCode.Unknown, nextOrder(), listText, o.ToggleFlag)
-				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddColorpicker(o)
 				o = o or {}
