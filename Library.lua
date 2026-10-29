@@ -2238,6 +2238,8 @@ function U.buildConfig()
 	U.attachPicker(U.mkColorRow(settingsSec, "border", nextOrder()), "ThemeBorder", U.theme.Border, true, "border color")
 	U.attachPicker(U.mkColorRow(settingsSec, "section border", nextOrder()), "ThemeSectionBorder", U.theme.SectionBorder, true, "section border")
 	U.attachPicker(U.mkColorRow(settingsSec, "element border", nextOrder()), "ThemeElementBorder", U.theme.ElementBorder or U.theme.SectionBorder, true, "element border")
+	U.attachPicker(U.mkColorRow(settingsSec, "section background", nextOrder()), "ThemeSectionBg", U.theme.SectionBg, true, "section background")
+	U.attachPicker(U.mkColorRow(settingsSec, "background", nextOrder()), "ThemeBackground", U.theme.Background, true, "background")
 	do
 		local accentRow = U.mkColorRow(settingsSec, "accent", nextOrder())
 		U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
@@ -2263,6 +2265,7 @@ function U.buildConfig()
 		U.onFlag("WatermarkItems", syncMsg)
 		syncMsg()
 	end
+	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 
 	do
 		local wgui = Instance.new("ScreenGui")
@@ -2356,12 +2359,22 @@ function U.buildConfig()
 				end
 			end
 			local out = table.concat(parts, " | ")
+			if out == "" then out = " " end
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			local bounds = TextService:GetTextSize(out, U.TEXT_SZ, Enum.Font.Code, Vector2.new(2000, 22))
-			local tw = math.max(40, math.ceil(bounds.X) + 14)
+			wtxt.Size = UDim2.fromOffset(4000, 20)
+			local tw = 0
+			pcall(function()
+				tw = math.ceil(wtxt.TextBounds.X)
+			end)
+			if tw < 8 then
+				local bounds = TextService:GetTextSize(out, U.TEXT_SZ, Enum.Font.RobotoMono, Vector2.new(4000, 40))
+				tw = math.ceil(bounds.X)
+			end
+			tw = math.max(48, tw + 18)
 			wm.Size = UDim2.fromOffset(tw, 22)
 			wtxt.Size = UDim2.new(1, -12, 1, -2)
+			wtxt.Position = UDim2.fromOffset(6, 2)
 			if U.wmDocked then U.dockWatermark() end
 		end
 		U.onFlag("Watermark", function()
