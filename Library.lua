@@ -152,7 +152,7 @@ task.spawn(function()
 	end
 end)
 
-U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01 }
+U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01, alphaBreak = nil, alphaBreakMarkers = {} }
 function U.setCycleColor(flagKey, on)
 	if on then
 		U.cycle.colorFlags[flagKey] = true
@@ -172,6 +172,37 @@ function U.setCycleColor(flagKey, on)
 	end
 	U.vflags[flagKey .. "CycleColor"] = on and true or false
 end
+
+function U.setAlphaBreak(rel)
+	if rel == nil then
+		U.cycle.alphaBreak = nil
+	else
+		U.cycle.alphaBreak = math.clamp(tonumber(rel) or 0, 0, 1)
+	end
+	U.cycle.alphaBreakMarkers = U.cycle.alphaBreakMarkers or {}
+	for i = #U.cycle.alphaBreakMarkers, 1, -1 do
+		local m = U.cycle.alphaBreakMarkers[i]
+		if not m or not m.Parent then
+			table.remove(U.cycle.alphaBreakMarkers, i)
+		elseif U.cycle.alphaBreak == nil then
+			m.Visible = false
+		else
+			m.Visible = true
+			m.Position = UDim2.new(U.cycle.alphaBreak, 0, 0.5, 0)
+		end
+	end
+end
+function U.registerAlphaBreakMarker(marker)
+	U.cycle.alphaBreakMarkers = U.cycle.alphaBreakMarkers or {}
+	U.cycle.alphaBreakMarkers[#U.cycle.alphaBreakMarkers + 1] = marker
+	if U.cycle.alphaBreak ~= nil then
+		marker.Visible = true
+		marker.Position = UDim2.new(U.cycle.alphaBreak, 0, 0.5, 0)
+	else
+		marker.Visible = false
+	end
+end
+
 function U.setCycleAlpha(flagKey, on)
 	local alphaKey = flagKey .. "Transparency"
 	if on then
@@ -203,9 +234,12 @@ task.spawn(function()
 			end
 			if anyA then
 				if U.cycle.alphaDir == nil then U.cycle.alphaDir = 1 end
+				local maxA = U.cycle.alphaBreak
+				if typeof(maxA) ~= "number" then maxA = 1 end
+				maxA = math.clamp(maxA, 0.05, 1)
 				U.cycle.alpha = U.cycle.alpha + U.cycle.step * U.cycle.alphaDir
-				if U.cycle.alpha >= 1 then
-					U.cycle.alpha = 1
+				if U.cycle.alpha >= maxA then
+					U.cycle.alpha = maxA
 					U.cycle.alphaDir = -1
 				elseif U.cycle.alpha <= 0 then
 					U.cycle.alpha = 0
@@ -266,7 +300,9 @@ function U.refreshMenuTextColors()
 	end
 	if U.gui then
 		for _, inst in ipairs(U.gui:GetDescendants()) do
-			if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+			if inst.Name == "WavelengthCredit" then
+				inst.TextColor3 = Color3.fromRGB(90, 90, 90)
+			elseif inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
 				inst.TextColor3 = c
 			end
 		end
@@ -1120,7 +1156,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit)
 			b.ZIndex = 222
 			b.Parent = holder
 			local pad = Instance.new("UIPadding")
-			pad.PaddingLeft = UDim.new(0, 4)
+			pad.PaddingLeft = UDim.new(0, 7)
 			pad.Parent = b
 			b.MouseEnter:Connect(function()
 				if not isSelected(opt) then b.BackgroundColor3 = Color3.fromRGB(36, 36, 36) end
@@ -1629,6 +1665,27 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaDot.BorderSizePixel = 0
 			alphaDot.ZIndex = 223
 			alphaDot.Parent = alphaBar
+			local breakLine = Instance.new("Frame")
+			breakLine.Name = "AlphaBreak"
+			breakLine.Size = UDim2.fromOffset(2, BAR_H + 4)
+			breakLine.AnchorPoint = Vector2.new(0.5, 0.5)
+			breakLine.Position = UDim2.new(U.cycle.alphaBreak or 0, 0, 0.5, 0)
+			breakLine.BackgroundColor3 = Color3.fromRGB(220, 40, 40)
+			breakLine.BorderSizePixel = 0
+			breakLine.ZIndex = 224
+			breakLine.Visible = U.cycle.alphaBreak ~= nil
+			breakLine.Parent = alphaBar
+			U.registerAlphaBreakMarker(breakLine)
+			alphaBar.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton2 then
+					local rel = math.clamp((input.Position.X - alphaBar.AbsolutePosition.X) / math.max(1, alphaBar.AbsoluteSize.X), 0, 1)
+					if U.cycle.alphaBreak ~= nil then
+						U.setAlphaBreak(nil)
+					else
+						U.setAlphaBreak(rel)
+					end
+				end
+			end)
 			local ads = Instance.new("UIStroke")
 			ads.Color = Color3.new(0, 0, 0)
 			ads.Thickness = 1
@@ -1897,6 +1954,20 @@ function U.buildConfig()
 			Accent2 = { U.theme.Accent2.R, U.theme.Accent2.G, U.theme.Accent2.B },
 			Background = { U.theme.Background.R, U.theme.Background.G, U.theme.Background.B },
 		}
+		if U.wm and U.wm.Parent then
+			local p = U.wm.Position
+			if p.X.Scale ~= 0 or p.Y.Scale ~= 0 then
+				local abs = U.wm.AbsolutePosition
+				data.__wmPos = { abs.X, abs.Y, 0, 0 }
+			else
+				data.__wmPos = { p.X.Offset, p.Y.Offset, 0, 0 }
+			end
+		end
+		if U.cycle.alphaBreak ~= nil then
+			data.__alphaBreak = U.cycle.alphaBreak
+		else
+			data.__alphaBreak = false
+		end
 		return data
 	end
 	local function applySerialized(data)
@@ -1916,7 +1987,7 @@ function U.buildConfig()
 				local name = v.__enum:match("KeyCode%.(.+)$") or v.__enum
 				local ok, enum = pcall(function() return Enum.KeyCode[name] end)
 				if ok then U.vflags[k] = enum end
-			elseif k ~= "__theme" and k ~= "__wmPos" then
+			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" then
 				U.vflags[k] = v
 				if U.setters[k] then U.setters[k](v) end
 			end
@@ -1925,10 +1996,13 @@ function U.buildConfig()
 		if type(data.__wmPos) == "table" and U.wm then
 			local x = tonumber(data.__wmPos[1]) or 0
 			local y = tonumber(data.__wmPos[2]) or 0
-			local ax = tonumber(data.__wmPos[3]) or 0
-			local ay = tonumber(data.__wmPos[4]) or 0
-			U.wm.AnchorPoint = Vector2.new(ax, ay)
+			U.wm.AnchorPoint = Vector2.new(0, 0)
 			U.wm.Position = UDim2.fromOffset(x, y)
+		end
+		if type(data.__alphaBreak) == "number" then
+			U.setAlphaBreak(data.__alphaBreak)
+		elseif data.__alphaBreak == false or data.__alphaBreak == nil then
+			if data.__alphaBreak == false then U.setAlphaBreak(nil) end
 		end
 		
 		U.cycle.colorFlags = {}
@@ -2244,7 +2318,9 @@ function U.buildConfig()
 	credit.TextSize = U.TEXT_SZ
 	credit.TextColor3 = Color3.fromRGB(90, 90, 90)
 	credit.TextXAlignment = Enum.TextXAlignment.Center
+	credit.Name = "WavelengthCredit"
 	credit.Text = "wavelength ui by @illorsm"
+	credit.TextColor3 = Color3.fromRGB(90, 90, 90)
 	credit.ZIndex = 5
 	local secFrame = settingsSec.Parent
 	if secFrame and secFrame:IsA("GuiObject") then
