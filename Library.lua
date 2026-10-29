@@ -1928,31 +1928,39 @@ end
 
 
 function U.shellScreenPos()
-	if not U.shell then return Vector2.zero, Vector2.zero end
+	if not U.shell or not U.shell.Parent then
+		return Vector2.zero, Vector2.zero
+	end
 	return U.shell.AbsolutePosition, U.shell.AbsoluteSize
 end
 
 function U.dockWatermark()
 	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
 	if U.vflags.Watermark ~= true then return end
-	local sp, ss = U.shellScreenPos()
+	if not U.shell or not U.shell.Parent then return end
+	local sp = U.shell.AbsolutePosition
 	local h = U.wm.AbsoluteSize.Y
 	if h < 2 then h = 22 end
+	local gap = U.dockGap or 6
 	U.wm.AnchorPoint = Vector2.new(0, 0)
-	U.wm.Position = UDim2.fromOffset(sp.X, sp.Y - h - (U.dockGap or 6))
+	U.wm.Position = UDim2.fromOffset(math.floor(sp.X + 0.5), math.floor(sp.Y - h - gap + 0.5))
 end
 
 function U.dockKeybinds()
 	if not U.kbDocked or not U.kbPanel or not U.kbPanel.Parent then return end
 	if U.vflags.KeybindsList ~= true then return end
-	local sp, ss = U.shellScreenPos()
+	if not U.shell or not U.shell.Parent then return end
+	local sp = U.shell.AbsolutePosition
+	local ss = U.shell.AbsoluteSize
+	local gap = U.dockGap or 6
 	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-	U.kbPanel.Position = UDim2.fromOffset(sp.X + ss.X + (U.dockGap or 6), sp.Y)
+	U.kbPanel.Position = UDim2.fromOffset(math.floor(sp.X + ss.X + gap + 0.5), math.floor(sp.Y + 0.5))
 end
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
-	if not listText or listText == "" then return end
+	if not listText or listText == "" or not keyFlag then return end
 	U.keybindListEntries = U.keybindListEntries or {}
+	U._kbListen = U._kbListen or {}
 	for _, e in ipairs(U.keybindListEntries) do
 		if e.keyFlag == keyFlag then
 			e.listText = listText
@@ -1966,6 +1974,18 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 		keyFlag = keyFlag,
 		toggleFlag = toggleFlag,
 	}
+	if not U._kbListen[keyFlag] then
+		U._kbListen[keyFlag] = true
+		U.onFlag(keyFlag, function()
+			if U.refreshKeybindList then U.refreshKeybindList() end
+		end)
+	end
+	if toggleFlag and not U._kbListen[toggleFlag] then
+		U._kbListen[toggleFlag] = true
+		U.onFlag(toggleFlag, function()
+			if U.refreshKeybindList then U.refreshKeybindList() end
+		end)
+	end
 	if U.refreshKeybindList then U.refreshKeybindList() end
 end
 
@@ -2271,7 +2291,7 @@ function U.buildConfig()
 		local wgui = Instance.new("ScreenGui")
 		wgui.Name = "wavelength_wm"
 		wgui.ResetOnSpawn = false
-		wgui.IgnoreGuiInset = false
+		wgui.IgnoreGuiInset = true
 		wgui.Parent = U.guiParent()
 		U.wmGui = wgui
 		local wm = Instance.new("Frame")
@@ -2379,7 +2399,12 @@ function U.buildConfig()
 		end
 		U.onFlag("Watermark", function()
 			refreshWm()
-			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
+			if U.vflags.Watermark and U.wmDocked then
+				task.defer(U.dockWatermark)
+				task.delay(0.05, function()
+					if U.wmDocked and U.vflags.Watermark then U.dockWatermark() end
+				end)
+			end
 		end)
 		U.onFlag("WatermarkItems", refreshWm)
 		U.onFlag("WatermarkMessage", refreshWm)
@@ -2393,7 +2418,7 @@ function U.buildConfig()
 			local dragging = false
 			local grabOffset = Vector2.zero
 			local function mouseInParent()
-				return U.UIS:GetMouseLocation() - GuiService:GetGuiInset()
+				return U.UIS:GetMouseLocation()
 			end
 			wm.InputBegan:Connect(function(input)
 				if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -2428,7 +2453,7 @@ function U.buildConfig()
 			local kgui = Instance.new("ScreenGui")
 			kgui.Name = "wavelength_kb"
 			kgui.ResetOnSpawn = false
-			kgui.IgnoreGuiInset = false
+			kgui.IgnoreGuiInset = true
 			kgui.Parent = U.guiParent()
 			U.kbGui = kgui
 			local kb = Instance.new("Frame")
@@ -2477,15 +2502,20 @@ function U.buildConfig()
 			kbLay.Parent = kbList
 
 			function U.refreshKeybindList()
+				if U._kbRefreshing then return end
 				if not U.kbPanel then return end
+				U._kbRefreshing = true
 				local on = U.vflags.KeybindsList == true
 				U.kbPanel.Visible = on
-				if not on then return end
+				if not on then
+					U._kbRefreshing = false
+					return
+				end
 				for _, c in ipairs(kbList:GetChildren()) do
 					if c:IsA("TextLabel") then c:Destroy() end
 				end
-				local maxW = 80
-				local TextService = game:GetService("TextService")
+				local pad = 6
+				local maxW = 40
 				local count = 0
 				for i, e in ipairs(U.keybindListEntries or {}) do
 					local key = U.keyNameOf(U.vflags[e.keyFlag])
@@ -2510,26 +2540,35 @@ function U.buildConfig()
 						row.TextColor3 = U.GRAY_TEXT or Color3.fromRGB(90, 90, 90)
 						row:SetAttribute("KbActive", false)
 					end
-					local b = TextService:GetTextSize(line, U.TEXT_SZ, Enum.Font.Code, Vector2.new(400, 20))
-					maxW = math.max(maxW, math.ceil(b.X) + 16)
-					count += 1
-					if e.toggleFlag then
-						U.onFlag(e.toggleFlag, function()
-							if U.refreshKeybindList then U.refreshKeybindList() end
-						end)
-					end
-					U.onFlag(e.keyFlag, function()
-						if U.refreshKeybindList then U.refreshKeybindList() end
+					local tw = 0
+					pcall(function()
+						row.Size = UDim2.fromOffset(2000, 14)
+						tw = math.ceil(row.TextBounds.X)
+						row.Size = UDim2.new(1, 0, 0, 14)
 					end)
+					if tw < 4 then
+						tw = #line * 7
+					end
+					maxW = math.max(maxW, tw)
+					count += 1
 				end
-				local h = math.max(24, count * 16 + 12)
-				U.kbPanel.Size = UDim2.fromOffset(maxW, h)
+				local h = math.max(22, count * 16 + pad * 2)
+				local w = math.max(48, maxW + pad * 2)
+				U.kbPanel.Size = UDim2.fromOffset(w, h)
+				kbList.Position = UDim2.fromOffset(pad, pad)
+				kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
 				if U.kbDocked then U.dockKeybinds() end
+				U._kbRefreshing = false
 			end
 
 			U.onFlag("KeybindsList", function()
 				U.refreshKeybindList()
-				if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
+				if U.vflags.KeybindsList and U.kbDocked then
+					task.defer(U.dockKeybinds)
+					task.delay(0.05, function()
+						if U.kbDocked and U.vflags.KeybindsList then U.dockKeybinds() end
+					end)
+				end
 			end)
 
 			local kbDragging = false
