@@ -21,7 +21,7 @@ U.theme = U.theme or {
 	Background = Color3.fromRGB(36, 36, 36),
 	SectionBg = Color3.fromRGB(18, 18, 18),
 }
-U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, tabAccents = {} }
+U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, sectionBgs = {}, tabAccents = {} }
 
 function U.controlStroke(parent, thick)
 	thick = thick or 1
@@ -284,12 +284,19 @@ function U.applyTheme()
 	for _, f in ipairs(U.themeReg.bgs) do
 		if f.Parent then f.BackgroundColor3 = U.theme.Background end
 	end
+	for _, f in ipairs(U.themeReg.sectionBgs or {}) do
+		if f and f.Parent then f.BackgroundColor3 = U.theme.SectionBg end
+	end
+	if U.kbPanel and U.kbPanel.Parent then
+		U.kbPanel.BackgroundColor3 = U.theme.Background
+	end
 	if U.refreshMenuTextColors then U.refreshMenuTextColors() end
+	if U.refreshKeybindList then U.refreshKeybindList() end
 end
 
 function U.refreshMenuTextColors()
 	local c = U.theme.Text
-	
+	local gray = U.GRAY_TEXT or Color3.fromRGB(90, 90, 90)
 	if U.wmText then U.wmText.TextColor3 = c end
 	if U.wmGui then
 		for _, inst in ipairs(U.wmGui:GetDescendants()) do
@@ -298,10 +305,21 @@ function U.refreshMenuTextColors()
 			end
 		end
 	end
+	if U.kbGui then
+		for _, inst in ipairs(U.kbGui:GetDescendants()) do
+			if inst:IsA("TextLabel") then
+				if inst:GetAttribute("KbActive") == false then
+					inst.TextColor3 = gray
+				else
+					inst.TextColor3 = c
+				end
+			end
+		end
+	end
 	if U.gui then
 		for _, inst in ipairs(U.gui:GetDescendants()) do
 			if inst.Name == "WavelengthCredit" then
-				inst.TextColor3 = Color3.fromRGB(90, 90, 90)
+				inst.TextColor3 = gray
 			elseif inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
 				inst.TextColor3 = c
 			end
@@ -512,10 +530,12 @@ function U.shutdown()
 
 	pcall(function() U.closePopups() end)
 
-	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
+	for _, name in ipairs({ "wavelength_wm", "wavelength_kb", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
+	if U.kbGui then pcall(function() U.kbGui:Destroy() end) U.kbGui = nil end
+	if U.kbPanel then U.kbPanel = nil end
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
@@ -634,6 +654,8 @@ function U.section(parent, title, col, row, rows)
 	f.Size = UDim2.fromOffset(w, h)
 	f.Position = UDim2.fromOffset(x, y)
 	f.Parent = parent
+	U.themeReg.sectionBgs = U.themeReg.sectionBgs or {}
+	U.themeReg.sectionBgs[#U.themeReg.sectionBgs + 1] = f
 
 	local secStroke = Instance.new("UIStroke")
 	secStroke.Thickness = 2
@@ -684,7 +706,7 @@ function U.section(parent, title, col, row, rows)
 	return content
 end
 
-function U.mkToggle(parent, text, flag, order, default, keybindFlag)
+function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindListText)
 	local r = U.row(parent, order)
 	local on = default == true
 	if flag then U.vflags[flag] = on end
@@ -782,10 +804,16 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag)
 			U.vflags[keybindFlag] = v
 			fit(keyName(v))
 			U.fireFlag(keybindFlag)
+			if U.refreshKeybindList then U.refreshKeybindList() end
 		end
 		U.keybindTargets = U.keybindTargets or {}
 		if flag then
 			U.keybindTargets[keybindFlag] = flag
+		end
+		local lt = keybindListText
+		if (not lt or lt == "") and text and text ~= "" then lt = text end
+		if lt and lt ~= "" then
+			U.registerKeybindList(lt, keybindFlag, flag)
 		end
 	end
 	return r
@@ -1452,6 +1480,8 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		elseif flagKey == "ThemeBorder" then U.theme.Border = c; U.applyTheme()
 		elseif flagKey == "ThemeSectionBorder" then U.theme.SectionBorder = c; U.applyTheme()
 		elseif flagKey == "ThemeElementBorder" then U.theme.ElementBorder = c; U.applyTheme()
+		elseif flagKey == "ThemeBackground" then U.theme.Background = c; U.applyTheme()
+		elseif flagKey == "ThemeSectionBg" then U.theme.SectionBg = c; U.applyTheme()
 		elseif flagKey == "ThemeAccent1" then U.theme.Accent1 = c; U.applyTheme()
 		elseif flagKey == "ThemeAccent2" then U.theme.Accent2 = c; U.applyTheme()
 		end
@@ -1896,6 +1926,55 @@ function U.buildShell()
 	end
 end
 
+
+function U.shellScreenPos()
+	if not U.shell then return Vector2.zero, Vector2.zero end
+	return U.shell.AbsolutePosition, U.shell.AbsoluteSize
+end
+
+function U.dockWatermark()
+	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
+	if U.vflags.Watermark ~= true then return end
+	local sp, ss = U.shellScreenPos()
+	local h = U.wm.AbsoluteSize.Y
+	if h < 2 then h = 22 end
+	U.wm.AnchorPoint = Vector2.new(0, 0)
+	U.wm.Position = UDim2.fromOffset(sp.X, sp.Y - h - (U.dockGap or 6))
+end
+
+function U.dockKeybinds()
+	if not U.kbDocked or not U.kbPanel or not U.kbPanel.Parent then return end
+	if U.vflags.KeybindsList ~= true then return end
+	local sp, ss = U.shellScreenPos()
+	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
+	U.kbPanel.Position = UDim2.fromOffset(sp.X + ss.X + (U.dockGap or 6), sp.Y)
+end
+
+function U.registerKeybindList(listText, keyFlag, toggleFlag)
+	if not listText or listText == "" then return end
+	U.keybindListEntries = U.keybindListEntries or {}
+	for _, e in ipairs(U.keybindListEntries) do
+		if e.keyFlag == keyFlag then
+			e.listText = listText
+			e.toggleFlag = toggleFlag
+			if U.refreshKeybindList then U.refreshKeybindList() end
+			return
+		end
+	end
+	U.keybindListEntries[#U.keybindListEntries + 1] = {
+		listText = listText,
+		keyFlag = keyFlag,
+		toggleFlag = toggleFlag,
+	}
+	if U.refreshKeybindList then U.refreshKeybindList() end
+end
+
+function U.keyNameOf(k)
+	if typeof(k) == "EnumItem" then return k.Name end
+	if type(k) == "string" then return k end
+	return "none"
+end
+
 function U.buildConfig()
 	local CONFIG_FOLDER = "zwavelength"
 	local selectedConfig = nil
@@ -1953,16 +2032,25 @@ function U.buildConfig()
 			Accent1 = { U.theme.Accent1.R, U.theme.Accent1.G, U.theme.Accent1.B },
 			Accent2 = { U.theme.Accent2.R, U.theme.Accent2.G, U.theme.Accent2.B },
 			Background = { U.theme.Background.R, U.theme.Background.G, U.theme.Background.B },
+			SectionBg = { U.theme.SectionBg.R, U.theme.SectionBg.G, U.theme.SectionBg.B },
+			SectionBorder = { U.theme.SectionBorder.R, U.theme.SectionBorder.G, U.theme.SectionBorder.B },
+			ElementBorder = { (U.theme.ElementBorder or U.theme.SectionBorder).R, (U.theme.ElementBorder or U.theme.SectionBorder).G, (U.theme.ElementBorder or U.theme.SectionBorder).B },
 		}
 		if U.wm and U.wm.Parent then
 			local p = U.wm.Position
 			if p.X.Scale ~= 0 or p.Y.Scale ~= 0 then
 				local abs = U.wm.AbsolutePosition
-				data.__wmPos = { abs.X, abs.Y, 0, 0 }
+				data.__wmPos = { abs.X, abs.Y }
 			else
-				data.__wmPos = { p.X.Offset, p.Y.Offset, 0, 0 }
+				data.__wmPos = { p.X.Offset, p.Y.Offset }
 			end
 		end
+		data.__wmDocked = U.wmDocked and true or false
+		if U.kbPanel and U.kbPanel.Parent then
+			local p = U.kbPanel.Position
+			data.__kbPos = { p.X.Offset, p.Y.Offset }
+		end
+		data.__kbDocked = U.kbDocked and true or false
 		if U.cycle.alphaBreak ~= nil then
 			data.__alphaBreak = U.cycle.alphaBreak
 		else
@@ -1987,22 +2075,42 @@ function U.buildConfig()
 				local name = v.__enum:match("KeyCode%.(.+)$") or v.__enum
 				local ok, enum = pcall(function() return Enum.KeyCode[name] end)
 				if ok then U.vflags[k] = enum end
-			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" then
+			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" and k ~= "__wmDocked" and k ~= "__kbDocked" and k ~= "__kbPos" then
 				U.vflags[k] = v
 				if U.setters[k] then U.setters[k](v) end
 			end
 		end
 
+		if data.__wmDocked == false then
+			U.wmDocked = false
+		else
+			U.wmDocked = true
+		end
 		if type(data.__wmPos) == "table" and U.wm then
 			local x = tonumber(data.__wmPos[1]) or 0
 			local y = tonumber(data.__wmPos[2]) or 0
 			U.wm.AnchorPoint = Vector2.new(0, 0)
 			U.wm.Position = UDim2.fromOffset(x, y)
 		end
+		if U.wmDocked then
+			task.defer(function() U.dockWatermark() end)
+		end
+		if data.__kbDocked == false then
+			U.kbDocked = false
+		else
+			U.kbDocked = true
+		end
+		if type(data.__kbPos) == "table" and U.kbPanel then
+			U.kbPanel.AnchorPoint = Vector2.new(0, 0)
+			U.kbPanel.Position = UDim2.fromOffset(tonumber(data.__kbPos[1]) or 0, tonumber(data.__kbPos[2]) or 0)
+		end
+		if U.kbDocked then
+			task.defer(function() U.dockKeybinds() end)
+		end
 		if type(data.__alphaBreak) == "number" then
 			U.setAlphaBreak(data.__alphaBreak)
-		elseif data.__alphaBreak == false or data.__alphaBreak == nil then
-			if data.__alphaBreak == false then U.setAlphaBreak(nil) end
+		elseif data.__alphaBreak == false then
+			U.setAlphaBreak(nil)
 		end
 		
 		U.cycle.colorFlags = {}
@@ -2166,9 +2274,9 @@ function U.buildConfig()
 		local wm = Instance.new("Frame")
 		wm.BackgroundColor3 = U.theme.Background
 		wm.BorderSizePixel = 0
-		wm.Position = UDim2.fromScale(0.5, 0.5)
-		wm.AnchorPoint = Vector2.new(0.5, 0.5)
-		wm.Size = UDim2.fromOffset(160, 22)
+		wm.Position = UDim2.fromOffset(0, 0)
+		wm.AnchorPoint = Vector2.new(0, 0)
+		wm.Size = UDim2.fromOffset(80, 22)
 		wm.Active = true
 		wm.Parent = wgui
 		U.wm = wm
@@ -2235,6 +2343,7 @@ function U.buildConfig()
 			return fps
 		end
 
+		local TextService = game:GetService("TextService")
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
 			wm.Visible = on
@@ -2249,9 +2358,16 @@ function U.buildConfig()
 			local out = table.concat(parts, " | ")
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			wm.Size = UDim2.fromOffset(math.max(80, #out * 7 + 16), 22)
+			local bounds = TextService:GetTextSize(out, U.TEXT_SZ, Enum.Font.Code, Vector2.new(2000, 22))
+			local tw = math.max(40, math.ceil(bounds.X) + 14)
+			wm.Size = UDim2.fromOffset(tw, 22)
+			wtxt.Size = UDim2.new(1, -12, 1, -2)
+			if U.wmDocked then U.dockWatermark() end
 		end
-		U.onFlag("Watermark", refreshWm)
+		U.onFlag("Watermark", function()
+			refreshWm()
+			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
+		end)
 		U.onFlag("WatermarkItems", refreshWm)
 		U.onFlag("WatermarkMessage", refreshWm)
 		task.spawn(function()
@@ -2277,6 +2393,7 @@ function U.buildConfig()
 				wm.Position = UDim2.fromOffset(abs.X, abs.Y)
 				grabOffset = mouse - abs
 				dragging = true
+				U.wmDocked = false
 			end)
 			U.UIS.InputChanged:Connect(function(input)
 				if not dragging then return end
@@ -2291,6 +2408,145 @@ function U.buildConfig()
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					dragging = false
+				end
+			end)
+
+			-- keybinds list panel
+			local kgui = Instance.new("ScreenGui")
+			kgui.Name = "wavelength_kb"
+			kgui.ResetOnSpawn = false
+			kgui.IgnoreGuiInset = false
+			kgui.Parent = U.guiParent()
+			U.kbGui = kgui
+			local kb = Instance.new("Frame")
+			kb.Name = "KeybindsPanel"
+			kb.BackgroundColor3 = U.theme.Background
+			kb.BorderSizePixel = 0
+			kb.Position = UDim2.fromOffset(0, 0)
+			kb.Size = UDim2.fromOffset(140, 40)
+			kb.Active = true
+			kb.Visible = false
+			kb.Parent = kgui
+			U.kbPanel = kb
+			U.themeReg.bgs[#U.themeReg.bgs + 1] = kb
+			local kst = Instance.new("UIStroke")
+			kst.Thickness = 2
+			kst.Color = U.theme.Border
+			kst.LineJoinMode = Enum.LineJoinMode.Miter
+			kst.Parent = kb
+			U.themeReg.borders[#U.themeReg.borders + 1] = kst
+			local kbar = Instance.new("Frame")
+			kbar.Size = UDim2.new(1, 0, 0, 2)
+			kbar.BorderSizePixel = 0
+			kbar.BackgroundColor3 = Color3.new(1, 1, 1)
+			kbar.ZIndex = 2
+			kbar.Parent = kb
+			local kg = Instance.new("UIGradient")
+			kg.Color = U.accentSequence()
+			kg.Parent = kbar
+			U.themeReg.accents[#U.themeReg.accents + 1] = kg
+			task.spawn(function()
+				while kbar.Parent do
+					kg.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
+					task.wait(0.03)
+				end
+			end)
+			local kbList = Instance.new("Frame")
+			kbList.Name = "List"
+			kbList.BackgroundTransparency = 1
+			kbList.BorderSizePixel = 0
+			kbList.Position = UDim2.fromOffset(6, 6)
+			kbList.Size = UDim2.new(1, -12, 1, -10)
+			kbList.Parent = kb
+			local kbLay = Instance.new("UIListLayout")
+			kbLay.SortOrder = Enum.SortOrder.LayoutOrder
+			kbLay.Padding = UDim.new(0, 2)
+			kbLay.Parent = kbList
+
+			function U.refreshKeybindList()
+				if not U.kbPanel then return end
+				local on = U.vflags.KeybindsList == true
+				U.kbPanel.Visible = on
+				if not on then return end
+				for _, c in ipairs(kbList:GetChildren()) do
+					if c:IsA("TextLabel") then c:Destroy() end
+				end
+				local maxW = 80
+				local TextService = game:GetService("TextService")
+				local count = 0
+				for i, e in ipairs(U.keybindListEntries or {}) do
+					local key = U.keyNameOf(U.vflags[e.keyFlag])
+					local line = tostring(e.listText) .. " [" .. key .. "]"
+					local row = Instance.new("TextLabel")
+					row.BackgroundTransparency = 1
+					row.Size = UDim2.new(1, 0, 0, 14)
+					row.FontFace = U.font
+					row.TextSize = U.TEXT_SZ
+					row.TextXAlignment = Enum.TextXAlignment.Left
+					row.Text = line
+					row.LayoutOrder = i
+					row.Parent = kbList
+					local enabled = true
+					if e.toggleFlag then
+						enabled = U.vflags[e.toggleFlag] == true
+					end
+					if enabled then
+						row.TextColor3 = U.theme.Text
+						row:SetAttribute("KbActive", true)
+					else
+						row.TextColor3 = U.GRAY_TEXT or Color3.fromRGB(90, 90, 90)
+						row:SetAttribute("KbActive", false)
+					end
+					local b = TextService:GetTextSize(line, U.TEXT_SZ, Enum.Font.Code, Vector2.new(400, 20))
+					maxW = math.max(maxW, math.ceil(b.X) + 16)
+					count += 1
+					if e.toggleFlag then
+						U.onFlag(e.toggleFlag, function()
+							if U.refreshKeybindList then U.refreshKeybindList() end
+						end)
+					end
+					U.onFlag(e.keyFlag, function()
+						if U.refreshKeybindList then U.refreshKeybindList() end
+					end)
+				end
+				local h = math.max(24, count * 16 + 12)
+				U.kbPanel.Size = UDim2.fromOffset(maxW, h)
+				if U.kbDocked then U.dockKeybinds() end
+			end
+
+			U.onFlag("KeybindsList", function()
+				U.refreshKeybindList()
+				if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
+			end)
+
+			local kbDragging = false
+			local kbGrab = Vector2.zero
+			kb.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local mouse = mouseInParent()
+				local abs = kb.AbsolutePosition
+				kb.AnchorPoint = Vector2.new(0, 0)
+				kb.Position = UDim2.fromOffset(abs.X, abs.Y)
+				kbGrab = mouse - abs
+				kbDragging = true
+				U.kbDocked = false
+			end)
+			U.UIS.InputChanged:Connect(function(input)
+				if not kbDragging then return end
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local mouse = mouseInParent()
+				kb.Position = UDim2.fromOffset(mouse.X - kbGrab.X, mouse.Y - kbGrab.Y)
+			end)
+			U.UIS.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					kbDragging = false
 				end
 			end)
 		end
@@ -2320,13 +2576,12 @@ function U.buildConfig()
 	credit.TextXAlignment = Enum.TextXAlignment.Center
 	credit.Name = "WavelengthCredit"
 	credit.Text = "wavelength ui by @illorsm"
-	credit.TextColor3 = Color3.fromRGB(90, 90, 90)
 	credit.ZIndex = 5
-	local secFrame = settingsSec.Parent
+	local secFrame = configsSec and configsSec.Parent
 	if secFrame and secFrame:IsA("GuiObject") then
 		credit.Parent = secFrame
-	else
-		credit.Parent = settingsSec
+	elseif configsSec then
+		credit.Parent = configsSec
 	end
 end
 
@@ -2460,11 +2715,18 @@ function U.bindInput()
 					startPos.X.Scale, startPos.X.Offset + d.X,
 					startPos.Y.Scale, startPos.Y.Offset + d.Y
 				)
+				if U.wmDocked then U.dockWatermark() end
+				if U.kbDocked then U.dockKeybinds() end
 			end
 		end)
 	end
 
 	U.menuOpen = true
+	task.defer(function()
+		if U.wmDocked then U.dockWatermark() end
+		if U.kbDocked then U.dockKeybinds() end
+		if U.refreshKeybindList then U.refreshKeybindList() end
+	end)
 	U.UIS.InputBegan:Connect(function(input, gp)
 		if gp then return end
 		local key = U.vflags.MenuKeybind or Enum.KeyCode.RightShift
@@ -2599,7 +2861,7 @@ function Library:CreateWindow(opts)
 			function sec:AddToggle(o)
 				o = o or {}
 				local flag = o.Flag or o.Name
-				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag)
+				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text)
 				if o.Callback then
 					U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end)
 				end
@@ -2611,9 +2873,9 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddKeybind(ko)
 					ko = ko or {}
-					
 					if ko.Flag then
-						local kb = U.mkKeybind(content, "", ko.Flag, ko.Default or Enum.KeyCode.Unknown, nextOrder())
+						local listText = ko.Text or ko.ListText or ko.Name or ""
+						local kb = U.mkKeybind(content, "", ko.Flag, ko.Default or Enum.KeyCode.Unknown, nextOrder(), listText, flag)
 						U.subOf(kb, flag)
 					end
 					return obj
