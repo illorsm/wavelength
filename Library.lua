@@ -306,21 +306,10 @@ function U.refreshMenuTextColors()
 	local c = U.theme.Text
 	local gray = U.GRAY_TEXT or Color3.fromRGB(90, 90, 90)
 	if U.wmText then U.wmText.TextColor3 = c end
-	if U.wmGui then
-		for _, inst in ipairs(U.wmGui:GetDescendants()) do
-			if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
-				inst.TextColor3 = c
-			end
-		end
-	end
-	if U.kbGui then
-		for _, inst in ipairs(U.kbGui:GetDescendants()) do
+	if U.kbPanel then
+		for _, inst in ipairs(U.kbPanel:GetDescendants()) do
 			if inst:IsA("TextLabel") then
-				if inst:GetAttribute("KbActive") == false then
-					inst.TextColor3 = gray
-				else
-					inst.TextColor3 = c
-				end
+				inst.TextColor3 = (inst:GetAttribute("KbActive") == false) and gray or c
 			end
 		end
 	end
@@ -328,6 +317,8 @@ function U.refreshMenuTextColors()
 		for _, inst in ipairs(U.gui:GetDescendants()) do
 			if inst.Name == "WavelengthCredit" then
 				inst.TextColor3 = gray
+			elseif U.kbPanel and inst:IsDescendantOf(U.kbPanel) then
+				-- keybind list handled above
 			elseif inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
 				inst.TextColor3 = c
 			end
@@ -538,12 +529,10 @@ function U.shutdown()
 
 	pcall(function() U.closePopups() end)
 
-	for _, name in ipairs({ "wavelength_wm", "wavelength_kb", "SM_ESP", "wavelength_notifs" }) do
+	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
-	if U.kbGui then pcall(function() U.kbGui:Destroy() end) U.kbGui = nil end
-	U.kbPanel = nil
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
@@ -1938,23 +1927,25 @@ end
 function U.dockWatermark()
 	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
 	if U.vflags.Watermark ~= true then return end
-	if not U.shell or not U.shell.Parent then return end
-	local sp = U.shell.AbsolutePosition
-	local h = math.max(22, U.wm.AbsoluteSize.Y)
+	if not U.shell then return end
+	local h = U.wm.Size.Y.Offset
+	if h < 2 then h = 22 end
 	local gap = U.dockGap or 6
+	local sp = U.shell.Position
 	U.wm.AnchorPoint = Vector2.new(0, 0)
-	U.wm.Position = UDim2.fromOffset(math.floor(sp.X + 0.5), math.floor(sp.Y - h - gap + 0.5))
+	U.wm.Position = UDim2.new(sp.X.Scale, sp.X.Offset, sp.Y.Scale, sp.Y.Offset - h - gap)
 end
 
 function U.dockKeybinds()
 	if not U.kbDocked or not U.kbPanel or not U.kbPanel.Parent then return end
 	if U.vflags.KeybindsList ~= true then return end
-	if not U.shell or not U.shell.Parent then return end
-	local sp = U.shell.AbsolutePosition
-	local ss = U.shell.AbsoluteSize
+	if not U.shell then return end
 	local gap = U.dockGap or 6
+	local sp = U.shell.Position
+	local sw = U.shell.Size.X.Offset
+	if sw < 2 then sw = U.BODY_W end
 	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-	U.kbPanel.Position = UDim2.fromOffset(math.floor(sp.X + ss.X + gap + 0.5), math.floor(sp.Y + 0.5))
+	U.kbPanel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
 end
 
 function U.keyNameOf(k)
@@ -2259,21 +2250,19 @@ function U.buildConfig()
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 
 	do
-		local wgui = Instance.new("ScreenGui")
-		wgui.Name = "wavelength_wm"
-		wgui.ResetOnSpawn = false
-		wgui.IgnoreGuiInset = true
-		wgui.Parent = U.guiParent()
-		U.wmGui = wgui
 		local wm = Instance.new("Frame")
+		wm.Name = "Watermark"
 		wm.BackgroundColor3 = U.theme.Background
 		wm.BorderSizePixel = 0
 		wm.Position = UDim2.fromOffset(0, 0)
 		wm.AnchorPoint = Vector2.new(0, 0)
 		wm.Size = UDim2.fromOffset(80, 22)
 		wm.Active = true
-		wm.Parent = wgui
+		wm.Visible = false
+		wm.ZIndex = 50
+		wm.Parent = U.gui
 		U.wm = wm
+		U.wmGui = U.gui
 		U.themeReg.bgs[#U.themeReg.bgs + 1] = wm
 		local wst = Instance.new("UIStroke")
 		wst.Thickness = 2
@@ -2352,13 +2341,11 @@ function U.buildConfig()
 			if out == "" then out = " " end
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			wtxt.Size = UDim2.fromOffset(4000, 18)
-			local tw = 0
+			local tw = math.max(40, #out * 7 + 12)
 			pcall(function()
-				tw = math.ceil(wtxt.TextBounds.X)
+				local b = wtxt.TextBounds.X
+				if b and b > 0 then tw = math.max(40, math.ceil(b) + 12) end
 			end)
-			if tw < 8 then tw = math.max(8, #out * 7) end
-			tw = math.max(40, tw + 12)
 			wm.Size = UDim2.fromOffset(tw, 22)
 			wtxt.Position = UDim2.fromOffset(6, 2)
 			wtxt.Size = UDim2.new(1, -12, 1, -2)
@@ -2366,35 +2353,29 @@ function U.buildConfig()
 		end
 		U.onFlag("Watermark", function()
 			refreshWm()
-			if U.vflags.Watermark and U.wmDocked then
-				task.defer(U.dockWatermark)
-				task.delay(0.03, function()
-					if U.wmDocked and U.vflags.Watermark then U.dockWatermark() end
-				end)
-			end
+			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
 		end)
 		U.onFlag("WatermarkItems", refreshWm)
 		U.onFlag("WatermarkMessage", refreshWm)
 		task.spawn(function()
-			while U.running do task.wait(0.1); refreshWm() end
+			while U.running do task.wait(0.25); if U.vflags.Watermark then refreshWm() end end
 		end)
 		refreshWm()
 
 		do
-			local dragging = false
-			local grabOffset = Vector2.zero
+			local dragging, dragStart, startPos
 			wm.InputBegan:Connect(function(input)
 				if input.UserInputType ~= Enum.UserInputType.MouseButton1
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = U.UIS:GetMouseLocation()
-				local abs = wm.AbsolutePosition
-				wm.AnchorPoint = Vector2.new(0, 0)
-				wm.Position = UDim2.fromOffset(abs.X, abs.Y)
-				grabOffset = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
 				dragging = true
+				dragStart = input.Position
+				startPos = wm.Position
 				U.wmDocked = false
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				end)
 			end)
 			U.UIS.InputChanged:Connect(function(input)
 				if not dragging then return end
@@ -2402,22 +2383,13 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = U.UIS:GetMouseLocation()
-				wm.Position = UDim2.fromOffset(mouse.X - grabOffset.X, mouse.Y - grabOffset.Y)
-			end)
-			U.UIS.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
-					dragging = false
-				end
+				local d = input.Position - dragStart
+				wm.Position = UDim2.new(
+					startPos.X.Scale, startPos.X.Offset + d.X,
+					startPos.Y.Scale, startPos.Y.Offset + d.Y
+				)
 			end)
 
-			local kgui = Instance.new("ScreenGui")
-			kgui.Name = "wavelength_kb"
-			kgui.ResetOnSpawn = false
-			kgui.IgnoreGuiInset = true
-			kgui.Parent = U.guiParent()
-			U.kbGui = kgui
 			local kb = Instance.new("Frame")
 			kb.Name = "KeybindsPanel"
 			kb.BackgroundColor3 = U.theme.Background
@@ -2426,7 +2398,8 @@ function U.buildConfig()
 			kb.Size = UDim2.fromOffset(120, 28)
 			kb.Active = true
 			kb.Visible = false
-			kb.Parent = kgui
+			kb.ZIndex = 50
+			kb.Parent = U.gui
 			U.kbPanel = kb
 			U.themeReg.bgs[#U.themeReg.bgs + 1] = kb
 			local kst = Instance.new("UIStroke")
@@ -2439,7 +2412,7 @@ function U.buildConfig()
 			kbar.Size = UDim2.new(1, 0, 0, 2)
 			kbar.BorderSizePixel = 0
 			kbar.BackgroundColor3 = Color3.new(1, 1, 1)
-			kbar.ZIndex = 2
+			kbar.ZIndex = 51
 			kbar.Parent = kb
 			local kg = Instance.new("UIGradient")
 			kg.Color = U.accentSequence()
@@ -2464,8 +2437,7 @@ function U.buildConfig()
 			kbLay.Parent = kbList
 
 			function U.refreshKeybindList()
-				if U._kbRefreshing then return end
-				if not U.kbPanel then return end
+				if U._kbRefreshing or not U.kbPanel then return end
 				U._kbRefreshing = true
 				local on = U.vflags.KeybindsList == true
 				U.kbPanel.Visible = on
@@ -2492,26 +2464,12 @@ function U.buildConfig()
 					row.LayoutOrder = i
 					row.Parent = kbList
 					local enabled = U.vflags[e.toggleFlag] == true
-					if enabled then
-						row.TextColor3 = U.theme.Text
-						row:SetAttribute("KbActive", true)
-					else
-						row.TextColor3 = U.GRAY_TEXT or Color3.fromRGB(90, 90, 90)
-						row:SetAttribute("KbActive", false)
-					end
-					local tw = 0
-					pcall(function()
-						row.Size = UDim2.fromOffset(2000, 14)
-						tw = math.ceil(row.TextBounds.X)
-						row.Size = UDim2.new(1, 0, 0, 14)
-					end)
-					if tw < 4 then tw = #line * 7 end
-					maxW = math.max(maxW, tw)
+					row.TextColor3 = enabled and U.theme.Text or (U.GRAY_TEXT or Color3.fromRGB(90, 90, 90))
+					row:SetAttribute("KbActive", enabled)
+					maxW = math.max(maxW, #line * 7)
 					count += 1
 				end
-				local h = math.max(22, count * 16 + pad * 2)
-				local w = math.max(48, maxW + pad * 2)
-				U.kbPanel.Size = UDim2.fromOffset(w, h)
+				U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
 				kbList.Position = UDim2.fromOffset(pad, pad)
 				kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
 				if U.kbDocked then U.dockKeybinds() end
@@ -2520,28 +2478,22 @@ function U.buildConfig()
 
 			U.onFlag("KeybindsList", function()
 				U.refreshKeybindList()
-				if U.vflags.KeybindsList and U.kbDocked then
-					task.defer(U.dockKeybinds)
-					task.delay(0.03, function()
-						if U.kbDocked and U.vflags.KeybindsList then U.dockKeybinds() end
-					end)
-				end
+				if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
 			end)
 
-			local kbDragging = false
-			local kbGrab = Vector2.zero
+			local kbDragging, kbDragStart, kbStartPos
 			kb.InputBegan:Connect(function(input)
 				if input.UserInputType ~= Enum.UserInputType.MouseButton1
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = U.UIS:GetMouseLocation()
-				local abs = kb.AbsolutePosition
-				kb.AnchorPoint = Vector2.new(0, 0)
-				kb.Position = UDim2.fromOffset(abs.X, abs.Y)
-				kbGrab = Vector2.new(mouse.X - abs.X, mouse.Y - abs.Y)
 				kbDragging = true
+				kbDragStart = input.Position
+				kbStartPos = kb.Position
 				U.kbDocked = false
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then kbDragging = false end
+				end)
 			end)
 			U.UIS.InputChanged:Connect(function(input)
 				if not kbDragging then return end
@@ -2549,14 +2501,11 @@ function U.buildConfig()
 					and input.UserInputType ~= Enum.UserInputType.Touch then
 					return
 				end
-				local mouse = U.UIS:GetMouseLocation()
-				kb.Position = UDim2.fromOffset(mouse.X - kbGrab.X, mouse.Y - kbGrab.Y)
-			end)
-			U.UIS.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
-					kbDragging = false
-				end
+				local d = input.Position - kbDragStart
+				kb.Position = UDim2.new(
+					kbStartPos.X.Scale, kbStartPos.X.Offset + d.X,
+					kbStartPos.Y.Scale, kbStartPos.Y.Offset + d.Y
+				)
 			end)
 		end
 	end
@@ -2734,7 +2683,6 @@ function U.bindInput()
 	task.defer(function()
 		if U.wmDocked then U.dockWatermark() end
 		if U.kbDocked then U.dockKeybinds() end
-		if U.refreshKeybindList then U.refreshKeybindList() end
 	end)
 	U.UIS.InputBegan:Connect(function(input, gp)
 		if gp then return end
@@ -2884,7 +2832,6 @@ function Library:CreateWindow(opts)
 					ko = ko or {}
 					local kbFlag = ko.Flag or (flag .. "Key")
 					local listText = ko.Text or ko.ListText or ko.Name or ""
-					-- re-create toggle keybind via registration (keybind UI already on toggle row via KeybindFlag preferred)
 					U.vflags[kbFlag] = ko.Default or Enum.KeyCode.Unknown
 					U.keybindTargets = U.keybindTargets or {}
 					U.keybindTargets[kbFlag] = flag
