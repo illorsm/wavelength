@@ -22,6 +22,12 @@ U.theme = U.theme or {
 	SectionBg = Color3.fromRGB(18, 18, 18),
 }
 U.themeReg = U.themeReg or { accents = {}, borders = {}, sectionBorders = {}, bgs = {}, sectionBgs = {}, tabAccents = {} }
+U.wmDocked = true
+U.kbDocked = true
+U.dockGap = 6
+U.keybindListEntries = U.keybindListEntries or {}
+U._kbListen = U._kbListen or {}
+U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
 function U.controlStroke(parent, thick)
 	thick = thick or 1
@@ -535,7 +541,7 @@ function U.shutdown()
 	end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
 	if U.kbGui then pcall(function() U.kbGui:Destroy() end) U.kbGui = nil end
-	if U.kbPanel then U.kbPanel = nil end
+	U.kbPanel = nil
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
@@ -1284,9 +1290,12 @@ function U.mkTextbox(parent, text, flag, placeholder, order)
 	return r
 end
 
-function U.mkKeybind(parent, text, flag, default, order)
+function U.mkKeybind(parent, text, flag, default, order, listText, toggleFlag)
 	local r = U.row(parent, order)
 	U.vflags[flag] = default
+	if listText and listText ~= "" then
+		U.registerKeybindList(listText, flag, toggleFlag)
+	end
 
 	local name = Instance.new("TextLabel")
 	name.BackgroundTransparency = 1
@@ -1337,6 +1346,7 @@ function U.mkKeybind(parent, text, flag, default, order)
 					U.vflags[flag] = input.KeyCode
 					fitKey(keyName(input.KeyCode))
 					U.fireFlag(flag)
+		if U.refreshKeybindList then U.refreshKeybindList() end
 				end
 				listening = false
 				conn:Disconnect()
@@ -1927,13 +1937,6 @@ function U.buildShell()
 end
 
 
-function U.shellScreenPos()
-	if not U.shell or not U.shell.Parent then
-		return Vector2.zero, Vector2.zero
-	end
-	return U.shell.AbsolutePosition, U.shell.AbsoluteSize
-end
-
 function U.dockWatermark()
 	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
 	if U.vflags.Watermark ~= true then return end
@@ -1955,6 +1958,12 @@ function U.dockKeybinds()
 	local gap = U.dockGap or 6
 	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
 	U.kbPanel.Position = UDim2.fromOffset(math.floor(sp.X + ss.X + gap + 0.5), math.floor(sp.Y + 0.5))
+end
+
+function U.keyNameOf(k)
+	if typeof(k) == "EnumItem" then return k.Name end
+	if type(k) == "string" then return k end
+	return "none"
 end
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
@@ -1987,12 +1996,6 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 		end)
 	end
 	if U.refreshKeybindList then U.refreshKeybindList() end
-end
-
-function U.keyNameOf(k)
-	if typeof(k) == "EnumItem" then return k.Name end
-	if type(k) == "string" then return k end
-	return "none"
 end
 
 function U.buildConfig()
@@ -2052,25 +2055,16 @@ function U.buildConfig()
 			Accent1 = { U.theme.Accent1.R, U.theme.Accent1.G, U.theme.Accent1.B },
 			Accent2 = { U.theme.Accent2.R, U.theme.Accent2.G, U.theme.Accent2.B },
 			Background = { U.theme.Background.R, U.theme.Background.G, U.theme.Background.B },
-			SectionBg = { U.theme.SectionBg.R, U.theme.SectionBg.G, U.theme.SectionBg.B },
-			SectionBorder = { U.theme.SectionBorder.R, U.theme.SectionBorder.G, U.theme.SectionBorder.B },
-			ElementBorder = { (U.theme.ElementBorder or U.theme.SectionBorder).R, (U.theme.ElementBorder or U.theme.SectionBorder).G, (U.theme.ElementBorder or U.theme.SectionBorder).B },
 		}
 		if U.wm and U.wm.Parent then
 			local p = U.wm.Position
 			if p.X.Scale ~= 0 or p.Y.Scale ~= 0 then
 				local abs = U.wm.AbsolutePosition
-				data.__wmPos = { abs.X, abs.Y }
+				data.__wmPos = { abs.X, abs.Y, 0, 0 }
 			else
-				data.__wmPos = { p.X.Offset, p.Y.Offset }
+				data.__wmPos = { p.X.Offset, p.Y.Offset, 0, 0 }
 			end
 		end
-		data.__wmDocked = U.wmDocked and true or false
-		if U.kbPanel and U.kbPanel.Parent then
-			local p = U.kbPanel.Position
-			data.__kbPos = { p.X.Offset, p.Y.Offset }
-		end
-		data.__kbDocked = U.kbDocked and true or false
 		if U.cycle.alphaBreak ~= nil then
 			data.__alphaBreak = U.cycle.alphaBreak
 		else
@@ -2095,42 +2089,22 @@ function U.buildConfig()
 				local name = v.__enum:match("KeyCode%.(.+)$") or v.__enum
 				local ok, enum = pcall(function() return Enum.KeyCode[name] end)
 				if ok then U.vflags[k] = enum end
-			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" and k ~= "__wmDocked" and k ~= "__kbDocked" and k ~= "__kbPos" then
+			elseif k ~= "__theme" and k ~= "__wmPos" and k ~= "__alphaBreak" then
 				U.vflags[k] = v
 				if U.setters[k] then U.setters[k](v) end
 			end
 		end
 
-		if data.__wmDocked == false then
-			U.wmDocked = false
-		else
-			U.wmDocked = true
-		end
 		if type(data.__wmPos) == "table" and U.wm then
 			local x = tonumber(data.__wmPos[1]) or 0
 			local y = tonumber(data.__wmPos[2]) or 0
 			U.wm.AnchorPoint = Vector2.new(0, 0)
 			U.wm.Position = UDim2.fromOffset(x, y)
 		end
-		if U.wmDocked then
-			task.defer(function() U.dockWatermark() end)
-		end
-		if data.__kbDocked == false then
-			U.kbDocked = false
-		else
-			U.kbDocked = true
-		end
-		if type(data.__kbPos) == "table" and U.kbPanel then
-			U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-			U.kbPanel.Position = UDim2.fromOffset(tonumber(data.__kbPos[1]) or 0, tonumber(data.__kbPos[2]) or 0)
-		end
-		if U.kbDocked then
-			task.defer(function() U.dockKeybinds() end)
-		end
 		if type(data.__alphaBreak) == "number" then
 			U.setAlphaBreak(data.__alphaBreak)
-		elseif data.__alphaBreak == false then
-			U.setAlphaBreak(nil)
+		elseif data.__alphaBreak == false or data.__alphaBreak == nil then
+			if data.__alphaBreak == false then U.setAlphaBreak(nil) end
 		end
 		
 		U.cycle.colorFlags = {}
@@ -2366,7 +2340,6 @@ function U.buildConfig()
 			return fps
 		end
 
-		local TextService = game:GetService("TextService")
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
 			wm.Visible = on
@@ -2388,8 +2361,7 @@ function U.buildConfig()
 				tw = math.ceil(wtxt.TextBounds.X)
 			end)
 			if tw < 8 then
-				local bounds = TextService:GetTextSize(out, U.TEXT_SZ, Enum.Font.RobotoMono, Vector2.new(4000, 40))
-				tw = math.ceil(bounds.X)
+				tw = #out * 8
 			end
 			tw = math.max(48, tw + 18)
 			wm.Size = UDim2.fromOffset(tw, 22)
@@ -2414,12 +2386,11 @@ function U.buildConfig()
 		refreshWm()
 
 		do
-			local GuiService = game:GetService("GuiService")
-			local dragging = false
-			local grabOffset = Vector2.zero
 			local function mouseInParent()
 				return U.UIS:GetMouseLocation()
 			end
+			local dragging = false
+			local grabOffset = Vector2.zero
 			wm.InputBegan:Connect(function(input)
 				if input.UserInputType ~= Enum.UserInputType.MouseButton1
 					and input.UserInputType ~= Enum.UserInputType.Touch then
@@ -2449,7 +2420,6 @@ function U.buildConfig()
 				end
 			end)
 
-			-- keybinds list panel
 			local kgui = Instance.new("ScreenGui")
 			kgui.Name = "wavelength_kb"
 			kgui.ResetOnSpawn = false
@@ -2461,7 +2431,7 @@ function U.buildConfig()
 			kb.BackgroundColor3 = U.theme.Background
 			kb.BorderSizePixel = 0
 			kb.Position = UDim2.fromOffset(0, 0)
-			kb.Size = UDim2.fromOffset(140, 40)
+			kb.Size = UDim2.fromOffset(120, 28)
 			kb.Active = true
 			kb.Visible = false
 			kb.Parent = kgui
@@ -2494,7 +2464,7 @@ function U.buildConfig()
 			kbList.BackgroundTransparency = 1
 			kbList.BorderSizePixel = 0
 			kbList.Position = UDim2.fromOffset(6, 6)
-			kbList.Size = UDim2.new(1, -12, 1, -10)
+			kbList.Size = UDim2.new(1, -12, 1, -12)
 			kbList.Parent = kb
 			local kbLay = Instance.new("UIListLayout")
 			kbLay.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2546,9 +2516,7 @@ function U.buildConfig()
 						tw = math.ceil(row.TextBounds.X)
 						row.Size = UDim2.new(1, 0, 0, 14)
 					end)
-					if tw < 4 then
-						tw = #line * 7
-					end
+					if tw < 4 then tw = #line * 7 end
 					maxW = math.max(maxW, tw)
 					count += 1
 				end
@@ -2982,7 +2950,8 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddKeybind(o)
 				o = o or {}
-				local r = U.mkKeybind(content, string.lower(tostring(o.Name or "key")), o.Flag or o.Name, o.Default or Enum.KeyCode.Unknown, nextOrder())
+				local listText = o.Text or o.ListText or o.Name
+				local r = U.mkKeybind(content, string.lower(tostring(o.Name or "key")), o.Flag or o.Name, o.Default or Enum.KeyCode.Unknown, nextOrder(), listText, o.ToggleFlag)
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddColorpicker(o)
