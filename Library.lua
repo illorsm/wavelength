@@ -82,15 +82,12 @@ end
 
 function U.loadFont()
 	local ok, font = pcall(function()
-		if typeof(isfile) ~= "function" or typeof(writefile) ~= "function" or typeof(getcustomasset) ~= "function" then
-			return Font.fromEnum(Enum.Font.Code)
-		end
 		local id = "ProggyClean.ttf"
 		if not isfile(id) then
 			writefile(id, game:HttpGet("https://github.com/i77lhm/storage/raw/refs/heads/main/fonts/ProggyClean.ttf"))
 		end
 		local fontFile = "ProggyClean_ExampleUI.font"
-		if isfile(fontFile) and typeof(delfile) == "function" then delfile(fontFile) end
+		if isfile(fontFile) then delfile(fontFile) end
 		writefile(fontFile, U.Http:JSONEncode({
 			name = "ProggyClean_ExampleUI",
 			faces = {{ name = "Normal", weight = 400, style = "Normal", assetId = getcustomasset(id) }},
@@ -459,11 +456,10 @@ function U.pushNotification(opts)
 	U.Tween:Create(label, fadeIn, { TextTransparency = 0 }):Play()
 	U.Tween:Create(timerStroke, fadeIn, { Transparency = 0 }):Play()
 
-	local shrink = U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+	U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
 		Size = UDim2.new(0, 0, 1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-	})
-	shrink:Play()
+	}):Play()
 
 	task.delay(duration, function()
 		local fadeOut = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -568,11 +564,7 @@ function U.shutdown()
 	for _, name in ipairs({ "wavelength_wm", "SM_ESP", "wavelength_notifs" }) do
 		
 	end
-	if U.floatHost then pcall(function() U.floatHost:Destroy() end) U.floatHost = nil end
-	if U.wmGui and U.wmGui ~= U.gui then pcall(function() U.wmGui:Destroy() end) end
-	U.wmGui = nil
-	U.kbPanel = nil
-	U.wm = nil
+	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
@@ -1967,69 +1959,106 @@ end
 function U.dockWatermark()
 	if not U.wmDocked or not U.wm or not U.wm.Parent then return end
 	if U.vflags.Watermark ~= true then return end
-	if not U.shell or not U.shell.Parent then return end
-	local h = math.max(22, U.wm.Size.Y.Offset)
+	if not U.shell then return end
+	local h = U.wm.Size.Y.Offset
+	if h < 2 then h = 22 end
 	local gap = U.dockGap or 6
-	local sp = U.shell.AbsolutePosition
+	local sp = U.shell.Position
 	U.wm.AnchorPoint = Vector2.new(0, 0)
-	U.wm.Position = UDim2.fromOffset(math.floor(sp.X + 0.5), math.floor(sp.Y - h - gap + 0.5))
+	U.wm.Position = UDim2.new(sp.X.Scale, sp.X.Offset, sp.Y.Scale, sp.Y.Offset - h - gap)
 end
 
 function U.dockKeybinds()
 	if not U.kbDocked or not U.kbPanel or not U.kbPanel.Parent then return end
 	if U.vflags.KeybindsList ~= true then return end
-	if not U.shell or not U.shell.Parent then return end
+	if not U.shell then return end
 	local gap = U.dockGap or 6
-	local sp = U.shell.AbsolutePosition
-	local ss = U.shell.AbsoluteSize
+	local sp = U.shell.Position
+	local sw = U.shell.Size.X.Offset
+	if sw < 2 then sw = U.BODY_W end
 	U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-	U.kbPanel.Position = UDim2.fromOffset(math.floor(sp.X + ss.X + gap + 0.5), math.floor(sp.Y + 0.5))
+	U.kbPanel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
 end
 
-function U.dockSlotRect(kind)
-	if not U.shell or not U.shell.Parent then return nil end
-	local sp = U.shell.AbsolutePosition
-	local ss = U.shell.AbsoluteSize
-	local gap = U.dockGap or 6
-	if kind == "wm" then
-		local h = (U.wm and math.max(22, U.wm.Size.Y.Offset)) or 22
-		local w = (U.wm and math.max(40, U.wm.Size.X.Offset)) or 80
-		return sp.X, sp.Y - h - gap, w, h
-	else
-		local h = (U.kbPanel and math.max(22, U.kbPanel.Size.Y.Offset)) or 28
-		local w = (U.kbPanel and math.max(48, U.kbPanel.Size.X.Offset)) or 120
-		return sp.X + ss.X + gap, sp.Y, w, h
+function U.ensureSnapGhosts()
+	if not U.gui then return end
+	if not U.wmSnapGhost or not U.wmSnapGhost.Parent then
+		local g = Instance.new("Frame")
+		g.Name = "WmSnapGhost"
+		g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+		g.BackgroundTransparency = 0.55
+		g.BorderSizePixel = 0
+		g.Visible = false
+		g.ZIndex = 40
+		g.Parent = U.gui
+		U.wmSnapGhost = g
+	end
+	if not U.kbSnapGhost or not U.kbSnapGhost.Parent then
+		local g = Instance.new("Frame")
+		g.Name = "KbSnapGhost"
+		g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
+		g.BackgroundTransparency = 0.55
+		g.BorderSizePixel = 0
+		g.Visible = false
+		g.ZIndex = 40
+		g.Parent = U.gui
+		U.kbSnapGhost = g
 	end
 end
 
 function U.showSnapGhost(kind)
-	local r = U.dockSlotRect(kind)
-	if not r then return end
-	local x, y, w, h = r
-	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
-	if not ghost then return end
-	ghost.Size = UDim2.fromOffset(w, h)
-	ghost.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-	ghost.Visible = true
+	U.ensureSnapGhosts()
+	if not U.shell then return end
+	local gap = U.dockGap or 6
+	local sp = U.shell.Position
+	local sw = U.shell.Size.X.Offset
+	if sw < 2 then sw = U.BODY_W end
+	if kind == "wm" then
+		local h = (U.wm and U.wm.Size.Y.Offset) or 22
+		local w = (U.wm and U.wm.Size.X.Offset) or 80
+		if h < 2 then h = 22 end
+		if w < 2 then w = 80 end
+		U.wmSnapGhost.Size = UDim2.fromOffset(w, h)
+		U.wmSnapGhost.Position = UDim2.new(sp.X.Scale, sp.X.Offset, sp.Y.Scale, sp.Y.Offset - h - gap)
+		U.wmSnapGhost.Visible = true
+	else
+		local h = (U.kbPanel and U.kbPanel.Size.Y.Offset) or 28
+		local w = (U.kbPanel and U.kbPanel.Size.X.Offset) or 120
+		if h < 2 then h = 28 end
+		if w < 2 then w = 120 end
+		U.kbSnapGhost.Size = UDim2.fromOffset(w, h)
+		U.kbSnapGhost.Position = UDim2.new(sp.X.Scale, sp.X.Offset + sw + gap, sp.Y.Scale, sp.Y.Offset)
+		U.kbSnapGhost.Visible = true
+	end
 end
 
 function U.hideSnapGhost(kind)
-	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
-	if ghost then ghost.Visible = false end
+	if kind == "wm" and U.wmSnapGhost then U.wmSnapGhost.Visible = false end
+	if kind == "kb" and U.kbSnapGhost then U.kbSnapGhost.Visible = false end
 end
 
 function U.overlapsSnap(kind, frame)
-	local r = U.dockSlotRect(kind)
-	if not r or not frame then return false end
-	local x, y, w, h = r
-	local p = frame.AbsolutePosition
-	local s = frame.AbsoluteSize
-	local cx, cy = p.X + s.X * 0.5, p.Y + s.Y * 0.5
-	return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+	if not frame or not U.shell then return false end
+	local ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
+	if not ghost or not ghost.Visible then
+		U.showSnapGhost(kind)
+		ghost = (kind == "wm") and U.wmSnapGhost or U.kbSnapGhost
+	end
+	if not ghost then return false end
+	local gp = ghost.AbsolutePosition
+	local gs = ghost.AbsoluteSize
+	local fp = frame.AbsolutePosition
+	local fs = frame.AbsoluteSize
+	local cx = fp.X + fs.X * 0.5
+	local cy = fp.Y + fs.Y * 0.5
+	return cx >= gp.X and cx <= gp.X + gs.X and cy >= gp.Y and cy <= gp.Y + gs.Y
 end
 
 function U.syncFloatingVisibility()
 	local menuOn = U.menuOpen ~= false
+	if U.shell then
+		U.shell.Visible = menuOn
+	end
 	if U.wm then
 		local on = U.vflags.Watermark == true
 		U.wm.Visible = on and (menuOn or not U.wmDocked)
@@ -2142,12 +2171,12 @@ function U.buildConfig()
 		data.__wmDocked = U.wmDocked == true
 		data.__kbDocked = U.kbDocked == true
 		if U.wm and U.wm.Parent then
-			local abs = U.wm.AbsolutePosition
-			data.__wmPos = { abs.X, abs.Y }
+			local p = U.wm.Position
+			data.__wmPos = { p.X.Scale, p.X.Offset, p.Y.Scale, p.Y.Offset }
 		end
 		if U.kbPanel and U.kbPanel.Parent then
-			local abs = U.kbPanel.AbsolutePosition
-			data.__kbPos = { abs.X, abs.Y }
+			local p = U.kbPanel.Position
+			data.__kbPos = { p.X.Scale, p.X.Offset, p.Y.Scale, p.Y.Offset }
 		end
 		if U.cycle.alphaBreak ~= nil then
 			data.__alphaBreak = U.cycle.alphaBreak
@@ -2183,16 +2212,26 @@ function U.buildConfig()
 		if data.__wmDocked ~= nil then U.wmDocked = data.__wmDocked == true end
 		if data.__kbDocked ~= nil then U.kbDocked = data.__kbDocked == true end
 		if type(data.__wmPos) == "table" and U.wm then
-			local x = tonumber(data.__wmPos[1]) or 0
-			local y = tonumber(data.__wmPos[2]) or 0
 			U.wm.AnchorPoint = Vector2.new(0, 0)
-			U.wm.Position = UDim2.fromOffset(x, y)
+			if #data.__wmPos >= 4 then
+				U.wm.Position = UDim2.new(
+					tonumber(data.__wmPos[1]) or 0, tonumber(data.__wmPos[2]) or 0,
+					tonumber(data.__wmPos[3]) or 0, tonumber(data.__wmPos[4]) or 0
+				)
+			else
+				U.wm.Position = UDim2.fromOffset(tonumber(data.__wmPos[1]) or 0, tonumber(data.__wmPos[2]) or 0)
+			end
 		end
 		if type(data.__kbPos) == "table" and U.kbPanel then
-			local x = tonumber(data.__kbPos[1]) or 0
-			local y = tonumber(data.__kbPos[2]) or 0
 			U.kbPanel.AnchorPoint = Vector2.new(0, 0)
-			U.kbPanel.Position = UDim2.fromOffset(x, y)
+			if #data.__kbPos >= 4 then
+				U.kbPanel.Position = UDim2.new(
+					tonumber(data.__kbPos[1]) or 0, tonumber(data.__kbPos[2]) or 0,
+					tonumber(data.__kbPos[3]) or 0, tonumber(data.__kbPos[4]) or 0
+				)
+			else
+				U.kbPanel.Position = UDim2.fromOffset(tonumber(data.__kbPos[1]) or 0, tonumber(data.__kbPos[2]) or 0)
+			end
 		end
 		if type(data.__alphaBreak) == "number" then
 			U.setAlphaBreak(data.__alphaBreak)
@@ -2355,27 +2394,6 @@ function U.buildConfig()
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 
 	do
-		local floatHost = Instance.new("ScreenGui")
-		floatHost.Name = "wavelength_float"
-		floatHost.ResetOnSpawn = false
-		floatHost.IgnoreGuiInset = true
-		floatHost.DisplayOrder = 100
-		floatHost.Parent = U.guiParent()
-		U.floatHost = floatHost
-
-		local function makeGhost()
-			local g = Instance.new("Frame")
-			g.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-			g.BackgroundTransparency = 0.55
-			g.BorderSizePixel = 0
-			g.Visible = false
-			g.ZIndex = 1
-			g.Parent = floatHost
-			return g
-		end
-		U.wmSnapGhost = makeGhost()
-		U.kbSnapGhost = makeGhost()
-
 		local wm = Instance.new("Frame")
 		wm.Name = "Watermark"
 		wm.BackgroundColor3 = U.theme.Background
@@ -2385,10 +2403,11 @@ function U.buildConfig()
 		wm.Size = UDim2.fromOffset(80, 22)
 		wm.Active = true
 		wm.Visible = false
-		wm.ZIndex = 10
-		wm.Parent = floatHost
+		wm.ZIndex = 50
+		wm.Parent = U.gui
 		U.wm = wm
-		U.wmGui = floatHost
+		U.wmGui = U.gui
+		U.themeReg.bgs[#U.themeReg.bgs + 1] = wm
 		local wst = Instance.new("UIStroke")
 		wst.Thickness = 2
 		wst.Color = U.theme.Border
@@ -2399,7 +2418,7 @@ function U.buildConfig()
 		wbar.Size = UDim2.new(1, 0, 0, 2)
 		wbar.BorderSizePixel = 0
 		wbar.BackgroundColor3 = Color3.new(1, 1, 1)
-		wbar.ZIndex = 11
+		wbar.ZIndex = 2
 		wbar.Parent = wm
 		local wg = Instance.new("UIGradient")
 		wg.Color = U.accentSequence()
@@ -2435,6 +2454,7 @@ function U.buildConfig()
 				frames = 0
 			end
 		end)
+
 		local Stats = game:GetService("Stats")
 		local function getRobloxPing()
 			local ok, v = pcall(function()
@@ -2452,10 +2472,8 @@ function U.buildConfig()
 
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
-			if not on then
-				wm.Visible = false
-				return
-			end
+			wm.Visible = on
+			if not on then return end
 			local parts = {}
 			for _, item in ipairs(U.vflags.WatermarkItems or {}) do
 				if item == "message" then parts[#parts + 1] = tostring(U.vflags.WatermarkMessage or "")
@@ -2486,177 +2504,178 @@ function U.buildConfig()
 		U.onFlag("WatermarkItems", refreshWm)
 		U.onFlag("WatermarkMessage", refreshWm)
 		task.spawn(function()
-			while U.running do
-				task.wait(0.25)
-				if U.vflags.Watermark then refreshWm() end
-			end
+			while U.running do task.wait(0.25); if U.vflags.Watermark then refreshWm() end end
 		end)
+		refreshWm()
 
-		local wmDragging, wmDragStart, wmStartPos
-		wm.InputBegan:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseButton1
-				and input.UserInputType ~= Enum.UserInputType.Touch then
-				return
-			end
-			wmDragging = true
-			wmDragStart = input.Position
-			wmStartPos = wm.Position
-			U.wmDocked = false
-			U.showSnapGhost("wm")
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					wmDragging = false
-					if U.overlapsSnap("wm", wm) then
-						U.wmDocked = true
-						U.dockWatermark()
+		do
+			local dragging, dragStart, startPos
+			wm.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				dragging = true
+				dragStart = input.Position
+				startPos = wm.Position
+				U.wmDocked = false
+				U.showSnapGhost("wm")
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						dragging = false
+						if U.overlapsSnap("wm", wm) then
+							U.wmDocked = true
+							U.dockWatermark()
+						end
+						U.hideSnapGhost("wm")
+						U.syncFloatingVisibility()
 					end
-					U.hideSnapGhost("wm")
-					U.syncFloatingVisibility()
+				end)
+			end)
+			U.UIS.InputChanged:Connect(function(input)
+				if not dragging then return end
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local d = input.Position - dragStart
+				wm.Position = UDim2.new(
+					startPos.X.Scale, startPos.X.Offset + d.X,
+					startPos.Y.Scale, startPos.Y.Offset + d.Y
+				)
+				U.showSnapGhost("wm")
+			end)
+
+			local kb = Instance.new("Frame")
+			kb.Name = "KeybindsPanel"
+			kb.BackgroundColor3 = U.theme.Background
+			kb.BorderSizePixel = 0
+			kb.Position = UDim2.fromOffset(0, 0)
+			kb.Size = UDim2.fromOffset(120, 28)
+			kb.Active = true
+			kb.Visible = false
+			kb.ZIndex = 50
+			kb.Parent = U.gui
+			U.kbPanel = kb
+			U.themeReg.bgs[#U.themeReg.bgs + 1] = kb
+			local kst = Instance.new("UIStroke")
+			kst.Thickness = 2
+			kst.Color = U.theme.Border
+			kst.LineJoinMode = Enum.LineJoinMode.Miter
+			kst.Parent = kb
+			U.themeReg.borders[#U.themeReg.borders + 1] = kst
+			local kbar = Instance.new("Frame")
+			kbar.Size = UDim2.new(1, 0, 0, 2)
+			kbar.BorderSizePixel = 0
+			kbar.BackgroundColor3 = Color3.new(1, 1, 1)
+			kbar.ZIndex = 51
+			kbar.Parent = kb
+			local kg = Instance.new("UIGradient")
+			kg.Color = U.accentSequence()
+			kg.Parent = kbar
+			U.themeReg.accents[#U.themeReg.accents + 1] = kg
+			task.spawn(function()
+				while kbar.Parent do
+					kg.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
+					task.wait(0.03)
 				end
 			end)
-		end)
-		U.UIS.InputChanged:Connect(function(input)
-			if not wmDragging then return end
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement
-				and input.UserInputType ~= Enum.UserInputType.Touch then
-				return
-			end
-			local d = input.Position - wmDragStart
-			wm.Position = UDim2.new(
-				wmStartPos.X.Scale, wmStartPos.X.Offset + d.X,
-				wmStartPos.Y.Scale, wmStartPos.Y.Offset + d.Y
-			)
-			U.showSnapGhost("wm")
-		end)
+			local kbList = Instance.new("Frame")
+			kbList.Name = "List"
+			kbList.BackgroundTransparency = 1
+			kbList.BorderSizePixel = 0
+			kbList.Position = UDim2.fromOffset(6, 6)
+			kbList.Size = UDim2.new(1, -12, 1, -12)
+			kbList.Parent = kb
+			local kbLay = Instance.new("UIListLayout")
+			kbLay.SortOrder = Enum.SortOrder.LayoutOrder
+			kbLay.Padding = UDim.new(0, 2)
+			kbLay.Parent = kbList
 
-		local kb = Instance.new("Frame")
-		kb.Name = "KeybindsPanel"
-		kb.BackgroundColor3 = U.theme.Background
-		kb.BorderSizePixel = 0
-		kb.Position = UDim2.fromOffset(0, 0)
-		kb.Size = UDim2.fromOffset(120, 28)
-		kb.Active = true
-		kb.Visible = false
-		kb.ZIndex = 10
-		kb.Parent = floatHost
-		U.kbPanel = kb
-		local kst = Instance.new("UIStroke")
-		kst.Thickness = 2
-		kst.Color = U.theme.Border
-		kst.LineJoinMode = Enum.LineJoinMode.Miter
-		kst.Parent = kb
-		U.themeReg.borders[#U.themeReg.borders + 1] = kst
-		local kbar = Instance.new("Frame")
-		kbar.Size = UDim2.new(1, 0, 0, 2)
-		kbar.BorderSizePixel = 0
-		kbar.BackgroundColor3 = Color3.new(1, 1, 1)
-		kbar.ZIndex = 11
-		kbar.Parent = kb
-		local kg = Instance.new("UIGradient")
-		kg.Color = U.accentSequence()
-		kg.Parent = kbar
-		U.themeReg.accents[#U.themeReg.accents + 1] = kg
-		task.spawn(function()
-			while kbar.Parent do
-				kg.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
-				task.wait(0.03)
-			end
-		end)
-		local kbList = Instance.new("Frame")
-		kbList.Name = "List"
-		kbList.BackgroundTransparency = 1
-		kbList.BorderSizePixel = 0
-		kbList.Position = UDim2.fromOffset(6, 6)
-		kbList.Size = UDim2.new(1, -12, 1, -12)
-		kbList.Parent = kb
-		local kbLay = Instance.new("UIListLayout")
-		kbLay.SortOrder = Enum.SortOrder.LayoutOrder
-		kbLay.Padding = UDim.new(0, 2)
-		kbLay.Parent = kbList
-
-		function U.refreshKeybindList()
-			if U._kbRefreshing or not U.kbPanel then return end
-			U._kbRefreshing = true
-			local on = U.vflags.KeybindsList == true
-			if not on then
-				U.kbPanel.Visible = false
+			function U.refreshKeybindList()
+				if U._kbRefreshing or not U.kbPanel then return end
+				U._kbRefreshing = true
+				if U.vflags.KeybindsList ~= true then
+					U.kbPanel.Visible = false
+					U._kbRefreshing = false
+					return
+				end
+				for _, c in ipairs(kbList:GetChildren()) do
+					if c:IsA("TextLabel") then c:Destroy() end
+				end
+				local pad = 6
+				local maxW = 40
+				local count = 0
+				for i, e in ipairs(U.keybindListEntries or {}) do
+					local key = U.keyNameOf(U.vflags[e.keyFlag])
+					local line = tostring(e.listText) .. " [" .. key .. "]"
+					local row = Instance.new("TextLabel")
+					row.BackgroundTransparency = 1
+					row.Size = UDim2.new(1, 0, 0, 14)
+					row.FontFace = U.font
+					row.TextSize = U.TEXT_SZ
+					row.TextXAlignment = Enum.TextXAlignment.Left
+					row.Text = line
+					row.LayoutOrder = i
+					row.Parent = kbList
+					local enabled = U.vflags[e.toggleFlag] == true
+					row.TextColor3 = enabled and U.theme.Text or (U.GRAY_TEXT or Color3.fromRGB(90, 90, 90))
+					row:SetAttribute("KbActive", enabled)
+					maxW = math.max(maxW, #line * 7)
+					count += 1
+				end
+				U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
+				kbList.Position = UDim2.fromOffset(pad, pad)
+				kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
+				if U.kbDocked then U.dockKeybinds() end
+				U.syncFloatingVisibility()
 				U._kbRefreshing = false
-				return
 			end
-			for _, c in ipairs(kbList:GetChildren()) do
-				if c:IsA("TextLabel") then c:Destroy() end
-			end
-			local pad = 6
-			local maxW = 40
-			local count = 0
-			for i, e in ipairs(U.keybindListEntries or {}) do
-				local key = U.keyNameOf(U.vflags[e.keyFlag])
-				local line = tostring(e.listText) .. " [" .. key .. "]"
-				local row = Instance.new("TextLabel")
-				row.BackgroundTransparency = 1
-				row.Size = UDim2.new(1, 0, 0, 14)
-				row.FontFace = U.font
-				row.TextSize = U.TEXT_SZ
-				row.TextXAlignment = Enum.TextXAlignment.Left
-				row.Text = line
-				row.LayoutOrder = i
-				row.Parent = kbList
-				local enabled = U.vflags[e.toggleFlag] == true
-				row.TextColor3 = enabled and U.theme.Text or (U.GRAY_TEXT or Color3.fromRGB(90, 90, 90))
-				row:SetAttribute("KbActive", enabled)
-				maxW = math.max(maxW, #line * 7)
-				count += 1
-			end
-			U.kbPanel.Size = UDim2.fromOffset(math.max(48, maxW + pad * 2), math.max(22, count * 16 + pad * 2))
-			kbList.Position = UDim2.fromOffset(pad, pad)
-			kbList.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
-			if U.kbDocked then U.dockKeybinds() end
-			U.syncFloatingVisibility()
-			U._kbRefreshing = false
-		end
 
-		U.onFlag("KeybindsList", function()
-			U.refreshKeybindList()
-			if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
-			U.syncFloatingVisibility()
-		end)
-
-		local kbDragging, kbDragStart, kbStartPos
-		kb.InputBegan:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseButton1
-				and input.UserInputType ~= Enum.UserInputType.Touch then
-				return
-			end
-			kbDragging = true
-			kbDragStart = input.Position
-			kbStartPos = kb.Position
-			U.kbDocked = false
-			U.showSnapGhost("kb")
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					kbDragging = false
-					if U.overlapsSnap("kb", kb) then
-						U.kbDocked = true
-						U.dockKeybinds()
-					end
-					U.hideSnapGhost("kb")
-					U.syncFloatingVisibility()
-				end
+			U.onFlag("KeybindsList", function()
+				U.refreshKeybindList()
+				if U.vflags.KeybindsList and U.kbDocked then U.dockKeybinds() end
+				U.syncFloatingVisibility()
 			end)
-		end)
-		U.UIS.InputChanged:Connect(function(input)
-			if not kbDragging then return end
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement
-				and input.UserInputType ~= Enum.UserInputType.Touch then
-				return
-			end
-			local d = input.Position - kbDragStart
-			kb.Position = UDim2.new(
-				kbStartPos.X.Scale, kbStartPos.X.Offset + d.X,
-				kbStartPos.Y.Scale, kbStartPos.Y.Offset + d.Y
-			)
-			U.showSnapGhost("kb")
-		end)
+
+			local kbDragging, kbDragStart, kbStartPos
+			kb.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				kbDragging = true
+				kbDragStart = input.Position
+				kbStartPos = kb.Position
+				U.kbDocked = false
+				U.showSnapGhost("kb")
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						kbDragging = false
+						if U.overlapsSnap("kb", kb) then
+							U.kbDocked = true
+							U.dockKeybinds()
+						end
+						U.hideSnapGhost("kb")
+						U.syncFloatingVisibility()
+					end
+				end)
+			end)
+			U.UIS.InputChanged:Connect(function(input)
+				if not kbDragging then return end
+				if input.UserInputType ~= Enum.UserInputType.MouseMovement
+					and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local d = input.Position - kbDragStart
+				kb.Position = UDim2.new(
+					kbStartPos.X.Scale, kbStartPos.X.Offset + d.X,
+					kbStartPos.Y.Scale, kbStartPos.Y.Offset + d.Y
+				)
+				U.showSnapGhost("kb")
+			end)
+		end
+	end
 
 	local unloadBtn = U.mkButton(settingsSec, "unload", nextOrder())
 	local unloadArmed = false
@@ -2837,7 +2856,6 @@ function U.bindInput()
 		local key = U.vflags.MenuKeybind or Enum.KeyCode.RightShift
 		if input.KeyCode == key then
 			U.menuOpen = not U.menuOpen
-			U.gui.Enabled = U.menuOpen
 			if not U.menuOpen then U.closePopups() end
 			U.syncFloatingVisibility()
 			if U.menuOpen then
