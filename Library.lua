@@ -2970,6 +2970,7 @@ function U.bindInput()
 		U._conns[#U._conns + 1] = conn
 		return conn
 	end
+
 	track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1
 			and input.UserInputType ~= Enum.UserInputType.Touch then
@@ -2984,7 +2985,7 @@ function U.bindInput()
 				U.closeSettings()
 			end
 		end)
-	end)
+	end))
 
 	do
 		local dragging, dragStart, startPos
@@ -3001,9 +3002,9 @@ function U.bindInput()
 				if input.UserInputState == Enum.UserInputState.End then dragging = false end
 			end)
 		end
-		U.titleBar.InputBegan:Connect(beginDrag)
-		U.accent.InputBegan:Connect(beginDrag)
-		U.UIS.InputChanged:Connect(function(input)
+		track(U.titleBar.InputBegan:Connect(beginDrag))
+		track(U.accent.InputBegan:Connect(beginDrag))
+		track(U.UIS.InputChanged:Connect(function(input)
 			if not dragging then return end
 			if input.UserInputType == Enum.UserInputType.MouseMovement
 				or input.UserInputType == Enum.UserInputType.Touch then
@@ -3015,7 +3016,7 @@ function U.bindInput()
 				if U.wmDocked then U.dockWatermark() end
 				if U.kbDocked then U.dockKeybinds() end
 			end
-		end)
+		end))
 	end
 
 	U.menuOpen = true
@@ -3023,7 +3024,8 @@ function U.bindInput()
 		if U.wmDocked then U.dockWatermark() end
 		if U.kbDocked then U.dockKeybinds() end
 	end)
-	U.UIS.InputBegan:Connect(function(input, gp)
+
+	track(U.UIS.InputBegan:Connect(function(input, gp)
 		if gp then return end
 		local key = U.vflags.MenuKeybind or Enum.KeyCode.RightShift
 		if input.KeyCode == key then
