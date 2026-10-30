@@ -32,10 +32,10 @@ U.keybindListEntries = U.keybindListEntries or {}
 U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
-U.ELEMENT_BORDER = 1.5
+U.ELEMENT_BORDER = 1
 
 function U.controlStroke(parent, thick)
-	thick = thick or U.ELEMENT_BORDER or 1.5
+	thick = thick or U.ELEMENT_BORDER or 1
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -1051,7 +1051,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	step = step or 1
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
-	r.Size = UDim2.new(1, 0, 0, 32)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	U.vflags[flag] = default
 
 	local name = Instance.new("TextLabel")
@@ -1079,7 +1079,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
 	track.Size = UDim2.new(1, 0, 0, 8)
-	track.Position = UDim2.fromOffset(0, 16)
+	track.Position = UDim2.fromOffset(0, 14)
 	track.Parent = r
 	U.controlStroke(track)
 
@@ -1154,7 +1154,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	infAtMax = infAtMax == true
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
-	r.Size = UDim2.new(1, 0, 0, 32)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	defMin = defMin or minV
 	defMax = defMax or maxV
 	if defMin > defMax then defMin, defMax = defMax, defMin end
@@ -1185,7 +1185,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
 	track.Size = UDim2.new(1, 0, 0, 8)
-	track.Position = UDim2.fromOffset(0, 16)
+	track.Position = UDim2.fromOffset(0, 14)
 	track.Parent = r
 	U.controlStroke(track)
 
@@ -1388,7 +1388,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		end
-		local eb = U.ELEMENT_BORDER or 1.5
+		local eb = U.ELEMENT_BORDER or 1
 		edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
@@ -1753,8 +1753,11 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		pop.Parent = U.gui
 		local pst = Instance.new("UIStroke")
 		pst.Color = U.theme.Border
-		pst.Thickness = 1
+		pst.Thickness = 2
+		pst.LineJoinMode = Enum.LineJoinMode.Miter
 		pst.Parent = pop
+		U.themeReg.borders = U.themeReg.borders or {}
+		U.themeReg.borders[#U.themeReg.borders + 1] = pst
 
 		local titleLbl = Instance.new("TextLabel")
 		titleLbl.BackgroundTransparency = 1
@@ -1777,6 +1780,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		map.Position = UDim2.fromOffset(PAD, mapY)
 		map.ZIndex = 221
 		map.Parent = pop
+		U.controlStroke(map)
 
 		local white = Instance.new("Frame")
 		white.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -1810,10 +1814,11 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		mapDot.AnchorPoint = Vector2.new(0.5, 0.5)
 		mapDot.BackgroundColor3 = Color3.new(1, 1, 1)
 		mapDot.BorderSizePixel = 0
-		mapDot.ZIndex = 224
+		mapDot.ZIndex = 230
 		mapDot.Parent = map
 		local mds = Instance.new("UIStroke")
 		mds.Color = Color3.new(0, 0, 0)
+		mds.Thickness = 1
 		mds.Parent = mapDot
 
 		local hueBar = Instance.new("ImageButton")
@@ -1824,6 +1829,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		hueBar.BackgroundColor3 = Color3.new(1, 1, 1)
 		hueBar.ZIndex = 221
 		hueBar.Parent = pop
+		U.controlStroke(hueBar)
 		local hg = Instance.new("UIGradient")
 		hg.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
@@ -1841,7 +1847,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		hueDot.Position = UDim2.new(h, 0, 0.5, 0)
 		hueDot.BackgroundColor3 = Color3.new(1, 1, 1)
 		hueDot.BorderSizePixel = 0
-		hueDot.ZIndex = 223
+		hueDot.ZIndex = 230
 		hueDot.Parent = hueBar
 		local hds = Instance.new("UIStroke")
 		hds.Color = Color3.new(0, 0, 0)
@@ -1859,6 +1865,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		colorTog.BorderSizePixel = 0
 		colorTog.ZIndex = 221
 		colorTog.Parent = pop
+		U.controlStroke(colorTog)
 		U.registerPulse(colorTog, function() return U.vflags[flagKey .. "CycleColor"] == true end)
 		colorTog.MouseButton1Click:Connect(function()
 			local on = not (U.vflags[flagKey .. "CycleColor"] == true)
@@ -1881,6 +1888,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaBar.BackgroundColor3 = Color3.fromHSV(h, sat, val)
 			alphaBar.ZIndex = 221
 			alphaBar.Parent = pop
+			U.controlStroke(alphaBar)
 			local ag = Instance.new("UIGradient")
 			ag.Rotation = 0
 			ag.Transparency = NumberSequence.new({
@@ -1894,7 +1902,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaDot.Position = UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0)
 			alphaDot.BackgroundColor3 = Color3.new(1, 1, 1)
 			alphaDot.BorderSizePixel = 0
-			alphaDot.ZIndex = 223
+			alphaDot.ZIndex = 230
 			alphaDot.Parent = alphaBar
 			local breakLine = Instance.new("Frame")
 			breakLine.Name = "AlphaBreak"
@@ -1903,7 +1911,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			breakLine.Position = UDim2.new(U.cycle.alphaBreak or 0, 0, 0.5, 0)
 			breakLine.BackgroundColor3 = Color3.fromRGB(220, 40, 40)
 			breakLine.BorderSizePixel = 0
-			breakLine.ZIndex = 224
+			breakLine.ZIndex = 231
 			breakLine.Visible = U.cycle.alphaBreak ~= nil
 			breakLine.Parent = alphaBar
 			U.registerAlphaBreakMarker(breakLine)
@@ -1932,6 +1940,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaTog.BorderSizePixel = 0
 			alphaTog.ZIndex = 221
 			alphaTog.Parent = pop
+			U.controlStroke(alphaTog)
 			U.registerPulse(alphaTog, function() return U.vflags[flagKey .. "CycleAlpha"] == true end)
 			alphaTog.MouseButton1Click:Connect(function()
 				local on = not (U.vflags[flagKey .. "CycleAlpha"] == true)
@@ -2526,8 +2535,8 @@ function U.buildConfig()
 				U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 				U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 			end
-			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 1.5)), UDim2.fromOffset(0, 0))
-			local eb = U.ELEMENT_BORDER or 1.5
+			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 1)), UDim2.fromOffset(0, 0))
+			local eb = U.ELEMENT_BORDER or 1
 			edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
 			edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 			edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
