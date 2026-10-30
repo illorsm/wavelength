@@ -481,7 +481,7 @@ function U.notifAnchor(pos)
 end
 
 function U.layoutNotifs()
-	local pos = U.vflags.NotificationPosition or "bottom right"
+	local pos = U.vflags.NotificationPosition or "center"
 	local anchor, base, dir = U.notifAnchor(pos)
 	local gap, y = 6, 0
 	for i, entry in ipairs(U.activeNotifs) do
@@ -575,8 +575,9 @@ function U.pushNotification(opts)
 	timerWrap.Name = "Timer"
 	timerWrap.BackgroundTransparency = 1
 	timerWrap.BorderSizePixel = 0
+	timerWrap.ClipsDescendants = true
 	timerWrap.Position = UDim2.fromOffset(0, h + 2)
-	timerWrap.Size = UDim2.new(1, 0, 0, 3)
+	timerWrap.Size = UDim2.new(1, 0, 0, 4)
 	timerWrap.ZIndex = 3
 	timerWrap.Parent = holder
 	local timerFill = Instance.new("Frame")
@@ -588,14 +589,14 @@ function U.pushNotification(opts)
 	timerFill.ZIndex = 4
 	timerFill.Parent = timerWrap
 	local timerStroke = Instance.new("UIStroke")
-	timerStroke.Thickness = 1
+	timerStroke.Thickness = 2
 	timerStroke.Color = U.theme.Border
 	timerStroke.LineJoinMode = Enum.LineJoinMode.Miter
 	timerStroke.Transparency = 1
 	timerStroke.Parent = timerFill
 	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
 
-	local entry = { frame = holder, gui = nGui, h = h + 5 }
+	local entry = { frame = holder, gui = nGui, h = h + 6 }
 	table.insert(U.activeNotifs, entry)
 	U.layoutNotifs()
 
@@ -607,10 +608,15 @@ function U.pushNotification(opts)
 	U.Tween:Create(timerStroke, fadeIn, { Transparency = 0 }):Play()
 	U.Tween:Create(timerFill, fadeIn, { BackgroundTransparency = 0 }):Play()
 
-	U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+	local shrink = U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
 		Size = UDim2.new(0, 0, 1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-	}):Play()
+		Position = UDim2.fromOffset(0, 0),
+	})
+	shrink:Play()
+	shrink.Completed:Connect(function()
+		if timerFill then timerFill.Visible = false end
+		if timerStroke then timerStroke.Enabled = false end
+	end)
 
 	task.delay(duration, function()
 		local fadeOut = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -718,6 +724,10 @@ function U.shutdown()
 	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui = nil U.tooltipFrame = nil end
 	if U.wmGui then pcall(function() U.wmGui:Destroy() end) U.wmGui = nil end
 	if U.wm then pcall(function() U.wm:Destroy() end) U.wm = nil end
+	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) U.kbPanel = nil end
+	U.keybindListEntries = {}
+	U._kbListen = {}
+	U.keybindTargets = {}
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	if U.notifGui then pcall(function() U.notifGui:Destroy() end) U.notifGui = nil end
 
@@ -1001,8 +1011,8 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindList
 	return r
 end
 
-function U.formatSliderVal(val, step, suffix, maxV, infAt)
-	if infAt and val >= maxV then return "inf" .. (suffix or "") end
+function U.formatSliderVal(val, step, suffix, maxV, infAtMax)
+	if infAtMax and val >= maxV then return "inf" end
 	step = tonumber(step) or 1
 	local s
 	if step >= 1 then
@@ -1119,9 +1129,10 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	return r
 end
 
-function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix, tooltip)
+function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix, tooltip, infAtMax)
 	step = step or 1
 	suffix = suffix or ""
+	infAtMax = infAtMax == true
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
 	r.Size = UDim2.new(1, 0, 0, 32)
@@ -1199,7 +1210,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		fill.Size = UDim2.fromOffset(math.max(0, x1 - x0), h - 2)
 		capA.Position = UDim2.fromOffset(x0, h * 0.5)
 		capB.Position = UDim2.fromOffset(x1, h * 0.5)
-		valLbl.Text = U.formatSliderVal(a, step, "", maxV, nil) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, nil)
+		valLbl.Text = U.formatSliderVal(a, step, "", maxV, false) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, infAtMax)
 	end
 	refresh()
 
@@ -1621,12 +1632,13 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	sw.BorderSizePixel = 0
 	sw.ZIndex = 12
 	sw.Parent = rowFrame
+	U.controlStroke(sw, 1)
 
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
 	swFill.BorderSizePixel = 0
-	swFill.Size = UDim2.fromScale(1, 1)
-	swFill.Position = UDim2.fromOffset(0, 0)
+	swFill.Size = UDim2.new(1, -2, 1, -2)
+	swFill.Position = UDim2.fromOffset(1, 1)
 	swFill.BackgroundColor3 = defaultColor
 	swFill.BackgroundTransparency = (not noAlpha) and (U.vflags[alphaKey] or 0) or 0
 	swFill.ZIndex = 13
@@ -2122,31 +2134,30 @@ end
 function U.ensureSnapGhosts()
 	if not U.gui then return end
 	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
-	if not U.wmSnapGhost or not U.wmSnapGhost.Parent then
+	U.themeReg.borders = U.themeReg.borders or {}
+	local function mkGhost(name)
 		local g = Instance.new("Frame")
-		g.Name = "WmSnapGhost"
+		g.Name = name
 		g.BackgroundColor3 = U.theme.Background
 		g.BackgroundTransparency = 0.35
 		g.BorderSizePixel = 0
 		g.Visible = false
 		g.ZIndex = 40
 		g.Parent = U.gui
-		U.controlStroke(g, 1)
-		U.wmSnapGhost = g
+		local st = Instance.new("UIStroke")
+		st.Thickness = 2
+		st.Color = U.theme.Border
+		st.LineJoinMode = Enum.LineJoinMode.Miter
+		st.Parent = g
+		U.themeReg.borders[#U.themeReg.borders + 1] = st
 		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
+		return g
+	end
+	if not U.wmSnapGhost or not U.wmSnapGhost.Parent then
+		U.wmSnapGhost = mkGhost("WmSnapGhost")
 	end
 	if not U.kbSnapGhost or not U.kbSnapGhost.Parent then
-		local g = Instance.new("Frame")
-		g.Name = "KbSnapGhost"
-		g.BackgroundColor3 = U.theme.Background
-		g.BackgroundTransparency = 0.35
-		g.BorderSizePixel = 0
-		g.Visible = false
-		g.ZIndex = 40
-		g.Parent = U.gui
-		U.controlStroke(g, 1)
-		U.kbSnapGhost = g
-		U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = g
+		U.kbSnapGhost = mkGhost("KbSnapGhost")
 	end
 	if U.wmSnapGhost then
 		U.wmSnapGhost.BackgroundColor3 = U.theme.Background
@@ -2433,7 +2444,7 @@ function U.buildConfig()
 		if ok then
 			selectedConfig = name
 			refreshConfigList()
-			U.pushNotification({ text = 'created "' .. name .. '" main config', duration = 2 })
+			U.pushNotification({ text = 'created "' .. name .. '" config', duration = 2 })
 		else
 			U.pushNotification({ text = "save failed: " .. tostring(err), duration = 3 })
 		end
@@ -2446,7 +2457,7 @@ function U.buildConfig()
 		end)
 		if ok and type(data) == "table" then
 			applySerialized(data)
-			U.pushNotification({ text = 'loaded "' .. selectedConfig .. '" main config', duration = 2 })
+			U.pushNotification({ text = 'loaded "' .. selectedConfig .. '" config', duration = 2 })
 		else
 			U.pushNotification({ text = "load failed", duration = 2 })
 		end
@@ -2458,7 +2469,7 @@ function U.buildConfig()
 		pcall(function() delfile(CONFIG_FOLDER .. "/" .. name .. ".json") end)
 		selectedConfig = nil
 		refreshConfigList()
-		U.pushNotification({ text = 'deleted "' .. name .. '" main config', duration = 2 })
+		U.pushNotification({ text = 'deleted "' .. name .. '" config', duration = 2 })
 	end)
 
 	do
@@ -2532,7 +2543,7 @@ function U.buildConfig()
 	end
 	U.mkKeybind(settingsSec, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
 	U.mkDropdown(settingsSec, "notification position", "NotificationPosition",
-		{ "top left", "top right", "bottom left", "bottom right", "center" }, "bottom right", false, nextOrder())
+		{ "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
 	U.mkToggle(settingsSec, "watermark", "Watermark", nextOrder(), false)
 	U.subOf(U.mkDropdown(settingsSec, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
@@ -3098,6 +3109,9 @@ function Library:CreateWindow(opts)
 	U._conns = {}
 	U.keybindTargets = {}
 	U.keybindListEntries = {}
+	U._kbListen = {}
+	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
+	U.kbPanel = nil
 	U.flagListeners = {}
 	U.setters = {}
 	U.pulseReg = {}
@@ -3230,7 +3244,7 @@ function Library:CreateWindow(opts)
 				end
 				function obj:AddSlider(so)
 					so = so or {}
-					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", so.InfAt, (so and (so.Tooltip or so.tooltip)))
+					local child = U.mkSlider(content, string.lower(tostring(so.Name or "slider")), so.Flag or so.Name, so.Min or 0, so.Max or 100, so.Default or 0, nextOrder(), so.Increment or 1, so.Suffix or "", (so.InfAtMax == true or so.InfAt == true), (so and (so.Tooltip or so.tooltip)))
 					U.subOf(child, flag)
 					return obj
 				end
@@ -3246,12 +3260,12 @@ function Library:CreateWindow(opts)
 			end
 			function sec:AddSlider(o)
 				o = o or {}
-				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAt, (o and (o.Tooltip or o.tooltip)))
+				local r = U.mkSlider(content, string.lower(tostring(o.Name or "slider")), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", (o.InfAtMax == true or o.InfAt == true), (o and (o.Tooltip or o.tooltip)))
 				return { Row = r, Flag = o.Flag or o.Name }
 			end
 			function sec:AddDoubleSlider(o)
 				o = o or {}
-				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", (o and (o.Tooltip or o.tooltip)))
+				local r = U.mkDoubleSlider(content, string.lower(tostring(o.Name or "range")), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", (o and (o.Tooltip or o.tooltip)), (o.InfAtMax == true or o.InfAt == true))
 				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
 			end
 			function sec:AddDropdown(o)
