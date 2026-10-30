@@ -32,8 +32,10 @@ U.keybindListEntries = U.keybindListEntries or {}
 U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
+U.ELEMENT_BORDER = 5
+
 function U.controlStroke(parent, thick)
-	thick = thick or 4
+	thick = thick or U.ELEMENT_BORDER or 5
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -81,7 +83,7 @@ function U.ensureTooltip()
 	f.Visible = false
 	f.ZIndex = 250
 	f.Parent = host
-	U.controlStroke(f, 1)
+	U.controlStroke(f)
 	U.themeReg.bodyBgs = U.themeReg.bodyBgs or {}
 	U.themeReg.bodyBgs[#U.themeReg.bodyBgs + 1] = f
 	local lab = Instance.new("TextLabel")
@@ -498,15 +500,14 @@ end
 
 function U.pushNotification(opts)
 	opts = opts or {}
-	local text = opts.text or ""
-	local duration = opts.duration or 3
+	local text = opts.text or opts.Text or ""
+	local time = opts.time or opts.Time or opts.duration or opts.Duration or 3
 	local nGui = Instance.new("ScreenGui")
 	nGui.Name = "wavelength_notif"
 	nGui.IgnoreGuiInset = true
 	nGui.ResetOnSpawn = false
 	nGui.Parent = U.guiParent()
 
-	
 	local pad = 8
 	local w, h = 160, 22
 	pcall(function()
@@ -526,18 +527,12 @@ function U.pushNotification(opts)
 		end
 	end
 
-	local holder = Instance.new("Frame")
-	holder.BackgroundTransparency = 1
-	holder.BorderSizePixel = 0
-	holder.Size = UDim2.fromOffset(w, h + 8)
-	holder.Parent = nGui
-
 	local frame = Instance.new("Frame")
 	frame.BackgroundColor3 = U.theme.Background
 	frame.BackgroundTransparency = 1
 	frame.BorderSizePixel = 0
 	frame.Size = UDim2.fromOffset(w, h)
-	frame.Parent = holder
+	frame.Parent = nGui
 
 	local st = Instance.new("UIStroke")
 	st.Thickness = 2
@@ -576,38 +571,7 @@ function U.pushNotification(opts)
 	label.Text = text
 	label.Parent = frame
 
-	local timerH = 5
-	local borderT = 2
-	local timerWrap = Instance.new("Frame")
-	timerWrap.Name = "Timer"
-	timerWrap.BackgroundTransparency = 1
-	timerWrap.BorderSizePixel = 0
-	timerWrap.ClipsDescendants = false
-	timerWrap.Position = UDim2.fromOffset(0, h + 3)
-	timerWrap.Size = UDim2.new(1, 0, 0, timerH)
-	timerWrap.ZIndex = 3
-	timerWrap.Parent = holder
-	local timerBar = Instance.new("Frame")
-	timerBar.Name = "Bar"
-	timerBar.BorderSizePixel = 0
-	timerBar.BackgroundColor3 = U.theme.Border
-	timerBar.BackgroundTransparency = 1
-	timerBar.Size = UDim2.fromScale(1, 1)
-	timerBar.Position = UDim2.fromOffset(0, 0)
-	timerBar.ZIndex = 3
-	timerBar.Parent = timerWrap
-	local timerFill = Instance.new("Frame")
-	timerFill.Name = "Fill"
-	timerFill.BorderSizePixel = 0
-	timerFill.BackgroundColor3 = U.theme.Accent1
-	timerFill.BackgroundTransparency = 1
-	timerFill.Size = UDim2.new(1, -borderT * 2, 1, -borderT * 2)
-	timerFill.Position = UDim2.fromOffset(borderT, borderT)
-	timerFill.ZIndex = 4
-	timerFill.Parent = timerBar
-	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
-
-	local entry = { frame = holder, gui = nGui, h = h + 9 }
+	local entry = { frame = frame, gui = nGui, h = h }
 	table.insert(U.activeNotifs, entry)
 	U.layoutNotifs()
 
@@ -616,26 +580,13 @@ function U.pushNotification(opts)
 	U.Tween:Create(st, fadeIn, { Transparency = 0 }):Play()
 	U.Tween:Create(bar, fadeIn, { BackgroundTransparency = 0 }):Play()
 	U.Tween:Create(label, fadeIn, { TextTransparency = 0 }):Play()
-	U.Tween:Create(timerBar, fadeIn, { BackgroundTransparency = 0 }):Play()
-	U.Tween:Create(timerFill, fadeIn, { BackgroundTransparency = 0 }):Play()
 
-	local shrink = U.Tween:Create(timerBar, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 0, 1, 0),
-		Position = UDim2.fromOffset(0, 0),
-	})
-	shrink:Play()
-	shrink.Completed:Connect(function()
-		if timerBar then timerBar.Visible = false end
-	end)
-
-	task.delay(duration, function()
+	task.delay(time, function()
 		local fadeOut = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		local t1 = U.Tween:Create(frame, fadeOut, { BackgroundTransparency = 1 })
 		U.Tween:Create(st, fadeOut, { Transparency = 1 }):Play()
 		U.Tween:Create(bar, fadeOut, { BackgroundTransparency = 1 }):Play()
 		U.Tween:Create(label, fadeOut, { TextTransparency = 1 }):Play()
-		U.Tween:Create(timerFill, fadeOut, { BackgroundTransparency = 1 }):Play()
-		U.Tween:Create(timerBar, fadeOut, { BackgroundTransparency = 1 }):Play()
 		t1:Play()
 		t1.Completed:Wait()
 		for i, e in ipairs(U.activeNotifs) do
@@ -645,7 +596,6 @@ function U.pushNotification(opts)
 		U.layoutNotifs()
 	end)
 end
-U.onFlag("NotificationPosition", U.layoutNotifs)
 
 function U.closeColorPicker()
 	if U.openColorPicker and U.openColorPicker.Parent then U.openColorPicker:Destroy() end
@@ -1033,7 +983,7 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindList
 	box.BackgroundColor3 = on and U.pulseColor() or Color3.fromRGB(55, 55, 55)
 	box.BorderSizePixel = 0
 	box.Parent = r
-	U.controlStroke(box, 1)
+	U.controlStroke(box)
 	U.registerPulse(box, function() return on end)
 
 	local t = Instance.new("TextLabel")
@@ -1127,7 +1077,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	track.Size = UDim2.new(1, 0, 0, 8)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
-	U.controlStroke(track, 1)
+	U.controlStroke(track)
 
 	local fill = Instance.new("Frame")
 	fill.BackgroundColor3 = U.pulseColor()
@@ -1232,7 +1182,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	track.Size = UDim2.new(1, 0, 0, 8)
 	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
-	U.controlStroke(track, 1)
+	U.controlStroke(track)
 
 	local fill = Instance.new("Frame")
 	fill.BackgroundColor3 = U.pulseColor()
@@ -1355,7 +1305,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	box.TextColor3 = U.theme.Text
 	box.TextXAlignment = Enum.TextXAlignment.Left
 	box.Parent = r
-	U.controlStroke(box, 1)
+	U.controlStroke(box)
 
 	local function display()
 		if multi then
@@ -1431,9 +1381,10 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		end
-		edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
-		edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
-		edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
+		local eb = U.ELEMENT_BORDER or 5
+		edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
+		edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
+		edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
 
 		for _, opt in ipairs(options) do
 			local b = Instance.new("TextButton")
@@ -1538,7 +1489,7 @@ function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	box.Text = tostring(U.vflags[flag] or "")
 	box.ClearTextOnFocus = false
 	box.Parent = r
-	U.controlStroke(box, 1)
+	U.controlStroke(box)
 	box.FocusLost:Connect(function()
 		U.setFlag(flag, box.Text)
 	end)
@@ -1643,7 +1594,7 @@ function U.mkButton(parent, text, order, confirm)
 	btn.TextColor3 = U.theme.Text
 	btn.Text = text
 	btn.Parent = r
-	U.controlStroke(btn, 1)
+	U.controlStroke(btn)
 	btn:SetAttribute("Confirm", confirm == true)
 	btn:SetAttribute("Label", text)
 	return btn
@@ -1696,7 +1647,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	sw.BorderSizePixel = 0
 	sw.ZIndex = 12
 	sw.Parent = rowFrame
-	U.controlStroke(sw, 1)
+	U.controlStroke(sw)
 
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
@@ -2500,7 +2451,7 @@ function U.buildConfig()
 	local createBtn = U.mkButton(configsSec, "create / save", 2)
 	createBtn.MouseButton1Click:Connect(function()
 		local name = tostring(U.vflags.ConfigName or ""):gsub("[^%w%-%_ ]", "")
-		if name == "" then U.pushNotification({ text = "enter a config name", duration = 2 }); return end
+		if name == "" then U.pushNotification({ text = "enter a config name", time = 2 }); return end
 		ensureFolder()
 		local ok, err = pcall(function()
 			writefile(CONFIG_FOLDER .. "/" .. name .. ".json", U.Http:JSONEncode(serializeFlags()))
@@ -2508,32 +2459,32 @@ function U.buildConfig()
 		if ok then
 			selectedConfig = name
 			refreshConfigList()
-			U.pushNotification({ text = 'created "' .. name .. '" config', duration = 2 })
+			U.pushNotification({ text = 'created "' .. name .. '" config', time = 2 })
 		else
-			U.pushNotification({ text = "save failed: " .. tostring(err), duration = 3 })
+			U.pushNotification({ text = "save failed: " .. tostring(err), time = 3 })
 		end
 	end)
 	local loadBtn = U.mkButton(configsSec, "load", 3)
 	loadBtn.MouseButton1Click:Connect(function()
-		if not selectedConfig then U.pushNotification({ text = "select a config first", duration = 2 }); return end
+		if not selectedConfig then U.pushNotification({ text = "select a config first", time = 2 }); return end
 		local ok, data = pcall(function()
 			return U.Http:JSONDecode(readfile(CONFIG_FOLDER .. "/" .. selectedConfig .. ".json"))
 		end)
 		if ok and type(data) == "table" then
 			applySerialized(data)
-			U.pushNotification({ text = 'loaded "' .. selectedConfig .. '" config', duration = 2 })
+			U.pushNotification({ text = 'loaded "' .. selectedConfig .. '" config', time = 2 })
 		else
-			U.pushNotification({ text = "load failed", duration = 2 })
+			U.pushNotification({ text = "load failed", time = 2 })
 		end
 	end)
 	local delBtn = U.mkButton(configsSec, "delete", 4)
 	delBtn.MouseButton1Click:Connect(function()
-		if not selectedConfig then U.pushNotification({ text = "select a config first", duration = 2 }); return end
+		if not selectedConfig then U.pushNotification({ text = "select a config first", time = 2 }); return end
 		local name = selectedConfig
 		pcall(function() delfile(CONFIG_FOLDER .. "/" .. name .. ".json") end)
 		selectedConfig = nil
 		refreshConfigList()
-		U.pushNotification({ text = 'deleted "' .. name .. '" config', duration = 2 })
+		U.pushNotification({ text = 'deleted "' .. name .. '" config', time = 2 })
 	end)
 
 	do
@@ -2568,10 +2519,11 @@ function U.buildConfig()
 				U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 				U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 			end
-			edge("BTop", UDim2.new(1, 0, 0, 1), UDim2.fromOffset(0, 0))
-			edge("BBottom", UDim2.new(1, 0, 0, 1), UDim2.new(0, 0, 1, -1))
-			edge("BLeft", UDim2.new(0, 1, 1, 0), UDim2.fromOffset(0, 0))
-			edge("BRight", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0))
+			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 5)), UDim2.fromOffset(0, 0))
+			local eb = U.ELEMENT_BORDER or 5
+			edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
+			edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
+			edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
 		end
 		local configListInner = Instance.new("ScrollingFrame")
 		configListInner.Name = "Inner"
@@ -3155,7 +3107,7 @@ end
 function Library:OnFlag(name, fn) U.onFlag(name, fn) end
 function Library:Notify(opts)
 	if type(opts) == "string" then opts = { text = opts } end
-	U.pushNotification({ text = opts.text or opts.Text or "", duration = opts.duration or opts.Duration or 3 })
+	U.pushNotification({ text = opts.text or opts.Text or "", time = opts.time or opts.Time or opts.duration or opts.Duration or 3 })
 end
 
 function Library:CreateWindow(opts)
