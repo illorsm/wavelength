@@ -33,7 +33,7 @@ U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
 function U.controlStroke(parent, thick)
-	thick = thick or 2
+	thick = thick or 3
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -462,7 +462,6 @@ function U.refreshMenuTextColors()
 			if inst.Name == "WavelengthCredit" then
 				inst.TextColor3 = gray
 			elseif U.kbPanel and inst:IsDescendantOf(U.kbPanel) then
-				-- keybind list handled above
 			elseif inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
 				inst.TextColor3 = c
 			end
@@ -508,23 +507,29 @@ function U.pushNotification(opts)
 	nGui.Parent = U.guiParent()
 
 	
+	local pad = 8
 	local w, h = 160, 22
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
 		measure.Text = text
 		measure.Font = U.font
 		measure.Size = U.TEXT_SZ
-		measure.Width = 420
+		measure.Width = 10000
 		local bounds = U.Text:GetTextBoundsAsync(measure)
-		w = math.max(80, math.ceil(bounds.X) + 16)
+		w = math.max(80, math.ceil(bounds.X) + pad * 2)
 		h = 22
 	end)
+	if U.measureTextWidth then
+		local tw = U.measureTextWidth(text) - 14
+		if tw and tw > 0 then
+			w = math.max(80, math.ceil(tw) + pad * 2)
+		end
+	end
 
-	
 	local holder = Instance.new("Frame")
 	holder.BackgroundTransparency = 1
 	holder.BorderSizePixel = 0
-	holder.Size = UDim2.fromOffset(w, h + 5)
+	holder.Size = UDim2.fromOffset(w, h + 8)
 	holder.Parent = nGui
 
 	local frame = Instance.new("Frame")
@@ -561,8 +566,8 @@ function U.pushNotification(opts)
 
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromOffset(6, 2)
-	label.Size = UDim2.new(1, -12, 1, -2)
+	label.Position = UDim2.fromOffset(pad, 2)
+	label.Size = UDim2.new(1, -(pad * 2), 1, -2)
 	label.FontFace = U.font
 	label.TextSize = U.TEXT_SZ
 	label.TextColor3 = U.theme.Text
@@ -573,13 +578,20 @@ function U.pushNotification(opts)
 
 	local timerWrap = Instance.new("Frame")
 	timerWrap.Name = "Timer"
-	timerWrap.BackgroundTransparency = 1
+	timerWrap.BackgroundColor3 = U.theme.Background
+	timerWrap.BackgroundTransparency = 0
 	timerWrap.BorderSizePixel = 0
 	timerWrap.ClipsDescendants = true
-	timerWrap.Position = UDim2.fromOffset(0, h + 2)
+	timerWrap.Position = UDim2.fromOffset(0, h + 3)
 	timerWrap.Size = UDim2.new(1, 0, 0, 4)
 	timerWrap.ZIndex = 3
 	timerWrap.Parent = holder
+	local timerStroke = Instance.new("UIStroke")
+	timerStroke.Thickness = 2
+	timerStroke.Color = U.theme.Border
+	timerStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	timerStroke.Transparency = 1
+	timerStroke.Parent = timerWrap
 	local timerFill = Instance.new("Frame")
 	timerFill.Name = "Fill"
 	timerFill.BorderSizePixel = 0
@@ -588,15 +600,9 @@ function U.pushNotification(opts)
 	timerFill.Position = UDim2.fromOffset(0, 0)
 	timerFill.ZIndex = 4
 	timerFill.Parent = timerWrap
-	local timerStroke = Instance.new("UIStroke")
-	timerStroke.Thickness = 2
-	timerStroke.Color = U.theme.Border
-	timerStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	timerStroke.Transparency = 1
-	timerStroke.Parent = timerFill
 	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
 
-	local entry = { frame = holder, gui = nGui, h = h + 6 }
+	local entry = { frame = holder, gui = nGui, h = h + 9 }
 	table.insert(U.activeNotifs, entry)
 	U.layoutNotifs()
 
@@ -615,7 +621,6 @@ function U.pushNotification(opts)
 	shrink:Play()
 	shrink.Completed:Connect(function()
 		if timerFill then timerFill.Visible = false end
-		if timerStroke then timerStroke.Enabled = false end
 	end)
 
 	task.delay(duration, function()
@@ -3160,7 +3165,6 @@ function Library:CreateWindow(opts)
 		end
 	end
 
-	-- full reset so re-execute works (keybinds, unload, etc.)
 	U._shuttingDown = false
 	U.running = true
 	U.menuOpen = true
