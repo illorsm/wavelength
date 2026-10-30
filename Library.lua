@@ -32,13 +32,16 @@ U.keybindListEntries = U.keybindListEntries or {}
 U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
-U.ELEMENT_BORDER = 2
+U.ELEMENT_BORDER = 1.5
 
 function U.controlStroke(parent, thick)
-	thick = thick or U.ELEMENT_BORDER or 2
+	thick = thick or U.ELEMENT_BORDER or 1.5
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
+	pcall(function()
+		parent.ClipsDescendants = false
+	end)
 	local function edge(name, size, pos)
 		local e = Instance.new("Frame")
 		e.Name = name
@@ -51,10 +54,11 @@ function U.controlStroke(parent, thick)
 		U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		return e
 	end
-	edge("BTop", UDim2.new(1, 0, 0, thick), UDim2.fromOffset(0, 0))
-	edge("BBottom", UDim2.new(1, 0, 0, thick), UDim2.new(0, 0, 1, -thick))
-	edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(0, 0))
-	edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, -thick, 0, 0))
+	-- outward: edges sit outside the element bounds
+	edge("BTop", UDim2.new(1, thick * 2, 0, thick), UDim2.fromOffset(-thick, -thick))
+	edge("BBottom", UDim2.new(1, thick * 2, 0, thick), UDim2.new(0, -thick, 1, 0))
+	edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(-thick, 0))
+	edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, 0, 0, 0))
 end
 
 
@@ -1098,10 +1102,11 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 		t = math.clamp(t, 0, 1)
 		local w = math.max(2, track.AbsoluteSize.X)
 		local h = math.max(2, track.AbsoluteSize.Y)
-		local fillW = math.floor((w - 2) * t + 0.5)
-		fill.Position = UDim2.fromOffset(1, 1)
-		fill.Size = UDim2.fromOffset(fillW, h - 2)
-		cap.Position = UDim2.fromOffset(1 + fillW, h * 0.5)
+		local fillW = math.floor(w * t + 0.5)
+		fill.Position = UDim2.fromOffset(0, 0)
+		fill.Size = UDim2.fromOffset(fillW, h)
+		cap.Size = UDim2.fromOffset(1, h)
+		cap.Position = UDim2.fromOffset(fillW, h * 0.5)
 	end
 	layoutFill((default - minV) / math.max(1e-6, maxV - minV))
 	task.defer(function()
@@ -1216,16 +1221,14 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		U.vflags[flagMin], U.vflags[flagMax] = a, b
 		local ra = (a - minV) / math.max(1e-6, maxV - minV)
 		local rb = (b - minV) / math.max(1e-6, maxV - minV)
-		local eb = U.ELEMENT_BORDER or 2
 		local w = math.max(2, track.AbsoluteSize.X)
 		local h = math.max(2, track.AbsoluteSize.Y)
-		local innerW = math.max(1, w - eb * 2)
-		local x0 = eb + math.floor(innerW * ra + 0.5)
-		local x1 = eb + math.floor(innerW * rb + 0.5)
-		fill.Position = UDim2.fromOffset(x0, eb)
-		fill.Size = UDim2.fromOffset(math.max(0, x1 - x0), math.max(1, h - eb * 2))
-		capA.Size = UDim2.fromOffset(1, math.max(1, h - eb * 2))
-		capB.Size = UDim2.fromOffset(1, math.max(1, h - eb * 2))
+		local x0 = math.floor(w * ra + 0.5)
+		local x1 = math.floor(w * rb + 0.5)
+		fill.Position = UDim2.fromOffset(x0, 0)
+		fill.Size = UDim2.fromOffset(math.max(0, x1 - x0), h)
+		capA.Size = UDim2.fromOffset(1, h)
+		capB.Size = UDim2.fromOffset(1, h)
 		capA.Position = UDim2.fromOffset(x0, h * 0.5)
 		capB.Position = UDim2.fromOffset(x1, h * 0.5)
 		valLbl.Text = U.formatSliderVal(a, step, "", maxV, false) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, infAtMax)
@@ -1385,7 +1388,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		end
-		local eb = U.ELEMENT_BORDER or 2
+		local eb = U.ELEMENT_BORDER or 1.5
 		edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
@@ -1656,9 +1659,8 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local swFill = Instance.new("Frame")
 	swFill.Name = "SwatchFill"
 	swFill.BorderSizePixel = 0
-	local eb = U.ELEMENT_BORDER or 2
-	swFill.Size = UDim2.new(1, -(eb * 2), 1, -(eb * 2))
-	swFill.Position = UDim2.fromOffset(eb, eb)
+	swFill.Size = UDim2.fromScale(1, 1)
+	swFill.Position = UDim2.fromOffset(0, 0)
 	swFill.BackgroundColor3 = defaultColor
 	swFill.BackgroundTransparency = (not noAlpha) and (U.vflags[alphaKey] or 0) or 0
 	swFill.ZIndex = 13
@@ -2524,8 +2526,8 @@ function U.buildConfig()
 				U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 				U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 			end
-			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 2)), UDim2.fromOffset(0, 0))
-			local eb = U.ELEMENT_BORDER or 2
+			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 1.5)), UDim2.fromOffset(0, 0))
+			local eb = U.ELEMENT_BORDER or 1.5
 			edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
 			edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 			edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
