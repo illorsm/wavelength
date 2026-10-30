@@ -1,5 +1,3 @@
-
-
 local _genv = (typeof(getgenv) == "function" and getgenv()) or _G
 _genv._SM = _genv._SM or {}
 local U = _genv._SM
@@ -1078,7 +1076,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 8)
+	track.Size = UDim2.new(1, 0, 0, 6)
 	track.Position = UDim2.fromOffset(0, 14)
 	track.Parent = r
 	U.controlStroke(track)
@@ -1093,7 +1091,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	cap.Name = "SliderCap"
 	cap.BorderSizePixel = 0
 	cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-	cap.Size = UDim2.fromOffset(1, 8)
+	cap.Size = UDim2.fromOffset(1, 6)
 	cap.AnchorPoint = Vector2.new(0.5, 0.5)
 	cap.ZIndex = 5
 	cap.Parent = track
@@ -1184,7 +1182,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 8)
+	track.Size = UDim2.new(1, 0, 0, 6)
 	track.Position = UDim2.fromOffset(0, 14)
 	track.Parent = r
 	U.controlStroke(track)
@@ -1200,7 +1198,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local cap = Instance.new("Frame")
 		cap.BorderSizePixel = 0
 		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 8)
+		cap.Size = UDim2.fromOffset(1, 6)
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.ZIndex = 5
 		cap.Parent = track
