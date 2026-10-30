@@ -1,3 +1,5 @@
+
+
 local _genv = (typeof(getgenv) == "function" and getgenv()) or _G
 _genv._SM = _genv._SM or {}
 local U = _genv._SM
@@ -3253,7 +3255,15 @@ function Library:CreateWindow(opts)
 			function sec:AddToggle(o)
 				o = o or {}
 				local flag = o.Flag or o.Name
-				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text, (o and (o.Tooltip or o.tooltip)))
+				local kbFlag, kbText = nil, nil
+				if o.Keybind == true then
+					kbFlag = o.KeybindFlag or (tostring(flag) .. "Key")
+					kbText = o.KeybindText or o.ListText or o.Text or o.Name
+					if o.Key ~= nil then
+						U.vflags[kbFlag] = U.parseKeyCode(o.Key)
+					end
+				end
+				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, kbFlag, kbText, (o and (o.Tooltip or o.tooltip)))
 				if o.Callback then
 					U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end)
 				end
