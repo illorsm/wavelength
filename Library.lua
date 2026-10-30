@@ -33,7 +33,7 @@ U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
 function U.controlStroke(parent, thick)
-	thick = thick or 1
+	thick = thick or 2
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -897,6 +897,118 @@ function U.section(parent, title, col, row, rows)
 	return content
 end
 
+
+function U.parseKeyCode(v)
+	if typeof(v) == "EnumItem" then return v end
+	if type(v) == "string" then
+		local name = tostring(v):gsub("%s+", "")
+		if name == "" then return Enum.KeyCode.Unknown end
+		local ok, k = pcall(function() return Enum.KeyCode[name] end)
+		if ok and typeof(k) == "EnumItem" then return k end
+		ok, k = pcall(function() return Enum.KeyCode[name:upper()] end)
+		if ok and typeof(k) == "EnumItem" then return k end
+		local titled = name:sub(1, 1):upper() .. name:sub(2):lower()
+		ok, k = pcall(function() return Enum.KeyCode[titled] end)
+		if ok and typeof(k) == "EnumItem" then return k end
+	end
+	return Enum.KeyCode.Unknown
+end
+
+function U.attachKeybindToRow(row, toggleFlag, keyFlag, defaultKey, listText)
+	if not row or not toggleFlag or not keyFlag then return end
+	U.keybindTargets = U.keybindTargets or {}
+	U.keybindTargets[keyFlag] = toggleFlag
+	local existing = row:FindFirstChild("KeybindBox")
+	local key = defaultKey
+	if typeof(key) ~= "EnumItem" then key = U.parseKeyCode(key) end
+	if typeof(key) ~= "EnumItem" then key = Enum.KeyCode.Unknown end
+	U.vflags[keyFlag] = U.vflags[keyFlag] or key
+
+	local function keyName(k)
+		if typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown then return k.Name end
+		return "none"
+	end
+
+	if existing then
+		local function fit(keyTxt)
+			local display = "[" .. keyTxt .. "]"
+			existing.Text = display
+			existing.Size = UDim2.fromOffset(math.max(28, #display * 7 + 6), 14)
+		end
+		fit(keyName(U.vflags[keyFlag]))
+		if listText and listText ~= "" then
+			U.registerKeybindList(listText, keyFlag, toggleFlag)
+		end
+		return existing
+	end
+
+	local rightReserve = 56
+	for _, ch in ipairs(row:GetChildren()) do
+		if ch:IsA("TextLabel") then
+			ch.Size = UDim2.new(1, -(20 + rightReserve), 1, 0)
+		elseif ch:IsA("TextButton") and ch.Name ~= "KeybindBox" and ch.BackgroundTransparency > 0.5 then
+			ch.Size = UDim2.new(1, -rightReserve, 1, 0)
+		end
+	end
+
+	local kb = Instance.new("TextButton")
+	kb.Name = "KeybindBox"
+	kb.AutoButtonColor = false
+	kb.BackgroundTransparency = 1
+	kb.BorderSizePixel = 0
+	kb.AnchorPoint = Vector2.new(1, 0.5)
+	kb.Position = UDim2.new(1, 0, 0.5, 0)
+	kb.Size = UDim2.fromOffset(50, 14)
+	kb.FontFace = U.font
+	kb.TextSize = U.TEXT_SZ
+	kb.TextColor3 = U.theme.Text
+	kb.TextXAlignment = Enum.TextXAlignment.Right
+	kb.ZIndex = 5
+	kb.Parent = row
+
+	local function fit(keyTxt)
+		local display = "[" .. keyTxt .. "]"
+		kb.Text = display
+		kb.Size = UDim2.fromOffset(math.max(28, #display * 7 + 6), 14)
+	end
+	fit(keyName(U.vflags[keyFlag]))
+
+	local listening = false
+	kb.MouseButton1Click:Connect(function()
+		if listening then return end
+		listening = true
+		fit("...")
+		local conn
+		conn = U.UIS.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				if input.KeyCode == Enum.KeyCode.Escape then
+					fit(keyName(U.vflags[keyFlag]))
+				else
+					U.vflags[keyFlag] = input.KeyCode
+					fit(keyName(input.KeyCode))
+					U.fireFlag(keyFlag)
+					if U.refreshKeybindList then U.refreshKeybindList() end
+				end
+				listening = false
+				conn:Disconnect()
+			end
+		end)
+	end)
+
+	U.setters[keyFlag] = function(v)
+		local k = U.parseKeyCode(v)
+		U.vflags[keyFlag] = k
+		if not listening then fit(keyName(k)) end
+		U.fireFlag(keyFlag)
+		if U.refreshKeybindList then U.refreshKeybindList() end
+	end
+
+	if listText and listText ~= "" then
+		U.registerKeybindList(listText, keyFlag, toggleFlag)
+	end
+	return kb
+end
+
 function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindListText, tooltip)
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
@@ -946,67 +1058,9 @@ function U.mkToggle(parent, text, flag, order, default, keybindFlag, keybindList
 	end
 
 	if keybindFlag then
-		U.vflags[keybindFlag] = U.vflags[keybindFlag] or Enum.KeyCode.RightAlt
-		local kb = Instance.new("TextButton")
-		kb.Name = "KeybindBox"
-		kb.AutoButtonColor = false
-		kb.BackgroundTransparency = 1
-		kb.BorderSizePixel = 0
-		kb.AnchorPoint = Vector2.new(1, 0.5)
-		kb.Position = UDim2.new(1, 0, 0.5, 0)
-		kb.Size = UDim2.fromOffset(50, 14)
-		kb.FontFace = U.font
-		kb.TextSize = U.TEXT_SZ
-		kb.TextColor3 = U.theme.Text
-		kb.TextXAlignment = Enum.TextXAlignment.Right
-		kb.ZIndex = 5
-		kb.Parent = r
-		local function keyName(k)
-			if typeof(k) == "EnumItem" then return k.Name end
-			return "none"
-		end
-		local function fit(keyTxt)
-			local display = "[" .. keyTxt .. "]"
-			kb.Text = display
-			local w = math.max(24, #display * 7 + 4)
-			kb.Size = UDim2.fromOffset(w, 14)
-		end
-		fit(keyName(U.vflags[keybindFlag]))
-		local listening = false
-		kb.MouseButton1Click:Connect(function()
-			if listening then return end
-			listening = true
-			fit("...")
-			local conn
-			conn = U.UIS.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.Keyboard then
-					if input.KeyCode == Enum.KeyCode.Escape then
-						fit(keyName(U.vflags[keybindFlag]))
-					else
-						U.vflags[keybindFlag] = input.KeyCode
-						fit(keyName(input.KeyCode))
-						U.fireFlag(keybindFlag)
-					end
-					listening = false
-					conn:Disconnect()
-				end
-			end)
-		end)
-		U.setters[keybindFlag] = function(v)
-			U.vflags[keybindFlag] = v
-			fit(keyName(v))
-			U.fireFlag(keybindFlag)
-			if U.refreshKeybindList then U.refreshKeybindList() end
-		end
-		U.keybindTargets = U.keybindTargets or {}
-		if flag then
-			U.keybindTargets[keybindFlag] = flag
-		end
 		local lt = keybindListText
 		if (not lt or lt == "") and text and text ~= "" then lt = text end
-		if lt and lt ~= "" and flag then
-			U.registerKeybindList(lt, keybindFlag, flag)
-		end
+		U.attachKeybindToRow(r, flag, keybindFlag, U.vflags[keybindFlag] or Enum.KeyCode.Unknown, lt)
 	end
 	return r
 end
@@ -2650,23 +2704,34 @@ function U.buildConfig()
 			if not on then return end
 			local parts = {}
 			for _, item in ipairs(U.vflags.WatermarkItems or {}) do
-				if item == "message" then parts[#parts + 1] = tostring(U.vflags.WatermarkMessage or "")
+				if item == "message" then
+					local msg = tostring(U.vflags.WatermarkMessage or "")
+					if msg ~= "" then parts[#parts + 1] = msg end
 				elseif item == "fps" then parts[#parts + 1] = "fps: " .. tostring(getRobloxFps())
 				elseif item == "ping" then parts[#parts + 1] = "ping: " .. tostring(getRobloxPing())
 				end
 			end
 			local out = table.concat(parts, " | ")
-			if out == "" then out = " " end
+			if out == "" then out = "wavelength" end
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			local tw = math.max(40, #out * 7 + 12)
+			local pad = 8
+			local pure = #out * 7
+			pcall(function()
+				if U.measureTextWidth then
+					pure = math.max(1, U.measureTextWidth(out) - 14)
+				end
+			end)
 			pcall(function()
 				local b = wtxt.TextBounds.X
-				if b and b > 0 then tw = math.max(40, math.ceil(b) + 12) end
+				if b and b > 0 then pure = math.ceil(b) end
 			end)
+			pure = math.max(24, pure)
+			local tw = pure + pad * 2
 			wm.Size = UDim2.fromOffset(tw, 22)
-			wtxt.Position = UDim2.fromOffset(6, 2)
-			wtxt.Size = UDim2.new(1, -12, 1, -2)
+			wtxt.Position = UDim2.fromOffset(pad, 2)
+			wtxt.Size = UDim2.new(1, -(pad * 2), 1, -2)
+			wtxt.TextXAlignment = Enum.TextXAlignment.Left
 			if U.wmDocked then U.dockWatermark() end
 			U.syncFloatingVisibility()
 		end
@@ -3226,13 +3291,9 @@ function Library:CreateWindow(opts)
 				function obj:AddKeybind(ko)
 					ko = ko or {}
 					local kbFlag = ko.Flag or (flag .. "Key")
-					local listText = ko.Text or ko.ListText or ko.Name or ""
-					U.vflags[kbFlag] = ko.Default or Enum.KeyCode.Unknown
-					U.keybindTargets = U.keybindTargets or {}
-					U.keybindTargets[kbFlag] = flag
-					if listText ~= "" then
-						U.registerKeybindList(listText, kbFlag, flag)
-					end
+					local listText = ko.Text or ko.ListText or ko.Name or ko.KeybindText or ""
+					local key = U.parseKeyCode(ko.Key or ko.Default or ko.KeyCode or Enum.KeyCode.Unknown)
+					U.attachKeybindToRow(obj.Row or t, flag, kbFlag, key, listText)
 					return obj
 				end
 				function obj:AddToggle(so)
