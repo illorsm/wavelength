@@ -33,7 +33,7 @@ U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
 function U.controlStroke(parent, thick)
-	thick = thick or 3
+	thick = thick or 4
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -576,30 +576,35 @@ function U.pushNotification(opts)
 	label.Text = text
 	label.Parent = frame
 
+	local timerH = 5
+	local borderT = 2
 	local timerWrap = Instance.new("Frame")
 	timerWrap.Name = "Timer"
-	timerWrap.BackgroundColor3 = U.theme.Background
-	timerWrap.BackgroundTransparency = 0
+	timerWrap.BackgroundTransparency = 1
 	timerWrap.BorderSizePixel = 0
-	timerWrap.ClipsDescendants = true
+	timerWrap.ClipsDescendants = false
 	timerWrap.Position = UDim2.fromOffset(0, h + 3)
-	timerWrap.Size = UDim2.new(1, 0, 0, 4)
+	timerWrap.Size = UDim2.new(1, 0, 0, timerH)
 	timerWrap.ZIndex = 3
 	timerWrap.Parent = holder
-	local timerStroke = Instance.new("UIStroke")
-	timerStroke.Thickness = 2
-	timerStroke.Color = U.theme.Border
-	timerStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	timerStroke.Transparency = 1
-	timerStroke.Parent = timerWrap
+	local timerBar = Instance.new("Frame")
+	timerBar.Name = "Bar"
+	timerBar.BorderSizePixel = 0
+	timerBar.BackgroundColor3 = U.theme.Border
+	timerBar.BackgroundTransparency = 1
+	timerBar.Size = UDim2.fromScale(1, 1)
+	timerBar.Position = UDim2.fromOffset(0, 0)
+	timerBar.ZIndex = 3
+	timerBar.Parent = timerWrap
 	local timerFill = Instance.new("Frame")
 	timerFill.Name = "Fill"
 	timerFill.BorderSizePixel = 0
 	timerFill.BackgroundColor3 = U.theme.Accent1
-	timerFill.Size = UDim2.fromScale(1, 1)
-	timerFill.Position = UDim2.fromOffset(0, 0)
+	timerFill.BackgroundTransparency = 1
+	timerFill.Size = UDim2.new(1, -borderT * 2, 1, -borderT * 2)
+	timerFill.Position = UDim2.fromOffset(borderT, borderT)
 	timerFill.ZIndex = 4
-	timerFill.Parent = timerWrap
+	timerFill.Parent = timerBar
 	U.registerPulse(timerFill, function() return timerFill.Parent ~= nil end)
 
 	local entry = { frame = holder, gui = nGui, h = h + 9 }
@@ -611,16 +616,16 @@ function U.pushNotification(opts)
 	U.Tween:Create(st, fadeIn, { Transparency = 0 }):Play()
 	U.Tween:Create(bar, fadeIn, { BackgroundTransparency = 0 }):Play()
 	U.Tween:Create(label, fadeIn, { TextTransparency = 0 }):Play()
-	U.Tween:Create(timerStroke, fadeIn, { Transparency = 0 }):Play()
+	U.Tween:Create(timerBar, fadeIn, { BackgroundTransparency = 0 }):Play()
 	U.Tween:Create(timerFill, fadeIn, { BackgroundTransparency = 0 }):Play()
 
-	local shrink = U.Tween:Create(timerFill, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+	local shrink = U.Tween:Create(timerBar, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
 		Size = UDim2.new(0, 0, 1, 0),
 		Position = UDim2.fromOffset(0, 0),
 	})
 	shrink:Play()
 	shrink.Completed:Connect(function()
-		if timerFill then timerFill.Visible = false end
+		if timerBar then timerBar.Visible = false end
 	end)
 
 	task.delay(duration, function()
@@ -630,7 +635,7 @@ function U.pushNotification(opts)
 		U.Tween:Create(bar, fadeOut, { BackgroundTransparency = 1 }):Play()
 		U.Tween:Create(label, fadeOut, { TextTransparency = 1 }):Play()
 		U.Tween:Create(timerFill, fadeOut, { BackgroundTransparency = 1 }):Play()
-		U.Tween:Create(timerStroke, fadeOut, { Transparency = 1 }):Play()
+		U.Tween:Create(timerBar, fadeOut, { BackgroundTransparency = 1 }):Play()
 		t1:Play()
 		t1.Completed:Wait()
 		for i, e in ipairs(U.activeNotifs) do
