@@ -111,25 +111,20 @@ function U.hideTooltip()
 end
 
 function U.measureTextWidth(text)
-	local w = #tostring(text) * 7 + 12
+	text = tostring(text or "")
+	local w = math.max(1, #text * 6)
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
-		measure.Text = tostring(text)
+		measure.Text = text
 		measure.Font = U.font
 		measure.Size = U.TEXT_SZ
 		measure.Width = 10000
 		local bounds = U.Text:GetTextBoundsAsync(measure)
-		if bounds and bounds.X then
-			w = math.ceil(bounds.X) + 14
+		if bounds and bounds.X and bounds.X > 0 then
+			w = math.ceil(bounds.X)
 		end
 	end)
-	pcall(function()
-		local b = U.Text:GetTextSize(tostring(text), U.TEXT_SZ, Enum.Font.Code, Vector2.new(10000, 50))
-		if b and b.X and b.X + 14 > w then
-			w = math.ceil(b.X) + 14
-		end
-	end)
-	return math.max(40, w)
+	return w
 end
 
 function U.showTooltip(text)
@@ -2676,6 +2671,18 @@ function U.buildConfig()
 			return fps
 		end
 
+		local function fitWmWidth(out)
+			local pad = 8
+			local pure = U.measureTextWidth(out)
+			if pure < 1 then pure = math.max(1, #out * 6) end
+			wtxt.Text = out
+			wtxt.TextColor3 = U.theme.Text
+			wtxt.TextXAlignment = Enum.TextXAlignment.Center
+			wtxt.Position = UDim2.fromOffset(0, 0)
+			wtxt.Size = UDim2.fromScale(1, 1)
+			wm.Size = UDim2.fromOffset(pure + pad * 2, 22)
+		end
+		local lastWmOut = nil
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
 			wm.Visible = on
@@ -2691,39 +2698,55 @@ function U.buildConfig()
 			end
 			local out = table.concat(parts, " | ")
 			if out == "" then out = "wavelength" end
-			wtxt.Text = out
-			wtxt.TextColor3 = U.theme.Text
-			local pad = 8
-			local pure = #out * 7
-			pcall(function()
-				if U.measureTextWidth then
-					pure = math.max(1, U.measureTextWidth(out) - 14)
-				end
-			end)
-			pcall(function()
-				local b = wtxt.TextBounds.X
-				if b and b > 0 then pure = math.ceil(b) end
-			end)
-			pure = math.max(24, pure)
-			local tw = pure + pad * 2
-			wm.Size = UDim2.fromOffset(tw, 22)
-			wtxt.Position = UDim2.fromOffset(pad, 2)
-			wtxt.Size = UDim2.new(1, -(pad * 2), 1, -2)
-			wtxt.TextXAlignment = Enum.TextXAlignment.Left
+			if out ~= lastWmOut then
+				lastWmOut = out
+				fitWmWidth(out)
+			else
+				wtxt.Text = out
+				wtxt.TextColor3 = U.theme.Text
+			end
 			if U.wmDocked then U.dockWatermark() end
 			U.syncFloatingVisibility()
 		end
+		local wmStatsToken = 0
+		local function startWmStats()
+			wmStatsToken = wmStatsToken + 1
+			local token = wmStatsToken
+			local need = false
+			for _, item in ipairs(U.vflags.WatermarkItems or {}) do
+				if item == "fps" or item == "ping" then need = true break end
+			end
+			if not need or not U.vflags.Watermark then return end
+			task.spawn(function()
+				while U.running and token == wmStatsToken and U.vflags.Watermark do
+					local still = false
+					for _, item in ipairs(U.vflags.WatermarkItems or {}) do
+						if item == "fps" or item == "ping" then still = true break end
+					end
+					if not still then break end
+					refreshWm()
+					task.wait(0.5)
+				end
+			end)
+		end
 		U.onFlag("Watermark", function()
+			lastWmOut = nil
 			refreshWm()
+			startWmStats()
 			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
 			U.syncFloatingVisibility()
 		end)
-		U.onFlag("WatermarkItems", refreshWm)
-		U.onFlag("WatermarkMessage", refreshWm)
-		task.spawn(function()
-			while U.running do task.wait(0.25); if U.vflags.Watermark then refreshWm() end end
+		U.onFlag("WatermarkItems", function()
+			lastWmOut = nil
+			refreshWm()
+			startWmStats()
+		end)
+		U.onFlag("WatermarkMessage", function()
+			lastWmOut = nil
+			refreshWm()
 		end)
 		refreshWm()
+		startWmStats()
 
 		do
 			local dragging, dragStart, startPos
