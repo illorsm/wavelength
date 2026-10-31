@@ -2671,29 +2671,16 @@ function U.buildConfig()
 			return fps
 		end
 
-		local WM_PAD = 8
 		local function fitWmWidth(out)
+			local pad = 8
+			local pure = U.measureTextWidth(out)
+			if pure < 1 then pure = math.max(1, #out * 6) end
 			wtxt.Text = out
 			wtxt.TextColor3 = U.theme.Text
-			wtxt.TextXAlignment = Enum.TextXAlignment.Left
-			local textW = 0
-			pcall(function()
-				local p = Instance.new("GetTextBoundsParams")
-				p.Text = out
-				p.Font = wtxt.FontFace
-				p.Size = wtxt.TextSize
-				p.Width = 10000
-				local b = U.Text:GetTextBoundsAsync(p)
-				if b and b.X and b.X > 0 then textW = math.ceil(b.X) end
-			end)
-			if textW < 1 then
-				local b = wtxt.TextBounds
-				if b and b.X and b.X > 0 then textW = math.ceil(b.X) end
-			end
-			if textW < 1 then textW = math.max(1, #out * 6) end
-			wtxt.Position = UDim2.fromOffset(WM_PAD, 0)
-			wtxt.Size = UDim2.fromOffset(textW, 22)
-			wm.Size = UDim2.fromOffset(textW + WM_PAD * 2, 22)
+			wtxt.TextXAlignment = Enum.TextXAlignment.Center
+			wtxt.Position = UDim2.fromOffset(0, 0)
+			wtxt.Size = UDim2.fromScale(1, 1)
+			wm.Size = UDim2.fromOffset(pure + pad * 2, 22)
 		end
 		local lastWmOut = nil
 		local function refreshWm()
