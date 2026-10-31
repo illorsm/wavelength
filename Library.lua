@@ -32,10 +32,10 @@ U.keybindListEntries = U.keybindListEntries or {}
 U._kbListen = U._kbListen or {}
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 
-U.ELEMENT_BORDER = 1
+U.ELEMENT_BORDER = 1.5
 
 function U.controlStroke(parent, thick)
-	thick = thick or U.ELEMENT_BORDER or 1
+	thick = thick or U.ELEMENT_BORDER or 1.5
 	if U.theme.ElementBorder == nil then U.theme.ElementBorder = U.theme.SectionBorder end
 	local col = U.theme.ElementBorder
 	U.themeReg.elementBorders = U.themeReg.elementBorders or {}
@@ -111,20 +111,25 @@ function U.hideTooltip()
 end
 
 function U.measureTextWidth(text)
-	text = tostring(text or "")
-	local w = math.max(1, #text * 6)
+	local w = #tostring(text) * 7 + 12
 	pcall(function()
 		local measure = Instance.new("GetTextBoundsParams")
-		measure.Text = text
+		measure.Text = tostring(text)
 		measure.Font = U.font
 		measure.Size = U.TEXT_SZ
 		measure.Width = 10000
 		local bounds = U.Text:GetTextBoundsAsync(measure)
-		if bounds and bounds.X and bounds.X > 0 then
-			w = math.ceil(bounds.X)
+		if bounds and bounds.X then
+			w = math.ceil(bounds.X) + 14
 		end
 	end)
-	return w
+	pcall(function()
+		local b = U.Text:GetTextSize(tostring(text), U.TEXT_SZ, Enum.Font.Code, Vector2.new(10000, 50))
+		if b and b.X and b.X + 14 > w then
+			w = math.ceil(b.X) + 14
+		end
+	end)
+	return math.max(40, w)
 end
 
 function U.showTooltip(text)
@@ -1046,7 +1051,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	step = step or 1
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
-	r.Size = UDim2.new(1, 0, 0, 30)
+	r.Size = UDim2.new(1, 0, 0, 32)
 	U.vflags[flag] = default
 
 	local name = Instance.new("TextLabel")
@@ -1073,8 +1078,8 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 6)
-	track.Position = UDim2.fromOffset(0, 14)
+	track.Size = UDim2.new(1, 0, 0, 8)
+	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track)
 
@@ -1088,7 +1093,7 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	cap.Name = "SliderCap"
 	cap.BorderSizePixel = 0
 	cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-	cap.Size = UDim2.fromOffset(1, 6)
+	cap.Size = UDim2.fromOffset(1, 8)
 	cap.AnchorPoint = Vector2.new(0.5, 0.5)
 	cap.ZIndex = 5
 	cap.Parent = track
@@ -1149,7 +1154,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	infAtMax = infAtMax == true
 	local r = U.row(parent, order)
 	if tooltip then U.bindTooltip(r, tooltip) end
-	r.Size = UDim2.new(1, 0, 0, 30)
+	r.Size = UDim2.new(1, 0, 0, 32)
 	defMin = defMin or minV
 	defMax = defMax or maxV
 	if defMin > defMax then defMin, defMax = defMax, defMin end
@@ -1179,8 +1184,8 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	local track = Instance.new("Frame")
 	track.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 	track.BorderSizePixel = 0
-	track.Size = UDim2.new(1, 0, 0, 6)
-	track.Position = UDim2.fromOffset(0, 14)
+	track.Size = UDim2.new(1, 0, 0, 8)
+	track.Position = UDim2.fromOffset(0, 16)
 	track.Parent = r
 	U.controlStroke(track)
 
@@ -1195,7 +1200,7 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local cap = Instance.new("Frame")
 		cap.BorderSizePixel = 0
 		cap.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-		cap.Size = UDim2.fromOffset(1, 6)
+		cap.Size = UDim2.fromOffset(1, 8)
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.ZIndex = 5
 		cap.Parent = track
@@ -1383,7 +1388,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 			U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 		end
-		local eb = U.ELEMENT_BORDER or 1
+		local eb = U.ELEMENT_BORDER or 1.5
 		edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 		edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
 		edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
@@ -1748,11 +1753,8 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		pop.Parent = U.gui
 		local pst = Instance.new("UIStroke")
 		pst.Color = U.theme.Border
-		pst.Thickness = 2
-		pst.LineJoinMode = Enum.LineJoinMode.Miter
+		pst.Thickness = 1
 		pst.Parent = pop
-		U.themeReg.borders = U.themeReg.borders or {}
-		U.themeReg.borders[#U.themeReg.borders + 1] = pst
 
 		local titleLbl = Instance.new("TextLabel")
 		titleLbl.BackgroundTransparency = 1
@@ -1775,7 +1777,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		map.Position = UDim2.fromOffset(PAD, mapY)
 		map.ZIndex = 221
 		map.Parent = pop
-		U.controlStroke(map)
 
 		local white = Instance.new("Frame")
 		white.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -1809,11 +1810,10 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		mapDot.AnchorPoint = Vector2.new(0.5, 0.5)
 		mapDot.BackgroundColor3 = Color3.new(1, 1, 1)
 		mapDot.BorderSizePixel = 0
-		mapDot.ZIndex = 230
+		mapDot.ZIndex = 224
 		mapDot.Parent = map
 		local mds = Instance.new("UIStroke")
 		mds.Color = Color3.new(0, 0, 0)
-		mds.Thickness = 1
 		mds.Parent = mapDot
 
 		local hueBar = Instance.new("ImageButton")
@@ -1824,7 +1824,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		hueBar.BackgroundColor3 = Color3.new(1, 1, 1)
 		hueBar.ZIndex = 221
 		hueBar.Parent = pop
-		U.controlStroke(hueBar)
 		local hg = Instance.new("UIGradient")
 		hg.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
@@ -1842,7 +1841,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		hueDot.Position = UDim2.new(h, 0, 0.5, 0)
 		hueDot.BackgroundColor3 = Color3.new(1, 1, 1)
 		hueDot.BorderSizePixel = 0
-		hueDot.ZIndex = 230
+		hueDot.ZIndex = 223
 		hueDot.Parent = hueBar
 		local hds = Instance.new("UIStroke")
 		hds.Color = Color3.new(0, 0, 0)
@@ -1860,7 +1859,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		colorTog.BorderSizePixel = 0
 		colorTog.ZIndex = 221
 		colorTog.Parent = pop
-		U.controlStroke(colorTog)
 		U.registerPulse(colorTog, function() return U.vflags[flagKey .. "CycleColor"] == true end)
 		colorTog.MouseButton1Click:Connect(function()
 			local on = not (U.vflags[flagKey .. "CycleColor"] == true)
@@ -1883,7 +1881,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaBar.BackgroundColor3 = Color3.fromHSV(h, sat, val)
 			alphaBar.ZIndex = 221
 			alphaBar.Parent = pop
-			U.controlStroke(alphaBar)
 			local ag = Instance.new("UIGradient")
 			ag.Rotation = 0
 			ag.Transparency = NumberSequence.new({
@@ -1897,7 +1894,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaDot.Position = UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0)
 			alphaDot.BackgroundColor3 = Color3.new(1, 1, 1)
 			alphaDot.BorderSizePixel = 0
-			alphaDot.ZIndex = 230
+			alphaDot.ZIndex = 223
 			alphaDot.Parent = alphaBar
 			local breakLine = Instance.new("Frame")
 			breakLine.Name = "AlphaBreak"
@@ -1906,7 +1903,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			breakLine.Position = UDim2.new(U.cycle.alphaBreak or 0, 0, 0.5, 0)
 			breakLine.BackgroundColor3 = Color3.fromRGB(220, 40, 40)
 			breakLine.BorderSizePixel = 0
-			breakLine.ZIndex = 231
+			breakLine.ZIndex = 224
 			breakLine.Visible = U.cycle.alphaBreak ~= nil
 			breakLine.Parent = alphaBar
 			U.registerAlphaBreakMarker(breakLine)
@@ -1935,7 +1932,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			alphaTog.BorderSizePixel = 0
 			alphaTog.ZIndex = 221
 			alphaTog.Parent = pop
-			U.controlStroke(alphaTog)
 			U.registerPulse(alphaTog, function() return U.vflags[flagKey .. "CycleAlpha"] == true end)
 			alphaTog.MouseButton1Click:Connect(function()
 				local on = not (U.vflags[flagKey .. "CycleAlpha"] == true)
@@ -2530,8 +2526,8 @@ function U.buildConfig()
 				U.themeReg.elementBorders = U.themeReg.elementBorders or {}
 				U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 			end
-			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 1)), UDim2.fromOffset(0, 0))
-			local eb = U.ELEMENT_BORDER or 1
+			edge("BTop", UDim2.new(1, 0, 0, (U.ELEMENT_BORDER or 1.5)), UDim2.fromOffset(0, 0))
+			local eb = U.ELEMENT_BORDER or 1.5
 			edge("BBottom", UDim2.new(1, 0, 0, eb), UDim2.new(0, 0, 1, -eb))
 			edge("BLeft", UDim2.new(0, eb, 1, 0), UDim2.fromOffset(0, 0))
 			edge("BRight", UDim2.new(0, eb, 1, 0), UDim2.new(1, -eb, 0, 0))
@@ -2671,18 +2667,6 @@ function U.buildConfig()
 			return fps
 		end
 
-		local function fitWmWidth(out)
-			local pad = 8
-			local pure = U.measureTextWidth(out)
-			if pure < 1 then pure = math.max(1, #out * 6) end
-			wtxt.Text = out
-			wtxt.TextColor3 = U.theme.Text
-			wtxt.TextXAlignment = Enum.TextXAlignment.Center
-			wtxt.Position = UDim2.fromOffset(0, 0)
-			wtxt.Size = UDim2.fromScale(1, 1)
-			wm.Size = UDim2.fromOffset(pure + pad * 2, 22)
-		end
-		local lastWmOut = nil
 		local function refreshWm()
 			local on = U.vflags.Watermark == true
 			wm.Visible = on
@@ -2698,55 +2682,39 @@ function U.buildConfig()
 			end
 			local out = table.concat(parts, " | ")
 			if out == "" then out = "wavelength" end
-			if out ~= lastWmOut then
-				lastWmOut = out
-				fitWmWidth(out)
-			else
-				wtxt.Text = out
-				wtxt.TextColor3 = U.theme.Text
-			end
+			wtxt.Text = out
+			wtxt.TextColor3 = U.theme.Text
+			local pad = 8
+			local pure = #out * 7
+			pcall(function()
+				if U.measureTextWidth then
+					pure = math.max(1, U.measureTextWidth(out) - 14)
+				end
+			end)
+			pcall(function()
+				local b = wtxt.TextBounds.X
+				if b and b > 0 then pure = math.ceil(b) end
+			end)
+			pure = math.max(24, pure)
+			local tw = pure + pad * 2
+			wm.Size = UDim2.fromOffset(tw, 22)
+			wtxt.Position = UDim2.fromOffset(pad, 2)
+			wtxt.Size = UDim2.new(1, -(pad * 2), 1, -2)
+			wtxt.TextXAlignment = Enum.TextXAlignment.Left
 			if U.wmDocked then U.dockWatermark() end
 			U.syncFloatingVisibility()
 		end
-		local wmStatsToken = 0
-		local function startWmStats()
-			wmStatsToken = wmStatsToken + 1
-			local token = wmStatsToken
-			local need = false
-			for _, item in ipairs(U.vflags.WatermarkItems or {}) do
-				if item == "fps" or item == "ping" then need = true break end
-			end
-			if not need or not U.vflags.Watermark then return end
-			task.spawn(function()
-				while U.running and token == wmStatsToken and U.vflags.Watermark do
-					local still = false
-					for _, item in ipairs(U.vflags.WatermarkItems or {}) do
-						if item == "fps" or item == "ping" then still = true break end
-					end
-					if not still then break end
-					refreshWm()
-					task.wait(0.5)
-				end
-			end)
-		end
 		U.onFlag("Watermark", function()
-			lastWmOut = nil
 			refreshWm()
-			startWmStats()
 			if U.vflags.Watermark and U.wmDocked then U.dockWatermark() end
 			U.syncFloatingVisibility()
 		end)
-		U.onFlag("WatermarkItems", function()
-			lastWmOut = nil
-			refreshWm()
-			startWmStats()
-		end)
-		U.onFlag("WatermarkMessage", function()
-			lastWmOut = nil
-			refreshWm()
+		U.onFlag("WatermarkItems", refreshWm)
+		U.onFlag("WatermarkMessage", refreshWm)
+		task.spawn(function()
+			while U.running do task.wait(0.25); if U.vflags.Watermark then refreshWm() end end
 		end)
 		refreshWm()
-		startWmStats()
 
 		do
 			local dragging, dragStart, startPos
@@ -3278,15 +3246,7 @@ function Library:CreateWindow(opts)
 			function sec:AddToggle(o)
 				o = o or {}
 				local flag = o.Flag or o.Name
-				local kbFlag, kbText = nil, nil
-				if o.Keybind == true then
-					kbFlag = o.KeybindFlag or (tostring(flag) .. "Key")
-					kbText = o.KeybindText or o.ListText or o.Text or o.Name
-					if o.Key ~= nil then
-						U.vflags[kbFlag] = U.parseKeyCode(o.Key)
-					end
-				end
-				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, kbFlag, kbText, (o and (o.Tooltip or o.tooltip)))
+				local t = U.mkToggle(content, string.lower(tostring(o.Name or "toggle")), flag, nextOrder(), o.Default == true, o.KeybindFlag, o.KeybindText or o.ListText or o.Text, (o and (o.Tooltip or o.tooltip)))
 				if o.Callback then
 					U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end)
 				end
