@@ -1,7 +1,7 @@
 local env = (typeof(getgenv) == "function" and getgenv()) or _G
 env._SM = env._SM or {}
 local U = env._SM
-U._ver = (U._ver or 0) + 1 -- re-executing the library retires loops from older copies
+U._ver = (U._ver or 0) + 1 
 local ver = U._ver
 local function alive() return U._ver == ver end
 
@@ -42,17 +42,16 @@ U._kbListen = U._kbListen or {}
 U.wmDocked, U.kbDocked = true, true
 U.running = true
 
-U.ELEMENT_BORDER = 1.5
+U.ELEMENT_BORDER = 1
 U.TEXT_SZ = 12
-U.LINE_H = 2 -- accent bar height
-U.PAD = 6 -- shared inner padding for watermark / keybind list / notifications
+U.LINE_H = 2 
+U.PAD = 6 
 U.dockGap = 6
 U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 22, 8
 U.TAB_NAMES = { "combat", "visuals", "misc", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
 
--- instance helpers
 function U.new(class, props, parent)
 	local i = Instance.new(class)
 	for k, v in pairs(props) do i[k] = v end
@@ -79,7 +78,6 @@ function U.stroke(parent, kind, noReg)
 	return s
 end
 
--- 4 themed edge frames. outward = sit outside the element (controls); otherwise inside it. noTop skips the top edge.
 function U.edges(parent, thick, outward, z, noTop)
 	local o = outward and thick or 0
 	local function edge(name, size, pos)
@@ -131,7 +129,6 @@ function U.loadFont()
 end
 U.font = U.loadFont()
 
--- width of a label's text (one measuring method shared by every auto-sized element)
 function U.textW(lbl)
 	local w = lbl.TextBounds.X
 	if w <= 0 and lbl.Text ~= "" then
@@ -145,7 +142,6 @@ function U.textW(lbl)
 	return math.ceil(w)
 end
 
--- tooltip
 function U.ensureTooltip()
 	if U.tooltipGui and U.tooltipGui.Parent and U.tooltipFrame and U.tooltipFrame.Parent then return end
 	U.tooltipGui = U.new("ScreenGui", {
@@ -185,7 +181,6 @@ function U.bindTooltip(obj, text)
 	obj.MouseLeave:Connect(U.hideTooltip)
 end
 
--- flags
 function U.onFlag(name, fn)
 	U.flagListeners[name] = U.flagListeners[name] or {}
 	table.insert(U.flagListeners[name], fn)
@@ -200,7 +195,6 @@ function U.setFlag(name, val)
 	U.fireFlag(name)
 end
 
--- accent / pulse
 function U.accentSequence()
 	local a, b = U.theme.Accent1, U.theme.Accent2
 	return ColorSequence.new({
@@ -218,7 +212,6 @@ function U.registerPulse(inst, isActive)
 	U.pulseReg[#U.pulseReg + 1] = { inst = inst, active = isActive }
 end
 
--- one loop drives pulses, tab accents and every accent-bar gradient
 task.spawn(function()
 	while alive() do
 		local c, off = U.pulseColor(), Vector2.new((tick() * 0.35 % 2) - 1, 0)
@@ -239,11 +232,13 @@ task.spawn(function()
 	end
 end)
 
-task.spawn(function()
-	while alive() and task.wait(0.01) do U.updateTooltipPos() end
-end)
+U.track(U.UIS.InputChanged:Connect(function(input)
+	if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
+		and U.tooltipFrame and U.tooltipFrame.Visible then
+		U.updateTooltipPos()
+	end
+end))
 
--- colour / alpha cycling
 U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01, alphaBreak = nil, alphaBreakMarkers = {} }
 
 function U.setCycleColor(flagKey, on)
@@ -328,7 +323,6 @@ task.spawn(function()
 	end
 end)
 
--- theming
 function U.applyTheme()
 	local R, T = U.themeReg, U.theme
 	for _, g in ipairs(R.accents) do if g.Parent then g.Color = U.accentSequence() end end
@@ -360,7 +354,6 @@ function U.refreshMenuTextColors()
 	end
 end
 
--- shared panel (watermark / keybind list / notification): background, border, accent bar
 function U.mkPanel(parent, name, z, noReg)
 	local f = U.new("Frame", { Name = name, BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, ZIndex = z }, parent)
 	local st = U.stroke(f, "Border", noReg)
@@ -370,13 +363,11 @@ function U.mkPanel(parent, name, z, noReg)
 	return f, st, bar
 end
 
--- panel text sits PAD away from every border (the accent bar counts as the top border)
 function U.panelSize(textW, rows)
 	local rowH, gap = U.TEXT_SZ, 2
 	return UDim2.fromOffset(textW + U.PAD * 2, U.LINE_H + U.PAD * 2 + rows * rowH + (rows - 1) * gap)
 end
 
--- notifications
 function U.notifAnchor(pos)
 	pos = string.lower(tostring(pos or ""))
 	if pos == "top left" then return Vector2.new(0, 0), UDim2.fromOffset(14, 14), 1
@@ -438,7 +429,6 @@ function U.pushNotification(opts)
 	end)
 end
 
--- popups
 function U.closeColorPicker()
 	if U.openColorPicker and U.openColorPicker.Parent then U.openColorPicker:Destroy() end
 	U.openColorPicker = nil
@@ -501,10 +491,8 @@ function U.shutdown()
 			if kill[g.Name] then g:Destroy() end
 		end
 	end)
-	print("wavelength unloaded")
 end
 
--- click helpers
 function U.armPopupOpen() U.suppressPopupClose = tick() + 0.08 end
 
 function U.objsAtMouse()
@@ -529,7 +517,6 @@ function U.clickHitsNamed(...)
 	return false
 end
 
--- layout helpers
 function U.row(parent, order)
 	return U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order or 0 }, parent)
 end
@@ -578,7 +565,6 @@ function U.section(parent, title, col, row, rows)
 	return content
 end
 
--- keybinds
 function U.parseKeyCode(v)
 	if typeof(v) == "EnumItem" then return v end
 	if type(v) == "string" then
@@ -596,7 +582,7 @@ function U.keyNameOf(k)
 	return type(k) == "string" and k or "none"
 end
 
-function U.refreshKeybindList() end -- replaced once the keybind panel exists
+function U.refreshKeybindList() end 
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	if not listText or listText == "" then return end
@@ -616,7 +602,6 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	U.refreshKeybindList()
 end
 
--- Keybinds only exist on toggles. The key (flag = toggleFlag .. "Key") flips its toggle through the toggle's own setter.
 function U.attachKeybind(row, toggleFlag, key, listText)
 	local kFlag = toggleFlag .. "Key"
 	U.keybindTargets[kFlag] = toggleFlag
@@ -657,7 +642,6 @@ function U.attachKeybind(row, toggleFlag, key, listText)
 	return kb
 end
 
--- kb = nil | { key = KeyCode|string, text = list label }
 function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
@@ -683,7 +667,6 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	return r
 end
 
--- sliders
 function U.formatSliderVal(val, step, suffix, maxV, infAtMax)
 	if infAtMax and val >= maxV then return "inf" end
 	step = tonumber(step) or 1
@@ -702,18 +685,15 @@ end
 function U.sliderFrame(parent, text, order, tooltip, vw)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 32)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	U.label(r, text, { Size = UDim2.new(1, -(vw + 4), 0, 12) })
 	local val = U.label(r, "", { Size = UDim2.fromOffset(vw, 12), Position = UDim2.new(1, -vw, 0, 0), TextXAlignment = Enum.TextXAlignment.Right })
-	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 8), Position = UDim2.fromOffset(0, 16) }, r)
+	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 14) }, r)
 	U.controlStroke(track)
 	local fill = U.new("Frame", { BackgroundColor3 = U.pulseColor(), BorderSizePixel = 0, ZIndex = 3 }, track)
 	U.registerPulse(fill, function() return true end)
 	local function cap(name)
-		return U.new("Frame", {
-			Name = name, BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(235, 235, 235), Size = UDim2.fromOffset(1, 8),
-			AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 5,
-		}, track)
+		return nil
 	end
 	return r, val, track, fill, cap
 end
@@ -722,15 +702,16 @@ local function relX(track, x) return math.clamp((x - track.AbsolutePosition.X) /
 
 function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt, tooltip)
 	step = step or 1
-	local r, val, track, fill, mkCap = U.sliderFrame(parent, text, order, tooltip, 52)
-	local cap, span = mkCap("SliderCap"), math.max(1e-6, maxV - minV)
+	local r, val, track, fill = U.sliderFrame(parent, text, order, tooltip, 52)
+	local span = math.max(1e-6, maxV - minV)
 	U.vflags[flag] = default
 
 	local function layout(v)
 		local t = math.clamp((v - minV) / span, 0, 1)
 		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
 		local fw = math.floor(w * t + 0.5)
-		fill.Size, cap.Size, cap.Position = UDim2.fromOffset(fw, h), UDim2.fromOffset(1, h), UDim2.fromOffset(fw, h * 0.5)
+		fill.Position = UDim2.fromOffset(0, 0)
+		fill.Size = UDim2.fromOffset(fw, h)
 	end
 	local function set(v)
 		v = math.clamp(v, minV, maxV)
@@ -763,11 +744,11 @@ end
 
 function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, defMax, order, step, suffix, tooltip, infAtMax)
 	step, suffix, infAtMax = step or 1, suffix or "", infAtMax == true
-	local r, val, track, fill, mkCap = U.sliderFrame(parent, text, order, tooltip, 88)
+	local r, val, track, fill = U.sliderFrame(parent, text, order, tooltip, 88)
 	defMin, defMax = defMin or minV, defMax or maxV
 	if defMin > defMax then defMin, defMax = defMax, defMin end
 	U.vflags[flagMin], U.vflags[flagMax] = defMin, defMax
-	local capA, capB, span = mkCap(), mkCap(), math.max(1e-6, maxV - minV)
+	local span = math.max(1e-6, maxV - minV)
 
 	local function snap(v)
 		if step >= 1 then return math.floor(v / step + 0.5) * step end
@@ -781,9 +762,6 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
 		local x0, x1 = math.floor(w * (a - minV) / span + 0.5), math.floor(w * (b - minV) / span + 0.5)
 		fill.Position, fill.Size = UDim2.fromOffset(x0, 0), UDim2.fromOffset(math.max(0, x1 - x0), h)
-		for cap, x in pairs({ [capA] = x0, [capB] = x1 }) do
-			cap.Size, cap.Position = UDim2.fromOffset(1, h), UDim2.fromOffset(x, h * 0.5)
-		end
 		val.Text = U.formatSliderVal(a, step, "", maxV, false) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, infAtMax)
 	end
 	refresh()
@@ -817,7 +795,6 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 	return r
 end
 
--- dropdown
 local DD_BG, DD_SEL, DD_HOV = Color3.fromRGB(32, 32, 32), Color3.fromRGB(40, 40, 40), Color3.fromRGB(36, 36, 36)
 
 function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
@@ -866,11 +843,11 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		end
 		if #options == 0 then return end
 
-		-- the list is as wide as the box *including* its outward border, so its edges continue the box's edges
+		
 		local eb = U.ELEMENT_BORDER
 		local fullH, inner = math.min(#options * 18, 140), math.floor(box.AbsoluteSize.X + 0.5)
-		local width = inner + eb * 2
-		local px = math.floor(box.AbsolutePosition.X - U.gui.AbsolutePosition.X + 0.5) - eb
+		local width = inner
+		local px = math.floor(box.AbsolutePosition.X - U.gui.AbsolutePosition.X + 0.5)
 		local py = math.floor(box.AbsolutePosition.Y - U.gui.AbsolutePosition.Y + box.AbsoluteSize.Y + 0.5)
 		local bb = box:FindFirstChild("BBottom")
 		if bb then bb.Visible = false end
@@ -880,7 +857,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
-		local holder = U.new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(inner, fullH), Position = UDim2.fromOffset(eb, 0), ZIndex = 221 }, list)
+		local holder = U.new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(inner, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221 }, list)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
 		U.edges(list, eb, false, 223, true)
 
@@ -932,7 +909,6 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	return r
 end
 
--- textbox / menu keybind / misc controls
 function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
@@ -953,7 +929,6 @@ function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	return r
 end
 
--- standalone key picker, used only for the menu toggle key
 function U.mkKeybind(parent, text, flag, default, order)
 	local r = U.row(parent, order)
 	U.vflags[flag] = default
@@ -1025,7 +1000,6 @@ function U.bindButton(btn, callback, delay)
 	end)
 end
 
--- colour picker
 function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	title = string.lower(tostring(title or "color"))
 	local alphaKey = flagKey .. "Transparency"
@@ -1088,13 +1062,14 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local hueY = mapY + MAP + 6
 		local alphaY = hueY + BAR_H + 6
 		local POP_W = PAD + MAP + GAP + TOG + PAD
-		local POP_H = PAD + TITLE + MAP + 6 + BAR_H + (noAlpha and 0 or (6 + BAR_H)) + PAD
+		local RGB_H = 16
+		local POP_H = PAD + TITLE + MAP + 6 + BAR_H + (noAlpha and 0 or (6 + BAR_H)) + 6 + RGB_H + PAD
 
 		local pop = U.new("Frame", {
 			Name = "ColorPop", BackgroundColor3 = Color3.fromRGB(24, 24, 24), BorderSizePixel = 0, Size = UDim2.fromOffset(POP_W, POP_H), ZIndex = 220, Active = true,
 		}, U.gui)
 		pop:SetAttribute("Flag", flagKey)
-		U.new("UIStroke", { Color = U.theme.Border, Thickness = 1 }, pop)
+		do local st = U.new("UIStroke", { Color = U.theme.Border, Thickness = 2, LineJoinMode = Enum.LineJoinMode.Miter }, pop); U.themeReg.borders[#U.themeReg.borders+1] = st end
 		U.label(pop, title, { Size = UDim2.new(1, -PAD * 2, 0, TITLE), Position = UDim2.fromOffset(PAD, 4), ZIndex = 221 })
 
 		local function btn(class, props)
@@ -1112,11 +1087,13 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		end
 
 		local map = btn("ImageButton", { BackgroundColor3 = Color3.fromHSV(h, 1, 1), Size = UDim2.fromOffset(MAP, MAP), Position = UDim2.fromOffset(PAD, mapY) })
+		U.controlStroke(map)
 		overlay(map, Color3.new(1, 1, 1), 222, 0, 0, 1)
 		overlay(map, Color3.new(0, 0, 0), 223, 90, 1, 0)
 		local mapDot = marker(map, UDim2.fromOffset(8, 8), 224, UDim2.new())
 
 		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
+		U.controlStroke(hueBar)
 		local hueKeys = {}
 		for i, c in ipairs({ { 0, 0 }, { 0.17, 60 }, { 0.33, 120 }, { 0.5, 180 }, { 0.67, 240 }, { 0.83, 300 }, { 1, 0 } }) do
 			hueKeys[i] = ColorSequenceKeypoint.new(c[1], Color3.fromHSV(c[2] / 360, 1, 1))
@@ -1130,6 +1107,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 				Name = name, Text = "", Size = UDim2.fromOffset(TOG, TOG), Position = UDim2.fromOffset(PAD + MAP + GAP, y + (BAR_H - TOG) / 2),
 				BackgroundColor3 = U.vflags[flagKey .. key] and U.pulseColor() or U.OFF,
 			})
+			U.controlStroke(b)
 			U.registerPulse(b, function() return U.vflags[flagKey .. key] == true end)
 			b.MouseButton1Click:Connect(function()
 				local on = U.vflags[flagKey .. key] ~= true
@@ -1146,6 +1124,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local alphaBar, alphaDot
 		if not noAlpha then
 			alphaBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, alphaY), BackgroundColor3 = Color3.fromHSV(h, sat, val) })
+			U.controlStroke(alphaBar)
 			U.new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) }, alphaBar)
 			alphaDot = marker(alphaBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0))
 			local breakLine = U.new("Frame", {
@@ -1164,6 +1143,41 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			end)
 		end
 
+		local rgbY = (noAlpha and hueY or alphaY) + BAR_H + 6
+		local rgbBox = U.new("TextBox", {
+			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0, ClearTextOnFocus = false,
+			Size = UDim2.fromOffset(MAP, RGB_H), Position = UDim2.fromOffset(PAD, rgbY),
+			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 221, Text = "",
+		}, pop)
+		U.controlStroke(rgbBox)
+		local function syncRgbText()
+			local c = Color3.fromHSV(h, sat, val)
+			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
+			if noAlpha then
+				rgbBox.Text = string.format("%d, %d, %d", r, g, b)
+			else
+				local a = U.vflags[alphaKey] or 0
+				rgbBox.Text = string.format("%d, %d, %d, %.2f", r, g, b, a)
+			end
+		end
+		rgbBox.FocusLost:Connect(function()
+			local parts = {}
+			for n in string.gmatch(rgbBox.Text, "[%d%.]+") do parts[#parts+1] = tonumber(n) end
+			if #parts >= 3 then
+				local r = math.clamp(parts[1], 0, 255) / 255
+				local g = math.clamp(parts[2], 0, 255) / 255
+				local b = math.clamp(parts[3], 0, 255) / 255
+				h, sat, val = Color3.new(r, g, b):ToHSV()
+				if not noAlpha and parts[4] ~= nil then
+					U.vflags[alphaKey] = math.clamp(parts[4], 0, 1)
+				end
+				apply()
+				refreshUI()
+			else
+				syncRgbText()
+			end
+		end)
 		refreshUI = function()
 			map.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			mapDot.Position = UDim2.fromScale(sat, 1 - val)
@@ -1172,6 +1186,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 				alphaBar.BackgroundColor3 = Color3.fromHSV(h, sat, val)
 				alphaDot.Position = UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0)
 			end
+			syncRgbText()
 		end
 		U.openPickerRefresh = refreshUI
 		pop.Destroying:Connect(function()
@@ -1225,7 +1240,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	return sw
 end
 
--- shell
 function U.buildShell()
 	local TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
 	U.TAB_W, U.TAB_H = TAB_W, 32
@@ -1260,7 +1274,6 @@ function U.buildShell()
 	U.currentTab = U.TAB_NAMES[1]
 end
 
--- docking / snap ghosts for the watermark ("wm") and keybind list ("kb")
 local function panelOf(kind) return kind == "wm" and U.wm or U.kbPanel end
 local function flagOf(kind) return kind == "wm" and "Watermark" or "KeybindsList" end
 
@@ -1315,8 +1328,7 @@ end
 function U.overlapsSnap(kind, frame)
 	if U.menuOpen == false or not frame or not U.shell then return false end
 	local g = U[kind .. "SnapGhost"]
-	if not g or not g.Visible then U.showSnapGhost(kind) g = U[kind .. "SnapGhost"] end
-	if not g then return false end
+	if not g or not g.Visible then return false end
 	local gp, gs, fp, fs = g.AbsolutePosition, g.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
 	local cx, cy = fp.X + fs.X * 0.5, fp.Y + fs.Y * 0.5
 	return cx >= gp.X and cx <= gp.X + gs.X and cy >= gp.Y and cy <= gp.Y + gs.Y
@@ -1361,7 +1373,7 @@ function U.buildFloaters()
 	local gen, P = U.gen, U.PAD
 	local textPos, textSize = UDim2.fromOffset(P, U.LINE_H + P), UDim2.new(1, -P * 2, 0, U.TEXT_SZ)
 
-	-- watermark
+	
 	local wm = U.mkPanel(U.gui, "Watermark", 50)
 	wm.Size, wm.Active, wm.Visible = U.panelSize(80, 1), true, false
 	U.wm, U.wmGui = wm, U.gui
@@ -1410,7 +1422,7 @@ function U.buildFloaters()
 	refreshWm()
 	U.dragPanel(wm, "wm")
 
-	-- keybind list
+	
 	local kb = U.mkPanel(U.gui, "KeybindsPanel", 50)
 	kb.Size, kb.Active, kb.Visible = U.panelSize(40, 1), true, false
 	U.kbPanel = kb
@@ -1419,7 +1431,7 @@ function U.buildFloaters()
 
 	local function build()
 		if U.vflags.KeybindsList ~= true then kb.Visible = false return end
-		kb.Visible = true -- measure while visible; syncFloatingVisibility applies the real state below
+		kb.Visible = true 
 		for _, c in ipairs(list:GetChildren()) do
 			if c:IsA("TextLabel") then c:Destroy() end
 		end
@@ -1450,7 +1462,6 @@ function U.buildFloaters()
 	U.dragPanel(kb, "kb")
 end
 
--- config / settings tab
 function U.buildConfig()
 	local FOLDER, selected, listFrame = "zwavelength", nil, nil
 	local function ensureFolder() if isfolder and not isfolder(FOLDER) then makefolder(FOLDER) end end
@@ -1636,7 +1647,6 @@ function U.buildConfig()
 	})
 end
 
--- tabs
 function U.buildTabs()
 	local rail = U.new("Frame", {
 		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
@@ -1692,7 +1702,6 @@ function U.buildTabs()
 	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.LINE_H + U.BODY_H + U.TAB_H)
 end
 
--- input
 function U.bindInput()
 	U.track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -1720,8 +1729,10 @@ function U.bindInput()
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-		U.dock("wm")
-		U.dock("kb")
+		U.hideSnapGhost("wm")
+		U.hideSnapGhost("kb")
+		if U.wmDocked then U.dock("wm") end
+		if U.kbDocked then U.dock("kb") end
 	end))
 
 	U.menuOpen = true
@@ -1746,7 +1757,7 @@ function U.bindInput()
 				U.dock("kb")
 			end
 		end
-		-- keybinds drive their toggle through the toggle's own setter
+		
 		for kFlag, tFlag in pairs(U.keybindTargets) do
 			local k = U.vflags[kFlag]
 			if typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
@@ -1775,7 +1786,6 @@ end
 local function lname(o, default) return string.lower(tostring(o.Name or default)) end
 local function tip(o) return o.Tooltip or o.tooltip end
 
--- Keybind = true attaches a key to the toggle. Key / KeybindText are ignored unless Keybind is true.
 local function keybindOf(o, name)
 	if o.Keybind ~= true then return nil end
 	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
@@ -1841,7 +1851,7 @@ function Library:CreateWindow(opts)
 
 			local parent = U.pageFrames[tabName]
 			local content = U.section(parent, string.lower(tostring(sectionName)), side, row, rows)
-			if rows > 1 then -- re-flow earlier sections in this column to the new row count
+			if rows > 1 then 
 				local x, _, w, h = U.secGeom(side, 1, rows)
 				local idx = 0
 				for _, ch in ipairs(parent:GetChildren()) do
@@ -1924,9 +1934,15 @@ function Library:CreateWindow(opts)
 			function sec:AddLabel(o)
 				o = o or {}
 				local r = U.row(content, nextOrder())
-				U.label(r, string.lower(tostring(o.Name or "")), { Size = UDim2.fromScale(1, 1) })
+				U.label(r, string.lower(tostring(o.Name or "")), { Size = UDim2.new(1, -36, 1, 0) })
 				U.bindTooltip(r, tip(o))
-				return { Row = r }
+				local obj = { Row = r }
+				function obj:AddColorpicker(co)
+					co = co or {}
+					U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
+					return obj
+				end
+				return obj
 			end
 			function sec:AddTextbox(o)
 				o = o or {}
@@ -1945,7 +1961,6 @@ function Library:CreateWindow(opts)
 	function win:Init()
 		U.buildTabs()
 		U.bindInput()
-		print("wavelength library window ready")
 	end
 	function win:Unload() U.shutdown() end
 	return win
