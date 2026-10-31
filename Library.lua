@@ -877,8 +877,10 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		
 		local eb = U.ELEMENT_BORDER
 		local fullH = math.min(#options * 18, 140)
-		local width = math.floor(box.AbsoluteSize.X + 0.5)
-		local px = math.floor(box.AbsolutePosition.X - U.gui.AbsolutePosition.X + 0.5)
+		local boxW = math.floor(box.AbsoluteSize.X + 0.5)
+		local ebPx = math.floor(eb + 0.5)
+		local width = boxW + ebPx * 2
+		local px = math.floor(box.AbsolutePosition.X - U.gui.AbsolutePosition.X + 0.5) - ebPx
 		local py = math.floor(box.AbsolutePosition.Y - U.gui.AbsolutePosition.Y + box.AbsoluteSize.Y + 0.5)
 		local bb = box:FindFirstChild("BBottom")
 		if bb then bb.Visible = false end
