@@ -32,6 +32,7 @@ end
 U.themeReg = U.themeReg or U.newReg()
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
+if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
 U.pulseReg = U.pulseReg or {}
@@ -307,6 +308,8 @@ task.spawn(function()
 				if typeof(cur) == "Color3" then
 					local _
 					_, s, v = cur:ToHSV()
+					if s < 0.05 then s = 1 end
+					if v < 0.05 then v = 1 end
 				end
 				local nc = Color3.fromHSV(c.hue, s, v)
 				U.vflags[flagKey] = nc
@@ -544,7 +547,16 @@ end
 
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
-	local function sync() control.Visible = pred() and true or false end
+	local function sync()
+		local vis = pred() and true or false
+		if control.Visible ~= vis then
+			control.Visible = vis
+			if U.closeDropdown then U.closeDropdown() end
+			if U.closeColorPicker then U.closeColorPicker() end
+		else
+			control.Visible = vis
+		end
+	end
 	for _, k in ipairs(keys) do U.onFlag(k, sync) end
 	sync()
 	return control
@@ -577,6 +589,10 @@ function U.section(parent, title, col, row, rows)
 	}, f)
 	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
 	U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 2) }, content)
+	content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		if U.closeDropdown then U.closeDropdown() end
+		if U.closeColorPicker then U.closeColorPicker() end
+	end)
 	return content
 end
 
@@ -868,16 +884,16 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		if bb then bb.Visible = false end
 
 		local list = U.new("Frame", {
-			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = false,
+			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
 		local holder = U.new("Frame", {
-			BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
+			BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = false,
 			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221,
 		}, list)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-		U.edges(list, eb, true, 223, true)
+		U.edges(list, eb, false, 223, true)
 
 		for _, opt in ipairs(options) do
 			local b = U.new("TextButton", {
@@ -913,7 +929,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		U.openDropdown, U.openDropdownBox = list, box
 		U.armPopupOpen()
 		list.InputBegan:Connect(U.armPopupOpen)
-		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH + eb) }):Play()
+		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH) }):Play()
 	end)
 	U.setters[flag] = function(v)
 		if multi and type(v) == "table" then
@@ -1169,7 +1185,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		}, pop)
 		U.controlStroke(rgbBox)
 		local rgbText = U.label(rgbBox, "", {
-			Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0),
+			Position = UDim2.fromOffset(4, 0), Size = UDim2.new(1, -6, 1, 0),
 			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 222,
 		})
 		local function syncRgbText()
