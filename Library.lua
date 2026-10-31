@@ -135,14 +135,15 @@ function U.textW(lbl)
 	if typeof(lbl) == "Instance" and lbl.TextBounds and lbl.TextBounds.X > 0 then
 		w = lbl.TextBounds.X
 	end
-	if w <= 0 and text ~= "" then
+	if text ~= "" then
 		local ok, b = pcall(function()
 			local p = Instance.new("GetTextBoundsParams")
 			p.Text, p.Font, p.Size, p.Width = text, U.font, U.TEXT_SZ, 1e4
 			return U.Text:GetTextBoundsAsync(p).X
 		end)
-		w = (ok and b and b > 0) and b or (#text * 7)
+		if ok and b and b > w then w = b end
 	end
+	if w <= 0 and text ~= "" then w = #text * 7 end
 	return math.max(1, math.ceil(w))
 end
 
@@ -407,13 +408,15 @@ function U.pushNotification(opts)
 	local dur = opts.time or opts.Time or opts.duration or opts.Duration or 3
 	local nGui = U.new("ScreenGui", { Name = "wavelength_notif", IgnoreGuiInset = true, ResetOnSpawn = false }, U.guiParent())
 	local frame, st, bar = U.mkPanel(nGui, "Notif", 1, true)
-	local label = U.label(frame, text, {
-		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.PAD), Size = UDim2.new(0, 0, 0, U.TEXT_SZ), AutomaticSize = Enum.AutomaticSize.X, TextYAlignment = Enum.TextYAlignment.Center,
-	})
-	local tw = U.textW(label)
+	local tw = U.textW(text)
 	if tw < 8 then tw = math.max(8, #text * 7) end
-	label.Size = UDim2.fromOffset(tw, U.TEXT_SZ)
-	frame.Size = U.panelSize(tw, 1)
+	local label = U.label(frame, text, {
+		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.PAD),
+		Size = UDim2.fromOffset(tw, U.TEXT_SZ),
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+	})
+	frame.Size = UDim2.fromOffset(tw + U.PAD * 2, U.LINE_H + U.PAD * 2 + U.TEXT_SZ)
 
 	local parts = { { frame, "BackgroundTransparency" }, { st, "Transparency" }, { bar, "BackgroundTransparency" }, { label, "TextTransparency" } }
 	local function fade(info, to)
@@ -865,11 +868,14 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		if bb then bb.Visible = false end
 
 		local list = U.new("Frame", {
-			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = true,
+			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = false,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
-		local holder = U.new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221 }, list)
+		local holder = U.new("Frame", {
+			BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true,
+			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221,
+		}, list)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
 		U.edges(list, eb, true, 223, true)
 
@@ -1020,7 +1026,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
-	rowFrame:SetAttribute("RightPad", rightPad + 30)
+	rowFrame:SetAttribute("RightPad", rightPad + 26 + 4)
 	local sw = U.new("TextButton", {
 		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(26, 13), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -rightPad, 0.5, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12,
@@ -1157,22 +1163,23 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 
 		local rgbY = (noAlpha and hueY or alphaY) + BAR_H + 6
 		local rgbW = MAP + GAP + TOG
-		local rgbBox = U.new("TextLabel", {
+		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, rgbY),
-			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 221, Text = "",
+			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, rgbY), ZIndex = 221,
 		}, pop)
 		U.controlStroke(rgbBox)
-		U.new("UIPadding", { PaddingLeft = UDim.new(0, 6) }, rgbBox)
+		local rgbText = U.label(rgbBox, "", {
+			Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0),
+			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 222,
+		})
 		local function syncRgbText()
 			local c = Color3.fromHSV(h, sat, val)
 			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
 			if noAlpha then
-				rgbBox.Text = string.format("%d, %d, %d", r, g, b)
+				rgbText.Text = string.format("%d, %d, %d", r, g, b)
 			else
 				local a = U.vflags[alphaKey] or 0
-				rgbBox.Text = string.format("%d, %d, %d, %.2f", r, g, b, a)
+				rgbText.Text = string.format("%d, %d, %d, %.2f", r, g, b, a)
 			end
 		end
 		refreshUI = function()
