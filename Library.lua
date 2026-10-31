@@ -130,16 +130,20 @@ end
 U.font = U.loadFont()
 
 function U.textW(lbl)
-	local w = lbl.TextBounds.X
-	if w <= 0 and lbl.Text ~= "" then
+	local text = typeof(lbl) == "Instance" and lbl.Text or tostring(lbl or "")
+	local w = 0
+	if typeof(lbl) == "Instance" and lbl.TextBounds and lbl.TextBounds.X > 0 then
+		w = lbl.TextBounds.X
+	end
+	if w <= 0 and text ~= "" then
 		local ok, b = pcall(function()
 			local p = Instance.new("GetTextBoundsParams")
-			p.Text, p.Font, p.Size, p.Width = lbl.Text, U.font, U.TEXT_SZ, 1e4
+			p.Text, p.Font, p.Size, p.Width = text, U.font, U.TEXT_SZ, 1e4
 			return U.Text:GetTextBoundsAsync(p).X
 		end)
-		w = ok and b or #lbl.Text * 7
+		w = (ok and b and b > 0) and b or (#text * 7)
 	end
-	return math.ceil(w)
+	return math.max(1, math.ceil(w))
 end
 
 function U.ensureTooltip()
@@ -232,12 +236,17 @@ task.spawn(function()
 	end
 end)
 
-U.track(U.UIS.InputChanged:Connect(function(input)
-	if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
-		and U.tooltipFrame and U.tooltipFrame.Visible then
-		U.updateTooltipPos()
-	end
-end))
+function U.bindTooltipFollow()
+	if U._tipFollow then pcall(function() U._tipFollow:Disconnect() end) end
+	U._tipFollow = U.UIS.InputChanged:Connect(function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
+			and U.tooltipFrame and U.tooltipFrame.Visible then
+			U.updateTooltipPos()
+		end
+	end)
+	U.track(U._tipFollow)
+end
+U.bindTooltipFollow()
 
 U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01, alphaBreak = nil, alphaBreakMarkers = {} }
 
@@ -399,9 +408,12 @@ function U.pushNotification(opts)
 	local nGui = U.new("ScreenGui", { Name = "wavelength_notif", IgnoreGuiInset = true, ResetOnSpawn = false }, U.guiParent())
 	local frame, st, bar = U.mkPanel(nGui, "Notif", 1, true)
 	local label = U.label(frame, text, {
-		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.PAD), Size = UDim2.new(1, -U.PAD * 2, 0, U.TEXT_SZ), TextYAlignment = Enum.TextYAlignment.Center,
+		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.PAD), Size = UDim2.new(0, 0, 0, U.TEXT_SZ), AutomaticSize = Enum.AutomaticSize.X, TextYAlignment = Enum.TextYAlignment.Center,
 	})
-	frame.Size = U.panelSize(U.textW(label), 1)
+	local tw = U.textW(label)
+	if tw < 8 then tw = math.max(8, #text * 7) end
+	label.Size = UDim2.fromOffset(tw, U.TEXT_SZ)
+	frame.Size = U.panelSize(tw, 1)
 
 	local parts = { { frame, "BackgroundTransparency" }, { st, "Transparency" }, { bar, "BackgroundTransparency" }, { label, "TextTransparency" } }
 	local function fade(info, to)
@@ -845,8 +857,8 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 
 		
 		local eb = U.ELEMENT_BORDER
-		local fullH, inner = math.min(#options * 18, 140), math.floor(box.AbsoluteSize.X + 0.5)
-		local width = inner
+		local fullH = math.min(#options * 18, 140)
+		local width = math.floor(box.AbsoluteSize.X + 0.5)
 		local px = math.floor(box.AbsolutePosition.X - U.gui.AbsolutePosition.X + 0.5)
 		local py = math.floor(box.AbsolutePosition.Y - U.gui.AbsolutePosition.Y + box.AbsoluteSize.Y + 0.5)
 		local bb = box:FindFirstChild("BBottom")
@@ -857,9 +869,9 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
-		local holder = U.new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(inner, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221 }, list)
+		local holder = U.new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221 }, list)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-		U.edges(list, eb, false, 223, true)
+		U.edges(list, eb, true, 223, true)
 
 		for _, opt in ipairs(options) do
 			local b = U.new("TextButton", {
@@ -1008,9 +1020,9 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
-	rowFrame:SetAttribute("RightPad", rightPad + 32)
+	rowFrame:SetAttribute("RightPad", rightPad + 30)
 	local sw = U.new("TextButton", {
-		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(28, 14), AnchorPoint = Vector2.new(1, 0.5),
+		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(26, 13), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -rightPad, 0.5, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12,
 	}, rowFrame)
 	U.controlStroke(sw)
@@ -1144,13 +1156,15 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		end
 
 		local rgbY = (noAlpha and hueY or alphaY) + BAR_H + 6
-		local rgbBox = U.new("TextBox", {
-			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0, ClearTextOnFocus = false,
-			Size = UDim2.fromOffset(MAP, RGB_H), Position = UDim2.fromOffset(PAD, rgbY),
+		local rgbW = MAP + GAP + TOG
+		local rgbBox = U.new("TextLabel", {
+			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
+			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, rgbY),
 			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 221, Text = "",
+			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 221, Text = "",
 		}, pop)
 		U.controlStroke(rgbBox)
+		U.new("UIPadding", { PaddingLeft = UDim.new(0, 6) }, rgbBox)
 		local function syncRgbText()
 			local c = Color3.fromHSV(h, sat, val)
 			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
@@ -1161,23 +1175,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 				rgbBox.Text = string.format("%d, %d, %d, %.2f", r, g, b, a)
 			end
 		end
-		rgbBox.FocusLost:Connect(function()
-			local parts = {}
-			for n in string.gmatch(rgbBox.Text, "[%d%.]+") do parts[#parts+1] = tonumber(n) end
-			if #parts >= 3 then
-				local r = math.clamp(parts[1], 0, 255) / 255
-				local g = math.clamp(parts[2], 0, 255) / 255
-				local b = math.clamp(parts[3], 0, 255) / 255
-				h, sat, val = Color3.new(r, g, b):ToHSV()
-				if not noAlpha and parts[4] ~= nil then
-					U.vflags[alphaKey] = math.clamp(parts[4], 0, 1)
-				end
-				apply()
-				refreshUI()
-			else
-				syncRgbText()
-			end
-		end)
 		refreshUI = function()
 			map.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			mapDot.Position = UDim2.fromScale(sat, 1 - val)
@@ -1807,6 +1804,7 @@ function Library:CreateWindow(opts)
 	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui, U.tooltipFrame = nil, nil end
 	for _, c in ipairs(U._conns or {}) do pcall(function() c:Disconnect() end) end
 	U._conns = {}
+	if U.bindTooltipFollow then U.bindTooltipFollow() end
 	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
 	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
 	U.themeReg = U.newReg()
