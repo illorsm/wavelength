@@ -1044,7 +1044,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
-	rowFrame:SetAttribute("RightPad", rightPad + 26 + 4)
+	rowFrame:SetAttribute("RightPad", rightPad + 26 + 4 + 2)
 	local sw = U.new("TextButton", {
 		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(26, 13), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -rightPad, 0.5, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12,
