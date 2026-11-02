@@ -36,7 +36,6 @@ U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
 if U.vflags.ThemePreviewBg == nil then U.vflags.ThemePreviewBg = Color3.fromRGB(14, 14, 14) end
-if U.vflags.ThemePreviewBgTransparency == nil then U.vflags.ThemePreviewBgTransparency = 0 end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
 U.pulseReg = U.pulseReg or {}
@@ -354,8 +353,7 @@ function U.applyTheme()
 	if U.pvViewport and U.pvViewport.Parent then
 		local col = U.vflags.ThemePreviewBg
 		if typeof(col) == "Color3" then U.pvViewport.BackgroundColor3 = col end
-		local a = U.vflags.ThemePreviewBgTransparency
-		if type(a) == "number" then U.pvViewport.BackgroundTransparency = a end
+		U.pvViewport.BackgroundTransparency = 0
 	end
 	for _, l in ipairs(R.labels or {}) do
 		if l and l.Parent then l.TextColor3 = T.Text end
@@ -1297,12 +1295,16 @@ function U.buildShell()
 		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
 		Position = UDim2.fromOffset(0, U.LINE_H),
 	}, shell)
-	U.label(U.titleBar, "wavelength", {
-		Size = UDim2.new(0.55, -10, 1, 0), Position = UDim2.fromOffset(8, 0),
+	local titleLeft = U.label(U.titleBar, "wavelength", {
+		Size = UDim2.new(0.5, -12, 1, 0),
+		Position = UDim2.fromOffset(8, -1),
 		TextYAlignment = Enum.TextYAlignment.Center,
+		TextXAlignment = Enum.TextXAlignment.Left,
 	})
+	table.insert(U.themeReg.labels, titleLeft)
 	local uniLbl = U.label(U.titleBar, "[universal]", {
-		Size = UDim2.new(0.45, -10, 1, 0), Position = UDim2.new(1, -8, 0, 0),
+		Size = UDim2.new(0.5, -12, 1, 0),
+		Position = UDim2.new(1, -8, 0, -1),
 		AnchorPoint = Vector2.new(1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 		TextYAlignment = Enum.TextYAlignment.Center,
@@ -1561,7 +1563,7 @@ function U.buildFloaters()
 	U.pvDocked = true
 	table.insert(U.themeReg.bodyBgs, pv)
 	local pvTitleLbl = U.label(pv, "preview", {
-		Position = UDim2.fromOffset(6, U.LINE_H),
+		Position = UDim2.fromOffset(6, U.LINE_H - 1),
 		Size = UDim2.new(1, -12, 0, U.TITLE_H + U.SEC_GAP),
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
@@ -1582,7 +1584,7 @@ function U.buildFloaters()
 	viewport.Name = "View"
 	local pbg = U.vflags.ThemePreviewBg
 	viewport.BackgroundColor3 = typeof(pbg) == "Color3" and pbg or Color3.fromRGB(14, 14, 14)
-	viewport.BackgroundTransparency = type(U.vflags.ThemePreviewBgTransparency) == "number" and U.vflags.ThemePreviewBgTransparency or 0
+	viewport.BackgroundTransparency = 0
 	viewport.BorderSizePixel = 0
 	viewport.Size = UDim2.fromScale(1, 1)
 	viewport.Ambient = Color3.fromRGB(200, 200, 200)
@@ -1783,19 +1785,12 @@ function U.buildConfig()
 	themeRow("background", "ThemeBackground", "Background")
 	do
 		local row = U.mkColorRow(settingsSec, "preview background", nextOrder())
-		U.attachPicker(row, "ThemePreviewBg", Color3.fromRGB(14, 14, 14), false, "preview background")
+		U.attachPicker(row, "ThemePreviewBg", Color3.fromRGB(14, 14, 14), true, "preview background")
 		U.onFlag("ThemePreviewBg", function()
 			local vp = U.pvViewport
 			if vp then
 				local col = U.vflags.ThemePreviewBg
 				if typeof(col) == "Color3" then vp.BackgroundColor3 = col end
-			end
-		end)
-		U.onFlag("ThemePreviewBgTransparency", function()
-			local vp = U.pvViewport
-			if vp then
-				local a = U.vflags.ThemePreviewBgTransparency
-				if type(a) == "number" then vp.BackgroundTransparency = a end
 			end
 		end)
 	end
@@ -2202,7 +2197,7 @@ do
 
 	local players = tab:AddSection("players", 2)
 	local box = players:AddToggle({ Name = "box", Flag = "Box", Default = false })
-	box:AddColorpicker({ Flag = "BoxColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "box" })
+	box:AddColorpicker({ Flag = "BoxColor", Default = Color3.fromRGB(255, 255, 255), Name = "box" })
 	box:AddDropdown({ Name = "type", Flag = "BoxType", Items = { "square", "corner" }, Default = "square" })
 	box:AddSlider({ Name = "length", Flag = "BoxCornerLength", Min = 0, Max = 100, Default = 33, Increment = 1, Suffix = "%" })
 
@@ -2210,21 +2205,21 @@ do
 	boxFill:AddColorpicker({ Flag = "BoxFillColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
 
 	local hbar = players:AddToggle({ Name = "health bar", Flag = "HealthBar", Default = false })
-	hbar:AddColorpicker({ Flag = "HealthBarColor1", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
-	hbar:AddColorpicker({ Flag = "HealthBarColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	hbar:AddColorpicker({ Flag = "HealthBarColor1", Default = Color3.fromRGB(0, 255, 0), Name = "high" })
+	hbar:AddColorpicker({ Flag = "HealthBarColor2", Default = Color3.fromRGB(255, 0, 0), Name = "low" })
 	hbar:AddToggle({ Name = "dynamic color", Flag = "HealthBarDynamic", Default = true })
 
 	local htxt = players:AddToggle({ Name = "health", Flag = "HealthText", Default = false })
-	htxt:AddColorpicker({ Flag = "HealthTextColor1", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
-	htxt:AddColorpicker({ Flag = "HealthTextColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	htxt:AddColorpicker({ Flag = "HealthTextColor1", Default = Color3.fromRGB(0, 255, 0), Name = "high" })
+	htxt:AddColorpicker({ Flag = "HealthTextColor2", Default = Color3.fromRGB(255, 0, 0), Name = "low" })
 	htxt:AddToggle({ Name = "dynamic color", Flag = "HealthTextDynamic", Default = true })
 
 	local nameT = players:AddToggle({ Name = "name", Flag = "NameESP", Default = false })
-	nameT:AddColorpicker({ Flag = "NameColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "name" })
+	nameT:AddColorpicker({ Flag = "NameColor", Default = Color3.fromRGB(255, 255, 255), Name = "name" })
 	nameT:AddDropdown({ Name = "type", Flag = "NameType", Items = { "username", "display", "both" }, Default = "display", Limit = 1 })
 
 	local dist = players:AddToggle({ Name = "distance", Flag = "DistanceESP", Default = false })
-	dist:AddColorpicker({ Flag = "DistanceColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "distance" })
+	dist:AddColorpicker({ Flag = "DistanceColor", Default = Color3.fromRGB(255, 255, 255), Name = "distance" })
 
 	local sk = players:AddToggle({ Name = "skeleton", Flag = "Skeleton", Default = false })
 	sk:AddColorpicker({ Flag = "SkeletonColor", Default = Color3.fromRGB(255, 255, 255), Name = "skeleton" })
@@ -2600,8 +2595,13 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 	else destroyBoxes(d) end
 
 	if F.BoxFill then
-		d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0); d.fill.Position = dim2(0,0,0,0)
-		d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor"); d.fill.ZIndex = 0
+		-- same outer size as box (holder includes border); drawn behind box strokes
+		d.fill.Visible = true
+		d.fill.Size = dim2(1, 0, 1, 0)
+		d.fill.Position = dim2(0, 0, 0, 0)
+		d.fill.BackgroundColor3 = C("BoxFillColor")
+		d.fill.BackgroundTransparency = A("BoxFillColor")
+		d.fill.ZIndex = 0
 	else d.fill.Visible = false end
 
 	if F.HealthBar then
@@ -2609,7 +2609,11 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 		d.healthbar_holder.Size = dim2(0, healthbarWidth() + 2, 1, 2)
 		d.healthbar_holder.Position = dim2(0, 0, 0, -1)
 		local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1", rgb(0,255,0))
+		local ht = A("HealthBarColor1")
+		d.healthbar_holder.BackgroundTransparency = ht
+		d.healthbar.BackgroundTransparency = ht
 		d.healthbar_fill.BackgroundColor3 = col
+		d.healthbar_fill.BackgroundTransparency = ht
 		d.healthbar_fill.Size = dim2(1, 0, frac, 0)
 		d.healthbar_fill.Position = dim2(0, 0, 1 - frac, 0)
 	else d.healthbar_holder.Visible = false end
@@ -2618,6 +2622,7 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 		d.hpTxt.Visible = true
 		local col = (F.HealthTextDynamic ~= false) and lerpColor(C("HealthTextColor2", rgb(255,0,0)), C("HealthTextColor1", rgb(0,255,0)), frac) or C("HealthTextColor1")
 		d.hpTxt.TextColor3 = col
+		d.hpTxt.TextTransparency = A("HealthTextColor1")
 		d.hpTxt.Text = tostring(hpText or math.floor((opts.hp or 0) + 0.5))
 		d.hpTxt.TextSize = FONT_SZ
 		if F.HealthBar then d.hpTxt.Position = dim2(0, healthTextXOff(), 1 - frac, -1 + FONT_Y)
