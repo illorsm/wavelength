@@ -35,6 +35,8 @@ U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
+if U.vflags.ThemePreviewBg == nil then U.vflags.ThemePreviewBg = Color3.fromRGB(14, 14, 14) end
+if U.vflags.ThemePreviewBgTransparency == nil then U.vflags.ThemePreviewBgTransparency = 0 end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
 U.pulseReg = U.pulseReg or {}
@@ -349,6 +351,12 @@ function U.applyTheme()
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
 	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = T.Background end
 	if U.pvPanel and U.pvPanel.Parent then U.pvPanel.BackgroundColor3 = T.Background end
+	if U.pvViewport and U.pvViewport.Parent then
+		local col = U.vflags.ThemePreviewBg
+		if typeof(col) == "Color3" then U.pvViewport.BackgroundColor3 = col end
+		local a = U.vflags.ThemePreviewBgTransparency
+		if type(a) == "number" then U.pvViewport.BackgroundTransparency = a end
+	end
 	for _, l in ipairs(R.labels or {}) do
 		if l and l.Parent then l.TextColor3 = T.Text end
 	end
@@ -1285,9 +1293,21 @@ function U.buildShell()
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, U.accent))
 
 	U.titleBar = U.new("Frame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TITLE_H), Position = UDim2.fromOffset(0, U.LINE_H),
+		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
+		Position = UDim2.fromOffset(0, U.LINE_H),
 	}, shell)
-	U.label(U.titleBar, "wavelength", { Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(8, 0) })
+	U.label(U.titleBar, "wavelength", {
+		Size = UDim2.new(0.55, -10, 1, 0), Position = UDim2.fromOffset(8, 0),
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
+	local uniLbl = U.label(U.titleBar, "[universal]", {
+		Size = UDim2.new(0.45, -10, 1, 0), Position = UDim2.new(1, -8, 0, 0),
+		AnchorPoint = Vector2.new(1, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
+	table.insert(U.themeReg.labels, uniLbl)
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
@@ -1542,7 +1562,7 @@ function U.buildFloaters()
 	table.insert(U.themeReg.bodyBgs, pv)
 	local pvTitleLbl = U.label(pv, "preview", {
 		Position = UDim2.fromOffset(6, U.LINE_H),
-		Size = UDim2.new(1, -12, 0, U.TITLE_H),
+		Size = UDim2.new(1, -12, 0, U.TITLE_H + U.SEC_GAP),
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
 	table.insert(U.themeReg.labels, pvTitleLbl)
@@ -1560,7 +1580,9 @@ function U.buildFloaters()
 	table.insert(U.themeReg.sectionBgs, pvSection)
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "View"
-	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	local pbg = U.vflags.ThemePreviewBg
+	viewport.BackgroundColor3 = typeof(pbg) == "Color3" and pbg or Color3.fromRGB(14, 14, 14)
+	viewport.BackgroundTransparency = type(U.vflags.ThemePreviewBgTransparency) == "number" and U.vflags.ThemePreviewBgTransparency or 0
 	viewport.BorderSizePixel = 0
 	viewport.Size = UDim2.fromScale(1, 1)
 	viewport.Ambient = Color3.fromRGB(200, 200, 200)
@@ -1759,6 +1781,24 @@ function U.buildConfig()
 	themeRow("element border", "ThemeElementBorder", "ElementBorder")
 	themeRow("section background", "ThemeSectionBg", "SectionBg")
 	themeRow("background", "ThemeBackground", "Background")
+	do
+		local row = U.mkColorRow(settingsSec, "preview background", nextOrder())
+		U.attachPicker(row, "ThemePreviewBg", Color3.fromRGB(14, 14, 14), false, "preview background")
+		U.onFlag("ThemePreviewBg", function()
+			local vp = U.pvViewport
+			if vp then
+				local col = U.vflags.ThemePreviewBg
+				if typeof(col) == "Color3" then vp.BackgroundColor3 = col end
+			end
+		end)
+		U.onFlag("ThemePreviewBgTransparency", function()
+			local vp = U.pvViewport
+			if vp then
+				local a = U.vflags.ThemePreviewBgTransparency
+				if type(a) == "number" then vp.BackgroundTransparency = a end
+			end
+		end)
+	end
 	local accentRow = U.mkColorRow(settingsSec, "accent", nextOrder())
 	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
 	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, true, "accent b")
@@ -2356,7 +2396,8 @@ local function boxSolve(model, camOverride, viewportFrame)
 		local part = model:FindFirstChild(parts[i])
 		if part and part:IsA("BasePart") then
 			local cf = part.CFrame
-			local sx, sy, sz = part.Size.X * 0.55, part.Size.Y * 0.55, part.Size.Z * 0.55
+			-- use true half-extents so top-down / angled views still cover limbs
+			local sx, sy, sz = part.Size.X * 0.5, part.Size.Y * 0.5, part.Size.Z * 0.5
 			for _, ox in ipairs({-1,1}) do
 				for _, oy in ipairs({-1,1}) do
 					for _, oz in ipairs({-1,1}) do
@@ -2372,8 +2413,18 @@ local function boxSolve(model, camOverride, viewportFrame)
 		end
 	end
 	if not any then return end
-	local pad = 3
-	minX -= pad; minY -= pad; maxX += pad; maxY += pad
+	local padX, padY = 3, 3
+	if viewportFrame then
+		-- slight expand + push box down so preview matches on-screen ESP framing
+		padX, padY = 4, 4
+		local h = maxY - minY
+		minY = minY + h * 0.02
+		maxY = maxY + h * 0.02
+		local cx = (minX + maxX) * 0.5
+		local halfW = (maxX - minX) * 0.5 * 1.06
+		minX, maxX = cx - halfW, cx + halfW
+	end
+	minX -= padX; minY -= padY; maxX += padX; maxY += padY
 	return minX, minY, maxX - minX, maxY - minY
 end
 local function healthbarWidth() return 2 end
@@ -2765,7 +2816,7 @@ do
 				local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
 				local m = UIS:GetMouseLocation()
 				if m.X < ap.X or m.X > ap.X + as.X or m.Y < ap.Y or m.Y > ap.Y + as.Y then return end
-				U.pvDistScale = math.clamp((U.pvDistScale or 1) - input.Position.Z * 0.08, 0.45, 2.5)
+				U.pvDistScale = math.clamp((U.pvDistScale or 1) - input.Position.Z * 0.08, 0.9, 2.5)
 				U.pvUpdateCam()
 			end
 		end)
@@ -2773,7 +2824,7 @@ do
 		local prevDemo = { hp = 100, maxHp = 100, dist = 0, distDir = 1, hpDir = -1, lastHp = 100 }
 		task.spawn(function()
 			while U.running do
-				task.wait(0.05)
+				task.wait(0.03)
 				local maxH = 100
 				for _, p in ipairs(Players:GetPlayers()) do
 					if p.Character then
@@ -2782,14 +2833,10 @@ do
 					end
 				end
 				prevDemo.maxHp = maxH
-				prevDemo.hp = prevDemo.hp + prevDemo.hpDir * (maxH / 100)
+				-- same step rate as distance (99 steps full range)
+				prevDemo.hp = prevDemo.hp + prevDemo.hpDir * (maxH / 99)
 				if prevDemo.hp >= maxH then prevDemo.hp = maxH; prevDemo.hpDir = -1
 				elseif prevDemo.hp <= 0 then prevDemo.hp = 0; prevDemo.hpDir = 1 end
-			end
-		end)
-		task.spawn(function()
-			while U.running do
-				task.wait(0.03)
 				prevDemo.dist = prevDemo.dist + prevDemo.distDir
 				if prevDemo.dist >= 99 then prevDemo.dist = 99; prevDemo.distDir = -1
 				elseif prevDemo.dist <= 0 then prevDemo.dist = 0; prevDemo.distDir = 1 end
