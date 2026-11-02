@@ -2990,224 +2990,31 @@ do
 			return e and e.o or 9999
 		end
 
-		-- Dex "Old" class icon sheet (grid): rbxassetid://483448923
-		-- IconSize 16, sheet 16x16 tiles. Icons dict is 1-based; Display uses 0-based.
-		local ICON_MAP_ID = "rbxassetid://483448923"
-		local ICON_SIZE = 16
-		local ICON_COLS = 16
-		local CLASS_ICONS = {
-["Accessory"] = 32;
-["Accoutrement"] = 32;
-["AdService"] = 73;
-["Animation"] = 60;
-["AnimationController"] = 60;
-["AnimationTrack"] = 60;
-["Animator"] = 60;
-["ArcHandles"] = 56;
-["AssetService"] = 72;
-["Attachment"] = 34;
-["Backpack"] = 20;
-["BadgeService"] = 75;
-["BallSocketConstraint"] = 89;
-["BillboardGui"] = 64;
-["BinaryStringValue"] = 4;
-["BindableEvent"] = 67;
-["BindableFunction"] = 66;
-["BlockMesh"] = 8;
-["BloomEffect"] = 90;
-["BlurEffect"] = 90;
-["BodyAngularVelocity"] = 14;
-["BodyForce"] = 14;
-["BodyGyro"] = 14;
-["BodyPosition"] = 14;
-["BodyThrust"] = 14;
-["BodyVelocity"] = 14;
-["BoolValue"] = 4;
-["BoxHandleAdornment"] = 54;
-["BrickColorValue"] = 4;
-["Camera"] = 5;
-["CFrameValue"] = 4;
-["CharacterMesh"] = 60;
-["Chat"] = 33;
-["ClickDetector"] = 41;
-["CollectionService"] = 30;
-["Color3Value"] = 4;
-["ColorCorrectionEffect"] = 90;
-["ConeHandleAdornment"] = 54;
-["Configuration"] = 58;
-["ContentProvider"] = 72;
-["ContextActionService"] = 41;
-["CoreGui"] = 46;
-["CoreScript"] = 18;
-["CornerWedgePart"] = 1;
-["CustomEvent"] = 4;
-["CustomEventReceiver"] = 4;
-["CylinderHandleAdornment"] = 54;
-["CylinderMesh"] = 8;
-["CylindricalConstraint"] = 89;
-["Debris"] = 30;
-["Decal"] = 7;
-["Dialog"] = 62;
-["DialogChoice"] = 63;
-["DoubleConstrainedValue"] = 4;
-["Explosion"] = 36;
-["FileMesh"] = 8;
-["Fire"] = 61;
-["Flag"] = 38;
-["FlagStand"] = 39;
-["FloorWire"] = 4;
-["Folder"] = 70;
-["ForceField"] = 37;
-["Frame"] = 48;
-["GamePassService"] = 19;
-["Glue"] = 34;
-["GuiButton"] = 52;
-["GuiMain"] = 47;
-["GuiService"] = 47;
-["Handles"] = 53;
-["HapticService"] = 84;
-["Hat"] = 45;
-["HingeConstraint"] = 89;
-["Hint"] = 33;
-["HopperBin"] = 22;
-["HttpService"] = 76;
-["Humanoid"] = 9;
-["ImageButton"] = 52;
-["ImageLabel"] = 49;
-["InsertService"] = 72;
-["IntConstrainedValue"] = 4;
-["IntValue"] = 4;
-["JointInstance"] = 34;
-["JointsService"] = 34;
-["Keyframe"] = 60;
-["KeyframeSequence"] = 60;
-["KeyframeSequenceProvider"] = 60;
-["Lighting"] = 13;
-["LineHandleAdornment"] = 54;
-["LocalScript"] = 18;
-["LogService"] = 87;
-["MarketplaceService"] = 46;
-["Message"] = 33;
-["Model"] = 2;
-["ModuleScript"] = 71;
-["Motor"] = 34;
-["Motor6D"] = 34;
-["MoveToConstraint"] = 89;
-["NegateOperation"] = 78;
-["NetworkClient"] = 16;
-["NetworkReplicator"] = 29;
-["NetworkServer"] = 15;
-["NumberValue"] = 4;
-["ObjectValue"] = 4;
-["Pants"] = 44;
-["ParallelRampPart"] = 1;
-["Part"] = 1;
-["ParticleEmitter"] = 69;
-["PartPairLasso"] = 57;
-["PathfindingService"] = 37;
-["Platform"] = 35;
-["Player"] = 12;
-["PlayerGui"] = 46;
-["Players"] = 21;
-["PlayerScripts"] = 82;
-["PointLight"] = 13;
-["PointsService"] = 83;
-["Pose"] = 60;
-["PrismaticConstraint"] = 89;
-["PrismPart"] = 1;
-["PyramidPart"] = 1;
-["RayValue"] = 4;
-["ReflectionMetadata"] = 86;
-["ReflectionMetadataCallbacks"] = 86;
-["ReflectionMetadataClass"] = 86;
-["ReflectionMetadataClasses"] = 86;
-["ReflectionMetadataEnum"] = 86;
-["ReflectionMetadataEnumItem"] = 86;
-["ReflectionMetadataEnums"] = 86;
-["ReflectionMetadataEvents"] = 86;
-["ReflectionMetadataFunctions"] = 86;
-["ReflectionMetadataMember"] = 86;
-["ReflectionMetadataProperties"] = 86;
-["ReflectionMetadataYieldFunctions"] = 86;
-["RemoteEvent"] = 80;
-["RemoteFunction"] = 79;
-["ReplicatedFirst"] = 72;
-["ReplicatedStorage"] = 72;
-["RightAngleRampPart"] = 1;
-["RocketPropulsion"] = 14;
-["RodConstraint"] = 89;
-["RopeConstraint"] = 89;
-["Rotate"] = 34;
-["RotateP"] = 34;
-["RotateV"] = 34;
-["RunService"] = 66;
-["ScreenGui"] = 47;
-["Script"] = 6;
-["ScrollingFrame"] = 48;
-["Seat"] = 35;
-["Selection"] = 55;
-["SelectionBox"] = 54;
-["SelectionPartLasso"] = 57;
-["SelectionPointLasso"] = 57;
-["SelectionSphere"] = 54;
-["ServerScriptService"] = 0;
-["ServerStorage"] = 74;
-["Shirt"] = 43;
-["ShirtGraphic"] = 40;
-["SkateboardPlatform"] = 35;
-["Sky"] = 28;
-["SlidingBallConstraint"] = 89;
-["Smoke"] = 59;
-["Snap"] = 34;
-["Sound"] = 11;
-["SoundService"] = 31;
-["Sparkles"] = 42;
-["SpawnLocation"] = 25;
-["SpecialMesh"] = 8;
-["SphereHandleAdornment"] = 54;
-["SpotLight"] = 13;
-["SpringConstraint"] = 89;
-["StarterCharacterScripts"] = 82;
-["StarterGear"] = 20;
-["StarterGui"] = 46;
-["StarterPack"] = 20;
-["StarterPlayer"] = 88;
-["StarterPlayerScripts"] = 82;
-["Status"] = 2;
-["StringValue"] = 4;
-["SunRaysEffect"] = 90;
-["SurfaceGui"] = 64;
-["SurfaceLight"] = 13;
-["SurfaceSelection"] = 55;
-["Team"] = 24;
-["Teams"] = 23;
-["TeleportService"] = 81;
-["Terrain"] = 65;
-["TerrainRegion"] = 65;
-["TestService"] = 68;
-["TextBox"] = 51;
-["TextButton"] = 51;
-["TextLabel"] = 50;
-["Texture"] = 10;
-["TextureTrail"] = 4;
-["Tool"] = 17;
-["TouchTransmitter"] = 37;
-["TrussPart"] = 1;
-["UnionOperation"] = 77;
-["UserInputService"] = 84;
-["Vector3Value"] = 4;
-["VehicleSeat"] = 35;
-["VelocityMotor"] = 34;
-["WedgePart"] = 1;
-["Weld"] = 34;
-["Workspace"] = 19;
-
-}
+		-- Dex Vanilla3 class icons (rbxassetid://114851699900089)
+		-- 32x32 tiles, 25 columns. Icons dict is 1-based; Display uses 0-based index.
+		local ICON_MAP_ID = "rbxassetid://114851699900089"
+		local ICON_SIZE = 32
+		local ICON_COLS = 25
+		local CLASS_ICONS = {["Accessory"]=1,["Accoutrement"]=2,["Actor"]=3,["AdGui"]=4,["AdPortal"]=5,["AdService"]=6,["AdvancedDragger"]=7,["AirController"]=8,["AlignOrientation"]=9,["AlignPosition"]=10,["AnalysticsService"]=11,["AnalysticsSettings"]=12,["AnalyticsService"]=13,["AngularVelocity"]=14,["Animation"]=15,["AnimationClip"]=16,["AnimationClipProvider"]=17,["AnimationController"]=18,["AnimationFromVideoCreatorService"]=19,["AnimationFromVideoCreatorStudioService"]=20,["AnimationRigData"]=21,["AnimationStreamTrack"]=22,["AnimationTrack"]=23,["Animator"]=24,["AppStorageService"]=25,["AppUpdateService"]=26,["ArcHandles"]=27,["AssetCounterService"]=28,["AssetDeliveryProxy"]=29,["AssetImportService"]=30,["AssetImportSession"]=31,["AssetManagerService"]=32,["AssetService"]=33,["AssetSoundEffect"]=34,["Atmosphere"]=35,["Attachment"]=36,["AvatarEditorService"]=37,["AvatarImportService"]=38,["Backpack"]=39,["BackpackItem"]=40,["BadgeService"]=41,["BallSocketConstraint"]=42,["BasePart"]=43,["BasePlayerGui"]=44,["BaseScript"]=45,["BaseWrap"]=46,["Beam"]=47,["BevelMesh"]=48,["BillboardGui"]=49,["BinaryStringValue"]=50,["BindableEvent"]=51,["BindableFunction"]=52,["BlockMesh"]=53,["BloomEffect"]=54,["BlurEffect"]=55,["BodyAngularVelocity"]=56,["BodyColors"]=57,["BodyForce"]=58,["BodyGyro"]=59,["BodyMover"]=60,["BodyPosition"]=61,["BodyThrust"]=62,["BodyVelocity"]=63,["Bone"]=64,["BoolValue"]=65,["BoxHandleAdornment"]=66,["Breakpoint"]=67,["BreakpointManager"]=68,["BrickColorValue"]=69,["BrowserService"]=70,["BubbleChatConfiguration"]=71,["BulkImportService"]=72,["CFrameValue"]=78,["CSGDictionaryService"]=116,["CacheableContentProvider"]=73,["CalloutService"]=74,["Camera"]=75,["CanvasGroup"]=76,["CatalogPages"]=77,["ChangeHistoryService"]=79,["ChannelSelectorSoundEffect"]=80,["CharacterAppearance"]=81,["CharacterMesh"]=82,["Chat"]=83,["ChatInputBarConfiguration"]=84,["ChatWindowConfiguration"]=85,["ChorusSoundEffect"]=86,["ClickDetector"]=87,["ClientReplicator"]=88,["ClimbController"]=89,["Clothing"]=90,["Clouds"]=91,["ClusterPacketCache"]=92,["CollectionService"]=93,["Color3Value"]=94,["ColorCorrectionEffect"]=95,["CommandInstance"]=96,["CommandService"]=97,["CompressorSoundEffect"]=98,["ConeHandleAdornment"]=99,["Configuration"]=100,["ConfigureServerService"]=101,["Constraint"]=102,["ContentProvider"]=103,["ContextActionService"]=104,["Controller"]=105,["ControllerBase"]=106,["ControllerManager"]=107,["ControllerService"]=108,["CookiesService"]=109,["CoreGui"]=110,["CorePackages"]=111,["CoreScript"]=112,["CoreScriptSyncService"]=113,["CornerWedgePart"]=114,["CrossDMScriptChangeListener"]=115,["CurveAnimation"]=117,["CustomEvent"]=118,["CustomEventReceiver"]=119,["CustomSoundEffect"]=120,["CylinderHandleAdornment"]=121,["CylinderMesh"]=122,["CylindricalConstraint"]=123,["DataModel"]=124,["DataModelMesh"]=125,["DataModelPatchService"]=126,["DataModelSession"]=127,["DataStore"]=128,["DataStoreIncrementOptions"]=129,["DataStoreInfo"]=130,["DataStoreKey"]=131,["DataStoreKeyInfo"]=132,["DataStoreKeyPages"]=133,["DataStoreListingPages"]=134,["DataStoreObjectVersionInfo"]=135,["DataStoreOptions"]=136,["DataStorePages"]=137,["DataStoreService"]=138,["DataStoreSetOptions"]=139,["DataStoreVersionPages"]=140,["Debris"]=141,["DebugSettings"]=151,["DebuggablePluginWatcher"]=142,["DebuggerBreakpoint"]=143,["DebuggerConnection"]=144,["DebuggerConnectionManager"]=145,["DebuggerLuaResponse"]=146,["DebuggerManager"]=147,["DebuggerUIService"]=148,["DebuggerVariable"]=149,["DebuggerWatch"]=150,["Decal"]=152,["DepthOfFieldEffect"]=153,["DeviceIdService"]=154,["Dialog"]=155,["DialogChoice"]=156,["DistortionSoundEffect"]=157,["DockWidgetPluginGui"]=158,["DoubleConstrainedValue"]=159,["DraftsService"]=160,["Dragger"]=161,["DraggerService"]=162,["DynamicRotate"]=163,["EchoSoundEffect"]=164,["EmotesPages"]=165,["EqualizerSoundEffect"]=166,["EulerRotationCurve"]=167,["EventIngestService"]=168,["Explosion"]=169,["FaceAnimatorService"]=170,["FaceControls"]=171,["FaceInstance"]=172,["FacialAnimationRecordingService"]=173,["FacialAnimationStreamingService"]=174,["Feature"]=175,["File"]=176,["FileMesh"]=177,["Fire"]=178,["Flag"]=179,["FlagStand"]=180,["FlagStandService"]=181,["FlangeSoundEffect"]=182,["FloatCurve"]=183,["FloorWire"]=184,["FlyweightService"]=185,["Folder"]=186,["ForceField"]=187,["FormFactorPart"]=188,["Frame"]=189,["FriendPages"]=190,["FriendService"]=191,["FunctionalTest"]=192,["GamePassService"]=194,["GameSettings"]=195,["GamepadService"]=193,["GenericSettings"]=196,["Geometry"]=197,["GetTextBoundsParams"]=198,["GlobalDataStore"]=199,["GlobalSettings"]=200,["Glue"]=201,["GoogleAnalyticsConfiguration"]=202,["GroundController"]=203,["GroupService"]=204,["GuiBase"]=205,["GuiBase2d"]=206,["GuiBase3d"]=207,["GuiButton"]=208,["GuiLabel"]=210,["GuiMain"]=211,["GuiObject"]=212,["GuiService"]=213,["GuidRegistryService"]=209,["HSRDataContentProvider"]=227,["HandleAdornment"]=214,["Handles"]=215,["HandlesBase"]=216,["HapticService"]=217,["Hat"]=218,["HeightmapImporterService"]=219,["HiddenSurfaceRemovalAsset"]=220,["Highlight"]=221,["HingeConstraint"]=222,["Hint"]=223,["Hole"]=224,["Hopper"]=225,["HopperBin"]=226,["HttpRbxApiService"]=228,["HttpRequest"]=229,["HttpService"]=230,["Humanoid"]=231,["HumanoidController"]=232,["HumanoidDescription"]=233,["IKControl"]=234,["ILegacyStudioBridge"]=235,["IXPService"]=255,["ImageButton"]=236,["ImageHandleAdornment"]=237,["ImageLabel"]=238,["ImporterAnimationSettings"]=239,["ImporterBaseSettings"]=240,["ImporterFacsSettings"]=241,["ImporterGroupSettings"]=242,["ImporterJointSettings"]=243,["ImporterMaterialSettings"]=244,["ImporterMeshSettings"]=245,["ImporterRootSettings"]=246,["IncrementalPatchBuilder"]=247,["InputObject"]=248,["InsertService"]=249,["Instance"]=250,["InstanceAdornment"]=251,["IntConstrainedValue"]=252,["IntValue"]=253,["InventoryPages"]=254,["JointInstance"]=256,["JointsService"]=257,["KeyboardService"]=258,["Keyframe"]=259,["KeyframeMarker"]=260,["KeyframeSequence"]=261,["KeyframeSequenceProvider"]=262,["LSPFileSyncService"]=280,["LanguageService"]=263,["LayerCollector"]=264,["LegacyStudioBridge"]=265,["Light"]=266,["Lighting"]=267,["LineForce"]=269,["LineHandleAdornment"]=270,["LinearVelocity"]=268,["LocalDebuggerConnection"]=271,["LocalScript"]=274,["LocalStorageService"]=275,["LocalizationService"]=272,["LocalizationTable"]=273,["LodDataEntity"]=276,["LodDataService"]=277,["LogService"]=279,["LoginService"]=278,["LuaSettings"]=281,["LuaSourceContainer"]=282,["LuaWebService"]=284,["LuauScriptAnalyzerService"]=283,["ManualGlue"]=285,["ManualSurfaceJointInstance"]=286,["ManualWeld"]=287,["MarkerCurve"]=288,["MarketplaceService"]=289,["MaterialService"]=290,["MaterialVariant"]=291,["MemStorageConnection"]=295,["MemStorageService"]=296,["MemoryStoreQueue"]=292,["MemoryStoreService"]=293,["MemoryStoreSortedMap"]=294,["MeshContentProvider"]=297,["MeshPart"]=298,["Message"]=299,["MessageBusConnection"]=300,["MessageBusService"]=301,["MessagingService"]=302,["MetaBreakpoint"]=303,["MetaBreakpointContext"]=304,["MetaBreakpointManager"]=305,["Model"]=306,["ModuleScript"]=307,["Motor"]=308,["Motor6D"]=309,["MotorFeature"]=310,["Mouse"]=311,["MouseService"]=312,["MultipleDocumentInterfaceInstance"]=313,["NegateOperation"]=314,["NetworkClient"]=315,["NetworkMarker"]=316,["NetworkPeer"]=317,["NetworkReplicator"]=318,["NetworkServer"]=319,["NetworkSettings"]=320,["NoCollisionConstraint"]=321,["NonReplicatedCSGDictionaryService"]=322,["NotificationService"]=323,["NumberPose"]=324,["NumberValue"]=325,["ObjectValue"]=326,["OrderedDataStore"]=327,["OutfitPages"]=328,["PVAdornment"]=386,["PVInstance"]=387,["PackageLink"]=329,["PackageService"]=330,["PackageUIService"]=331,["Pages"]=332,["Pants"]=333,["ParabolaAdornment"]=334,["Part"]=335,["PartAdornment"]=336,["PartOperation"]=338,["PartOperationAsset"]=339,["ParticleEmitter"]=337,["PatchMapping"]=340,["Path"]=341,["PathfindingLink"]=342,["PathfindingModifier"]=343,["PathfindingService"]=344,["PausedState"]=345,["PausedStateBreakpoint"]=346,["PausedStateException"]=347,["PermissionsService"]=348,["PhysicsService"]=349,["PhysicsSettings"]=350,["PitchShiftSoundEffect"]=351,["Plane"]=352,["PlaneConstraint"]=353,["Platform"]=354,["Player"]=355,["PlayerEmulatorService"]=356,["PlayerGui"]=357,["PlayerMouse"]=358,["PlayerScripts"]=360,["Players"]=359,["Plugin"]=361,["PluginAction"]=362,["PluginDebugService"]=363,["PluginDragEvent"]=364,["PluginGui"]=365,["PluginGuiService"]=366,["PluginManagementService"]=367,["PluginManager"]=368,["PluginManagerInterface"]=369,["PluginMenu"]=370,["PluginMouse"]=371,["PluginPolicyService"]=372,["PluginToolbar"]=373,["PluginToolbarButton"]=374,["PointLight"]=375,["PointsService"]=376,["PolicyService"]=377,["Pose"]=378,["PoseBase"]=379,["PostEffect"]=380,["PrismaticConstraint"]=381,["ProcessInstancePhysicsService"]=382,["ProximityPrompt"]=383,["ProximityPromptService"]=384,["PublishService"]=385,["QWidgetPluginGui"]=388,["RayValue"]=389,["RbxAnalyticsService"]=390,["ReflectionMetadata"]=391,["ReflectionMetadataCallbacks"]=392,["ReflectionMetadataClass"]=393,["ReflectionMetadataClasses"]=394,["ReflectionMetadataEnum"]=395,["ReflectionMetadataEnumItem"]=396,["ReflectionMetadataEnums"]=397,["ReflectionMetadataEvents"]=398,["ReflectionMetadataFunctions"]=399,["ReflectionMetadataItem"]=400,["ReflectionMetadataMember"]=401,["ReflectionMetadataProperties"]=402,["ReflectionMetadataYieldFunctions"]=403,["RemoteDebuggerServer"]=404,["RemoteEvent"]=405,["RemoteFunction"]=406,["RenderSettings"]=408,["RenderingTest"]=407,["ReplicatedFirst"]=409,["ReplicatedStorage"]=410,["ReverbSoundEffect"]=411,["RigidConstraint"]=412,["RobloxPluginGuiService"]=413,["RobloxReplicatedStorage"]=414,["RocketPropulsion"]=415,["RodConstraint"]=416,["RopeConstraint"]=417,["Rotate"]=418,["RotateP"]=419,["RotateV"]=420,["RotationCurve"]=421,["RtMessagingService"]=422,["RunService"]=426,["RunningAverageItemDouble"]=423,["RunningAverageItemInt"]=424,["RunningAverageTimeIntervalItem"]=425,["RuntimeScriptService"]=427,["ScreenGui"]=428,["ScreenshotHud"]=429,["Script"]=430,["ScriptChangeService"]=431,["ScriptCloneWatcher"]=432,["ScriptCloneWatcherHelper"]=433,["ScriptContext"]=434,["ScriptDebugger"]=435,["ScriptDocument"]=436,["ScriptEditorService"]=437,["ScriptRegistrationService"]=438,["ScriptService"]=439,["ScrollingFrame"]=440,["Seat"]=441,["Selection"]=442,["SelectionBox"]=443,["SelectionLasso"]=444,["SelectionPartLasso"]=445,["SelectionPointLasso"]=446,["SelectionSphere"]=447,["ServerReplicator"]=448,["ServerScriptService"]=449,["ServerStorage"]=450,["ServiceProvider"]=451,["SessionService"]=452,["Shirt"]=453,["ShirtGraphic"]=454,["SkateboardController"]=455,["SkateboardPlatform"]=456,["Skin"]=457,["Sky"]=458,["SlidingBallConstraint"]=459,["Smoke"]=460,["Snap"]=461,["SnippetService"]=462,["SocialService"]=463,["SolidModelContentProvider"]=464,["Sound"]=465,["SoundEffect"]=466,["SoundGroup"]=467,["SoundService"]=468,["Sparkles"]=469,["SpawnLocation"]=471,["SpawnerService"]=470,["Speaker"]=472,["SpecialMesh"]=473,["SphereHandleAdornment"]=474,["SpotLight"]=475,["SpringConstraint"]=476,["StackFrame"]=477,["StandalonePluginScripts"]=478,["StandardPages"]=479,["StarterCharacterScripts"]=480,["StarterGear"]=481,["StarterGui"]=482,["StarterPack"]=483,["StarterPlayer"]=484,["StarterPlayerScripts"]=485,["Stats"]=486,["StatsItem"]=487,["Status"]=488,["StopWatchReporter"]=489,["StringValue"]=490,["Studio"]=491,["StudioAssetService"]=492,["StudioData"]=493,["StudioDeviceEmulatorService"]=494,["StudioHighDpiService"]=495,["StudioPublishService"]=496,["StudioScriptDebugEventListener"]=497,["StudioService"]=498,["StudioTheme"]=499,["SunRaysEffect"]=500,["SurfaceAppearance"]=501,["SurfaceGui"]=502,["SurfaceGuiBase"]=503,["SurfaceLight"]=504,["SurfaceSelection"]=505,["SwimController"]=506,["TaskScheduler"]=507,["Team"]=508,["TeamCreateService"]=509,["Teams"]=510,["TeleportAsyncResult"]=511,["TeleportOptions"]=512,["TeleportService"]=513,["TemporaryCageMeshProvider"]=514,["TemporaryScriptService"]=515,["Terrain"]=516,["TerrainDetail"]=517,["TerrainRegion"]=518,["TestService"]=519,["TextBox"]=520,["TextBoxService"]=521,["TextButton"]=522,["TextChannel"]=523,["TextChatCommand"]=524,["TextChatConfigurations"]=525,["TextChatMessage"]=526,["TextChatMessageProperties"]=527,["TextChatService"]=528,["TextFilterResult"]=529,["TextLabel"]=530,["TextService"]=531,["TextSource"]=532,["Texture"]=533,["ThirdPartyUserService"]=534,["ThreadState"]=535,["TimerService"]=536,["ToastNotificationService"]=537,["Tool"]=538,["ToolboxService"]=539,["Torque"]=540,["TorsionSpringConstraint"]=541,["TotalCountTimeIntervalItem"]=542,["TouchInputService"]=543,["TouchTransmitter"]=544,["TracerService"]=545,["TrackerStreamAnimation"]=546,["Trail"]=547,["Translator"]=548,["TremoloSoundEffect"]=549,["TriangleMeshPart"]=550,["TrussPart"]=551,["Tween"]=552,["TweenBase"]=553,["TweenService"]=554,["UGCValidationService"]=555,["UIAspectRatioConstraint"]=556,["UIBase"]=557,["UIComponent"]=558,["UIConstraint"]=559,["UICorner"]=560,["UIGradient"]=561,["UIGridLayout"]=562,["UIGridStyleLayout"]=563,["UILayout"]=564,["UIListLayout"]=565,["UIPadding"]=566,["UIPageLayout"]=567,["UIScale"]=568,["UISizeConstraint"]=569,["UIStroke"]=570,["UITableLayout"]=571,["UITextSizeConstraint"]=572,["UnionOperation"]=573,["UniversalConstraint"]=574,["UnvalidatedAssetService"]=575,["UserGameSettings"]=576,["UserInputService"]=577,["UserService"]=578,["UserSettings"]=579,["UserStorageService"]=580,["VRService"]=600,["ValueBase"]=581,["Vector3Curve"]=582,["Vector3Value"]=583,["VectorForce"]=584,["VehicleController"]=585,["VehicleSeat"]=586,["VelocityMotor"]=587,["VersionControlService"]=588,["VideoCaptureService"]=589,["VideoFrame"]=590,["ViewportFrame"]=591,["VirtualInputManager"]=592,["VirtualUser"]=593,["VisibilityService"]=594,["Visit"]=595,["VoiceChannel"]=596,["VoiceChatInternal"]=597,["VoiceChatService"]=598,["VoiceSource"]=599,["WedgePart"]=601,["Weld"]=602,["WeldConstraint"]=603,["WireframeHandleAdornment"]=604,["Workspace"]=605,["WorldModel"]=606,["WorldRoot"]=607,["WrapLayer"]=608,["WrapTarget"]=609}
 		local function applyClassIcon(imageLabel, className)
-			local raw = CLASS_ICONS[className] or CLASS_ICONS["Folder"] or 1
+			local raw = CLASS_ICONS[className]
+			if not raw then
+				-- try RMD explorer image index as linear fallback on ClassImages
+				local e = RMD[className]
+				if e and e.i then
+					imageLabel.Image = "rbxasset://textures/ClassImages.PNG"
+					imageLabel.ImageRectSize = Vector2.new(16, 16)
+					imageLabel.ImageRectOffset = Vector2.new(16 * e.i, 0)
+					return
+				end
+				raw = CLASS_ICONS.Folder or 1
+			end
 			local index = math.max(0, (tonumber(raw) or 1) - 1)
 			local col = index % ICON_COLS
 			local row = math.floor(index / ICON_COLS)
+			-- set rect before and after image to avoid full-sheet flash
+			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
+			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
 			imageLabel.Image = ICON_MAP_ID
 			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
 			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
@@ -3444,11 +3251,13 @@ do
 			arrow.Parent = btn
 
 			local icon = Instance.new("ImageLabel")
+			icon.BackgroundColor3 = Color3.new(1, 1, 1)
 			icon.BackgroundTransparency = 1
 			icon.BorderSizePixel = 0
 			icon.Size = UDim2.fromOffset(16, 16)
 			icon.Position = UDim2.fromOffset(pad + 10, 0)
-			icon.ScaleType = Enum.ScaleType.Stretch
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.ResampleMode = Enum.ResamplerMode.Pixelated
 			icon.Parent = btn
 			applyClassIcon(icon, inst.ClassName)
 
@@ -3517,4 +3326,3 @@ end
 
 
 Library:Notify({ text = "wavelength universal loaded", time = 2 })
-
