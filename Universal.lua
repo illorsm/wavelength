@@ -1,8 +1,3 @@
---[[
-	wavelength universal
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/illorsm/wavelength/main/Universal.lua"))()
-]]
-
 local Library = (function()
 local env = (typeof(getgenv) == "function" and getgenv()) or _G
 env._SM = env._SM or {}
@@ -46,7 +41,7 @@ U.activeNotifs = U.activeNotifs or {}
 U.keybindListEntries = U.keybindListEntries or {}
 U.keybindTargets = U.keybindTargets or {}
 U._kbListen = U._kbListen or {}
-U.wmDocked, U.kbDocked = true, true
+U.wmDocked, U.kbDocked, U.pvDocked = true, true, true
 U.running = true
 
 U.ELEMENT_BORDER = 1
@@ -1302,12 +1297,25 @@ function U.buildShell()
 	U.currentTab = U.TAB_NAMES[1]
 end
 
-local function panelOf(kind) return kind == "wm" and U.wm or U.kbPanel end
-local function flagOf(kind) return kind == "wm" and "Watermark" or "KeybindsList" end
+local function panelOf(kind)
+	if kind == "wm" then return U.wm end
+	if kind == "kb" then return U.kbPanel end
+	if kind == "pv" then return U.pvPanel end
+	return nil
+end
+local function flagOf(kind)
+	if kind == "wm" then return "Watermark" end
+	if kind == "kb" then return "KeybindsList" end
+	if kind == "pv" then return "Preview" end
+	return ""
+end
 
 function U.dockPos(kind, h)
 	local sp, sw = U.shell.Position, U.shell.Size.X.Offset
 	if sw < 2 then sw = U.BODY_W end
+	if kind == "pv" then
+		return Vector2.new(0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + sw + U.dockGap, sp.Y.Scale, sp.Y.Offset)
+	end
 	local right = kind == "kb"
 	return Vector2.new(right and 1 or 0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + (right and sw or 0), sp.Y.Scale, sp.Y.Offset - h - U.dockGap)
 end
@@ -1327,7 +1335,7 @@ function U.dockKeybinds() U.dock("kb") end
 
 function U.ensureSnapGhosts()
 	if not U.gui then return end
-	for _, kind in ipairs({ "wm", "kb" }) do
+	for _, kind in ipairs({ "wm", "kb", "pv" }) do
 		local key = kind .. "SnapGhost"
 		if not U[key] or not U[key].Parent then
 			local g = U.new("Frame", { Name = (kind == "wm" and "Wm" or "Kb") .. "SnapGhost", BorderSizePixel = 0, Visible = false, ZIndex = 40 }, U.gui)
@@ -1368,9 +1376,12 @@ end
 function U.syncFloatingVisibility()
 	local menuOn = U.menuOpen ~= false
 	if U.shell then U.shell.Visible = menuOn end
-	for _, kind in ipairs({ "wm", "kb" }) do
+	for _, kind in ipairs({ "wm", "kb", "pv" }) do
 		local f = panelOf(kind)
-		if f then f.Visible = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"]) end
+		if not f then continue end
+		local on = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"])
+		if kind == "pv" then on = on and U.currentTab == "visuals" end
+		f.Visible = on == true
 	end
 end
 
@@ -1420,7 +1431,12 @@ function U.buildFloaters()
 		end
 	end)
 	local function ping()
-		local ok, v = pcall(function() return math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+		local ok, v = pcall(function()
+			if lp and lp.GetNetworkPing then
+				return math.floor(lp:GetNetworkPing() * 1000 + 0.5)
+			end
+			return math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
+		end)
 		return ok and v or 0
 	end
 	local function refreshWm()
@@ -1827,14 +1843,17 @@ function U.bindInput()
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		U.hideSnapGhost("wm")
 		U.hideSnapGhost("kb")
+		U.hideSnapGhost("pv")
 		if U.wmDocked then U.dock("wm") end
 		if U.kbDocked then U.dock("kb") end
+		if U.pvDocked then U.dock("pv") end
 	end))
 
 	U.menuOpen = true
 	task.defer(function()
 		U.dock("wm")
 		U.dock("kb")
+		U.dock("pv")
 	end)
 
 	U.track(U.UIS.InputBegan:Connect(function(input, gp)
@@ -2120,9 +2139,7 @@ do
 
 	local nameT = players:AddToggle({ Name = "name", Flag = "NameESP", Default = false })
 	nameT:AddColorpicker({ Flag = "NameColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "name" })
-
-	local wep = players:AddToggle({ Name = "weapon", Flag = "WeaponESP", Default = false })
-	wep:AddColorpicker({ Flag = "WeaponColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "weapon" })
+	nameT:AddDropdown({ Name = "type", Flag = "NameType", Items = { "username", "display", "both" }, Default = "display", Limit = 1 })
 
 	local dist = players:AddToggle({ Name = "distance", Flag = "DistanceESP", Default = false })
 	dist:AddColorpicker({ Flag = "DistanceColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "distance" })
@@ -2133,10 +2150,11 @@ do
 	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
 	sk:AddToggle({ Name = "visualize damage", Flag = "SkeletonVisDmg", Default = false })
 
-	local ad = players:AddToggle({ Name = "adornment", Flag = "Adornment", Default = false })
-	ad:AddColorpicker({ Flag = "AdornmentColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
-	ad:AddColorpicker({ Flag = "AdornmentDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
-	ad:AddToggle({ Name = "visualize damage", Flag = "AdornmentVisDmg", Default = false })
+	local hl = players:AddToggle({ Name = "highlight", Flag = "Highlight", Default = false })
+	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
+	hl:AddColorpicker({ Flag = "HighlightOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
+	hl:AddColorpicker({ Flag = "HighlightDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	hl:AddToggle({ Name = "visualize damage", Flag = "HighlightVisDmg", Default = false })
 end
 
 Window:AddTab("dex")
@@ -2153,8 +2171,9 @@ espGui.ResetOnSpawn = false
 espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 espGui.Parent = guiParent
 
-local objects, lastHP, dmgStart = {}, {}, {}
-local BONES = {
+local objects, lastHP, dmgStart, highlights = {}, {}, {}, {}
+
+local BONES_R15 = {
 	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
 	{"UpperTorso","LeftUpperArm"},{"UpperTorso","RightUpperArm"},
 	{"LeftUpperArm","LeftLowerArm"},{"RightUpperArm","RightLowerArm"},
@@ -2163,16 +2182,34 @@ local BONES = {
 	{"LeftUpperLeg","LeftLowerLeg"},{"RightUpperLeg","RightLowerLeg"},
 	{"LeftLowerLeg","LeftFoot"},{"RightLowerLeg","RightFoot"},
 }
-local BOX_PARTS = { "Head", "LeftHand", "RightHand", "RightFoot" }
-local BODY_PARTS = {
+local BONES_R6 = {
+	{"Head","Torso"},
+	{"Torso","Left Arm"},{"Torso","Right Arm"},
+	{"Torso","Left Leg"},{"Torso","Right Leg"},
+}
+local BOX_R15 = { "Head", "LeftHand", "RightHand", "RightFoot", "LeftFoot", "UpperTorso" }
+local BOX_R6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
+local BODY_R15 = {
 	"Head","UpperTorso","LowerTorso",
 	"LeftUpperArm","RightUpperArm","LeftLowerArm","RightLowerArm","LeftHand","RightHand",
 	"LeftUpperLeg","RightUpperLeg","LeftLowerLeg","RightLowerLeg","LeftFoot","RightFoot",
 }
+local BODY_R6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
+
 local FONT, FONT_SZ, FONT_Y = U.font, 12, -1
 local rgb = Color3.fromRGB
 local dim2, dim_offset = UDim2.new, UDim2.fromOffset
 local vec2 = Vector2.new
+
+local function isR15(model)
+	return model:FindFirstChild("UpperTorso") ~= nil
+end
+local function boxParts(model)
+	return isR15(model) and BOX_R15 or BOX_R6
+end
+local function boneList(model)
+	return isR15(model) and BONES_R15 or BONES_R6
+end
 
 local function C(key, fb)
 	local v = F[key]
@@ -2187,8 +2224,9 @@ local function maxDist()
 	local v = tonumber(F.RenderDistance) or 250
 	return v >= 250 and 1e9 or v
 end
-local function w2s(p)
-	local v, vis = camera:WorldToViewportPoint(p)
+local function w2s(p, cam)
+	cam = cam or camera
+	local v, vis = cam:WorldToViewportPoint(p)
 	return vec2(v.X, v.Y), vis and v.Z > 0
 end
 local function healthOf(char)
@@ -2213,13 +2251,11 @@ local function isTeammate(p)
 	if not lp.Team or not p.Team then return false end
 	return lp.Team == p.Team
 end
-local function weaponOf(char)
-	for _, ch in ipairs(char:GetChildren()) do
-		if ch:IsA("Tool") then return ch.Name end
-		if ch:IsA("Model") and ch.Name ~= "HumanoidRootPart" then return ch.Name end
-	end
-	local tool = char:FindFirstChildOfClass("Tool")
-	return tool and tool.Name or nil
+local function nameText(p)
+	local t = string.lower(tostring(F.NameType or "display"))
+	if t == "username" then return p.Name end
+	if t == "both" then return p.Name .. " (" .. (p.DisplayName or p.Name) .. ")" end
+	return p.DisplayName or p.Name
 end
 local function create(class, props)
 	local o = Instance.new(class)
@@ -2238,16 +2274,16 @@ local function mkLine()
 	end)
 	return ok and ln or nil
 end
-local function boxSolve(model, camOverride, sizeMul)
+local function boxSolve(model, camOverride)
 	camOverride = camOverride or camera
-	sizeMul = sizeMul or 0.55
+	local parts = boxParts(model)
 	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
 	local any = false
-	for i = 1, #BOX_PARTS do
-		local part = model:FindFirstChild(BOX_PARTS[i])
+	for i = 1, #parts do
+		local part = model:FindFirstChild(parts[i])
 		if part and part:IsA("BasePart") then
 			local cf = part.CFrame
-			local sx, sy, sz = part.Size.X * sizeMul, part.Size.Y * sizeMul, part.Size.Z * sizeMul
+			local sx, sy, sz = part.Size.X * 0.55, part.Size.Y * 0.55, part.Size.Z * 0.55
 			for _, ox in ipairs({-1,1}) do
 				for _, oy in ipairs({-1,1}) do
 					for _, oz in ipairs({-1,1}) do
@@ -2299,24 +2335,35 @@ local function destroyBoxes(d)
 	d.box_outline, d.box_handler, d.box_color, d.outline, d.outline_stroke = nil,nil,nil,nil,nil
 	if d.corners then for _, s in ipairs(d.corners) do s:Destroy() end; d.corners = nil end
 end
-local function buildAdornments(d, model)
-	if d.adornments and #d.adornments > 0 then return end
-	d.adornments = {}
-	for i = 1, #BODY_PARTS do
-		local part = model:FindFirstChild(BODY_PARTS[i])
-		if part and part:IsA("BasePart") then
-			local adorn = Instance.new("BoxHandleAdornment")
-			adorn.Size = part.Size; adorn.Name = "SM_Adorn"; adorn.Adornee = part
-			adorn.AlwaysOnTop = true; adorn.ZIndex = 5; adorn.Visible = false; adorn.Parent = part
-			d.adornments[#d.adornments+1] = adorn
-		end
+
+local function setHighlight(model, on, dt)
+	local h = highlights[model]
+	if not on then
+		if h then pcall(function() h:Destroy() end); highlights[model] = nil end
+		return
 	end
+	if not h or not h.Parent then
+		h = model:FindFirstChildOfClass("Highlight")
+		if not h then
+			h = Instance.new("Highlight")
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.Parent = model
+		end
+		highlights[model] = h
+	end
+	local fill, outline = C("HighlightFill"), C("HighlightOutline")
+	if dt and dt > 0 and F.HighlightVisDmg then
+		local dmg = C("HighlightDamage", rgb(255,0,0))
+		fill = lerpColor(fill, dmg, dt)
+		outline = lerpColor(outline, dmg, dt)
+	end
+	h.FillColor = fill
+	h.OutlineColor = outline
+	h.FillTransparency = A("HighlightFill")
+	h.OutlineTransparency = A("HighlightOutline")
+	h.Enabled = true
 end
-local function destroyAdornments(d)
-	if not d.adornments then return end
-	for _, a in ipairs(d.adornments) do pcall(function() a:Destroy() end) end
-	d.adornments = nil
-end
+
 local function ensure(model)
 	local d = objects[model]
 	if d then return d end
@@ -2331,7 +2378,6 @@ local function ensure(model)
 		addOutline(t); return t
 	end
 	d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
-	d.weapon = mkTxt(); d.weapon.TextXAlignment = Enum.TextXAlignment.Center
 	d.dist = mkTxt(); d.dist.TextXAlignment = Enum.TextXAlignment.Center
 	d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
 	local w = healthbarWidth()
@@ -2341,7 +2387,7 @@ local function ensure(model)
 	})
 	d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
 	d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
-	for i = 1, 14 do d.lines[i] = mkLine() end
+	for i = 1, 16 do d.lines[i] = mkLine() end
 	objects[model] = d
 	return d
 end
@@ -2349,7 +2395,7 @@ local function destroy(model)
 	local d = objects[model]
 	if not d then return end
 	if d.holder then d.holder:Destroy() end
-	destroyAdornments(d)
+	setHighlight(model, false)
 	for _, ln in pairs(d.lines) do pcall(function() ln.Visible=false; ln:Remove() end) end
 	objects[model] = nil; lastHP[model] = nil; dmgStart[model] = nil
 end
@@ -2364,22 +2410,22 @@ local function drawOK(p, char)
 	if not on() or not char then return false end
 	if F.IgnoreSelf and p == lp then return false end
 	if isTeammate(p) then return false end
-	local hp = healthOf(char)
-	if hp <= 0 then return false end
-	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
+	if healthOf(char) <= 0 then return false end
+	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
 	if not hrp then return false end
-	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character.PrimaryPart)
+	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
 	if root and (hrp.Position - root.Position).Magnitude > maxDist() then return false end
 	return true
 end
+
 local function updateModel(p, model)
 	if not drawOK(p, model) then
 		local d = objects[model]
 		if d then
 			d.holder.Visible = false
-			if d.adornments then for _, a in ipairs(d.adornments) do a.Visible = false end end
 			for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
 		end
+		setHighlight(model, false)
 		return
 	end
 	local bx, by, bw, bh = boxSolve(model)
@@ -2397,7 +2443,7 @@ local function updateModel(p, model)
 	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
 	local prev = lastHP[model]
 	if prev ~= nil and hp < prev - 0.5 then
-		if F.SkeletonVisDmg or F.AdornmentVisDmg then dmgStart[model] = tick() end
+		if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick() end
 	end
 	lastHP[model] = hp
 	local dt = dmgT(model)
@@ -2437,9 +2483,8 @@ local function updateModel(p, model)
 	else d.fill.Visible = false end
 
 	if F.HealthBar then
-		local w = healthbarWidth()
 		d.healthbar_holder.Visible = true
-		d.healthbar_holder.Size = dim2(0, w + 2, 1, 2)
+		d.healthbar_holder.Size = dim2(0, healthbarWidth() + 2, 1, 2)
 		d.healthbar_holder.Position = dim2(0, 0, 0, -1)
 		local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1", rgb(0,255,0))
 		d.healthbar_fill.BackgroundColor3 = col
@@ -2451,33 +2496,24 @@ local function updateModel(p, model)
 		d.hpTxt.Visible = true
 		local col = (F.HealthTextDynamic ~= false) and lerpColor(C("HealthTextColor2", rgb(255,0,0)), C("HealthTextColor1", rgb(0,255,0)), frac) or C("HealthTextColor1")
 		d.hpTxt.TextColor3 = col; d.hpTxt.Text = tostring(math.floor(hp + 0.5)); d.hpTxt.TextSize = FONT_SZ
-		local xOff = healthTextXOff()
-		if F.HealthBar then d.hpTxt.Position = dim2(0, xOff, 1 - frac, -1 + FONT_Y)
-		else d.hpTxt.Position = dim2(0, xOff, 0, -1 + FONT_Y) end
+		if F.HealthBar then d.hpTxt.Position = dim2(0, healthTextXOff(), 1 - frac, -1 + FONT_Y)
+		else d.hpTxt.Position = dim2(0, healthTextXOff(), 0, -1 + FONT_Y) end
 	else d.hpTxt.Visible = false end
 
 	if F.NameESP then
-		d.name.Visible = true; d.name.Text = p.DisplayName or p.Name
+		d.name.Visible = true; d.name.Text = nameText(p)
 		d.name.TextColor3 = C("NameColor"); d.name.TextTransparency = A("NameColor"); d.name.TextSize = FONT_SZ
 		d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1, 0, 0, 0); d.name.AnchorPoint = vec2(0.5, 1)
 	else d.name.Visible = false end
 
-	local yOff = 1
 	if F.DistanceESP then
-		local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-		local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character.PrimaryPart)
+		local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
+		local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
 		local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
 		d.dist.Visible = true; d.dist.Text = math.floor(distv + 0.5) .. "st"
 		d.dist.TextColor3 = C("DistanceColor"); d.dist.TextTransparency = A("DistanceColor"); d.dist.TextSize = FONT_SZ
-		d.dist.Position = dim2(0, 0, 1, yOff); d.dist.Size = dim2(1, 0, 0, 12); yOff += 12
+		d.dist.Position = dim2(0, 0, 1, 1); d.dist.Size = dim2(1, 0, 0, 12)
 	else d.dist.Visible = false end
-
-	if F.WeaponESP then
-		local wn = weaponOf(model) or ""
-		d.weapon.Visible = wn ~= ""; d.weapon.Text = wn
-		d.weapon.TextColor3 = C("WeaponColor"); d.weapon.TextTransparency = A("WeaponColor"); d.weapon.TextSize = FONT_SZ
-		d.weapon.Position = dim2(0, 0, 1, yOff); d.weapon.Size = dim2(1, 0, 0, 12)
-	else d.weapon.Visible = false end
 
 	if F.Skeleton then
 		local sk = C("SkeletonColor")
@@ -2485,7 +2521,7 @@ local function updateModel(p, model)
 		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
 		local alpha = 1 - A("SkeletonColor")
 		local idx = 0
-		for _, pair in ipairs(BONES) do
+		for _, pair in ipairs(boneList(model)) do
 			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
 			if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
 				local sa, oa = w2s(a.Position); local sb, ob = w2s(b.Position)
@@ -2498,13 +2534,7 @@ local function updateModel(p, model)
 		for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
 	else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
 
-	if F.Adornment then
-		buildAdornments(d, model)
-		local col = C("AdornmentColor")
-		if dt > 0 and F.AdornmentVisDmg then col = lerpColor(col, C("AdornmentDamage", rgb(255,0,0)), dt) end
-		local tr = A("AdornmentColor")
-		if d.adornments then for _, a in ipairs(d.adornments) do a.Visible = true; a.Color3 = col; a.Transparency = tr end end
-	else destroyAdornments(d) end
+	setHighlight(model, F.Highlight == true, dt)
 end
 
 local function clearAll()
@@ -2555,7 +2585,10 @@ do
 				end
 			end
 			local hrp = model:FindFirstChild("HumanoidRootPart")
-			if hrp then model.PrimaryPart = hrp; hrp.Transparency = 1; model:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.pi, 0)) end
+			if hrp then
+				model.PrimaryPart = hrp; hrp.Transparency = 1
+				model:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.pi, 0))
+			end
 			model.Name = "PreviewCharacter"; model.Parent = world
 			U.pvModel = model
 			local ok2, cf, size = pcall(function() return model:GetBoundingBox() end)
@@ -2563,9 +2596,7 @@ do
 				U.pvFocus = cf.Position
 				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.55
 			end
-			U.pvYaw = math.pi
-			U.pvPitch = 0.12
-			U.pvDistScale = 1.35
+			U.pvYaw = math.pi; U.pvPitch = 0.12; U.pvDistScale = 1.35
 			U.pvUpdateCam()
 		end
 
@@ -2618,7 +2649,7 @@ do
 			d.healthbar_holder = create("Frame", { Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false, Position = dim2(0,0,0,-1), Size = dim2(0, w+2, 1, 2) })
 			d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
 			d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
-			for i = 1, 14 do d.lines[i] = mkLine() end
+			for i = 1, 16 do d.lines[i] = mkLine() end
 			prevObj = d
 			return d
 		end
@@ -2628,10 +2659,11 @@ do
 			if not model or not panel or not panel.Visible then
 				if prevObj.holder then prevObj.holder.Visible = false end
 				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
+				if model then setHighlight(model, false) end
 				return
 			end
 			local ap = viewport.AbsolutePosition
-			local bx, by, bw, bh = boxSolve(model, vcam, 0.55)
+			local bx, by, bw, bh = boxSolve(model, vcam)
 			if not bx then
 				if prevObj.holder then prevObj.holder.Visible = false end
 				return
@@ -2645,7 +2677,6 @@ do
 			if F.Box then
 				local isCorner = F.BoxType == "corner"
 				if (isCorner and d.box_handler) or (not isCorner and d.corners) then destroyBoxes(d) end
-				local oldBox = F.BoxType
 				buildBoxes(d)
 				local boxColor, boxT = C("BoxColor"), A("BoxColor")
 				if isCorner and d.corners then
@@ -2673,7 +2704,8 @@ do
 			else destroyBoxes(d) end
 
 			if F.BoxFill then
-				d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0); d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor")
+				d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0)
+				d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor")
 			else d.fill.Visible = false end
 
 			if F.HealthBar then
@@ -2696,7 +2728,7 @@ do
 			if F.Skeleton then
 				local skc = C("SkeletonColor"); local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
 				local idx = 0
-				for _, pair in ipairs(BONES) do
+				for _, pair in ipairs(boneList(model)) do
 					local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
 					if a and b then
 						local sa, oa = vcam:WorldToViewportPoint(a.Position)
@@ -2714,37 +2746,16 @@ do
 				for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
 			else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
 
-			if F.Adornment then
-				if not model:GetAttribute("SM_PrevAdorn") then
-					for _, name in ipairs(BODY_PARTS) do
-						local part = model:FindFirstChild(name)
-						if part and part:IsA("BasePart") then
-							local adorn = Instance.new("BoxHandleAdornment")
-							adorn.Size = part.Size; adorn.Adornee = part; adorn.AlwaysOnTop = true
-							adorn.Color3 = C("AdornmentColor"); adorn.Transparency = A("AdornmentColor")
-							adorn.Parent = part
-						end
-					end
-					model:SetAttribute("SM_PrevAdorn", true)
-				else
-					for _, a in ipairs(model:GetDescendants()) do
-						if a:IsA("BoxHandleAdornment") then
-							a.Visible = true; a.Color3 = C("AdornmentColor"); a.Transparency = A("AdornmentColor")
-						end
-					end
-				end
-			else
-				if model:GetAttribute("SM_PrevAdorn") then
-					for _, a in ipairs(model:GetDescendants()) do
-						if a:IsA("BoxHandleAdornment") then a:Destroy() end
-					end
-					model:SetAttribute("SM_PrevAdorn", nil)
-				end
-			end
+			setHighlight(model, F.Highlight == true, 0)
 		end
 		RunService:BindToRenderStep("SM_PREVIEW_ESP", Enum.RenderPriority.Camera.Value + 2, function()
 			if not U.running then return end
 			updatePreviewESP()
+		end)
+
+		task.defer(function()
+			U.dock("pv")
+			U.syncFloatingVisibility()
 		end)
 	end
 end
