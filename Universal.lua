@@ -2977,58 +2977,22 @@ do
 			ch:Destroy()
 		end
 
+		local RMD={["Accessory"]={o=30,i=32},["AccessoryDescription"]={o=22,i=104},["Accoutrement"]={o=20,i=32},["Actor"]={o=10,i=113},["AdGui"]={o=200,i=145},["AdPlacement"]={o=200,i=0},["AdPortal"]={o=200,i=146},["AirController"]={o=20,i=0},["AlignOrientation"]={o=30,i=100},["AlignPosition"]={o=30,i=99},["AnalyticsService"]={o=9999,i=0},["AngularVelocity"]={o=30,i=103},["Animation"]={o=220,i=60},["AnimationConstraint"]={o=30,i=0},["AnimationController"]={o=220,i=60},["AnimationTrack"]={o=220,i=60},["Animator"]={o=220,i=60},["ArcHandles"]={o=200,i=56},["AssetService"]={o=9999,i=0},["Atmosphere"]={o=5,i=28},["AtmosphereSensor"]={o=20,i=0},["Attachment"]={o=30,i=81},["AudioAnalyzer"]={o=10,i=11},["AudioChannelMixer"]={o=10,i=11},["AudioChannelSplitter"]={o=10,i=11},["AudioChorus"]={o=10,i=11},["AudioCompressor"]={o=10,i=11},["AudioDeviceInput"]={o=10,i=11},["AudioDeviceOutput"]={o=10,i=11},["AudioDistortion"]={o=10,i=11},["AudioEcho"]={o=10,i=11},["AudioEmitter"]={o=10,i=11},["AudioEqualizer"]={o=10,i=11},["AudioFDNReverb"]={o=10,i=11},["AudioFader"]={o=10,i=11},["AudioFilter"]={o=10,i=11},["AudioFlanger"]={o=10,i=11},["AudioGate"]={o=10,i=11},["AudioLimiter"]={o=10,i=11},["AudioListener"]={o=10,i=11},["AudioPitchShifter"]={o=10,i=11},["AudioPlayer"]={o=10,i=11},["AudioRecorder"]={o=10,i=11},["AudioReverb"]={o=10,i=11},["AudioSpeechToText"]={o=10,i=11},["AudioStreamReader"]={o=10,i=11},["AudioStreamWriter"]={o=10,i=11},["AudioTextToSpeech"]={o=10,i=11},["AudioTremolo"]={o=10,i=11},["AudioWindSynthesizer"]={o=10,i=11},["AuroraScript"]={o=50,i=76},["AvatarAccessoryRules"]={o=20,i=0},["AvatarAnimationRules"]={o=20,i=0},["AvatarBodyRules"]={o=20,i=0},["AvatarClothingRules"]={o=20,i=0},["AvatarCollisionRules"]={o=20,i=0},["AvatarRules"]={o=20,i=0},["Backpack"]={o=30,i=20},["BackpackItem"]={o=20,i=0},["BadgeService"]={o=9999,i=0},["BallSocketConstraint"]={o=30,i=86},["BasePart"]={o=3,i=0},["Beam"]={o=30,i=96},["BevelMesh"]={o=9999,i=0},["BillboardGui"]={o=140,i=64},["BindableEvent"]={o=50,i=67},["BindableFunction"]={o=40,i=66},["BlockMesh"]={o=30,i=8},["BloomEffect"]={o=20,i=83},["BlurEffect"]={o=20,i=83},["BodyAngularVelocity"]={o=140,i=14},["BodyColors"]={o=20,i=0},["BodyForce"]={o=140,i=14},["BodyGyro"]={o=140,i=14},["BodyPartDescription"]={o=22,i=104},["BodyPosition"]={o=140,i=14},["BodyThrust"]={o=140,i=14},["BodyVelocity"]={o=140,i=14},["Bone"]={o=30,i=114},["BoolValue"]={o=30,i=4},["BoxHandleAdornment"]={o=205,i=111},["BrickColorValue"]={o=30,i=4},["BubbleChatConfiguration"]={o=13,i=0},["BuoyancySensor"]={o=20,i=0},["CFrameValue"]={o=30,i=4},["Camera"]={o=5,i=5},["CanvasGroup"]={o=200,i=48},["ChangeHistoryService"]={o=9999,i=0},["ChannelTabsConfiguration"]={o=12,i=141},["CharacterMesh"]={o=220,i=60},["Chat"]={o=510,i=33},["ChatInputBarConfiguration"]={o=11,i=142},["ChatService"]={o=510,i=33},["ChatWindowConfiguration"]={o=10,i=141},["ChorusSoundEffect"]={o=20,i=84},["ClickDetector"]={o=30,i=41},["ClimbController"]={o=20,i=0},["Clothing"]={o=20,i=0},["Clouds"]={o=5,i=28},["CollectionService"]={o=9999,i=0},["Color3Value"]={o=30,i=4},["ColorCorrectionEffect"]={o=20,i=83},["ColorGradingEffect"]={o=20,i=83},["CompressorSoundEffect"]={o=20,i=84},["ConeHandleAdornment"]={o=205,i=110},["Configuration"]={o=220,i=58},["Constraint"]={o=30,i=86},["ContextActionService"]={o=9999,i=0},["ControlState"]={o=31,i=0},["ControllerManager"]={o=20,i=0},["ControllerPartSensor"]={o=20,i=0},["CoreGui"]={o=30,i=46},["CorePackages"]={o=30,i=20},["CornerWedgePart"]={o=120,i=1},["CustomEvent"]={o=30,i=4},["CustomEventReceiver"]={o=30,i=4},["CylinderHandleAdornment"]={o=205,i=109},["CylinderMesh"]={o=30,i=8},["CylindricalConstraint"]={o=30,i=95},["DataModel"]={o=9999,i=0},["DataModelMesh"]={o=9999,i=0},["DataStoreService"]={o=9999,i=0},["Debris"]={o=9999,i=30},["DebugSettings"]={o=20,i=0},["DebuggerBreakpoint"]={o=9999,i=0},["DebuggerManager"]={o=9999,i=0},["DebuggerWatch"]={o=9999,i=0},["Decal"]={o=40,i=7},["DepthOfFieldEffect"]={o=20,i=83},["Dialog"]={o=220,i=62},["DialogChoice"]={o=220,i=63},["DistortionSoundEffect"]={o=20,i=84},["DoubleConstrainedValue"]={o=30,i=4},["DragDetector"]={o=30,i=41},["EchoSoundEffect"]={o=20,i=84},["EditableMesh"]={o=9999,i=0},["EqualizerSoundEffect"]={o=20,i=84},["Explosion"]={o=30,i=36},["FaceControls"]={o=105,i=129},["FaceInstance"]={o=9999,i=0},["Feature"]={o=20,i=0},["FileMesh"]={o=9999,i=0},["Fire"]={o=30,i=61},["Flag"]={o=30,i=38},["FlagStand"]={o=30,i=39},["FlangeSoundEffect"]={o=20,i=84},["FloorWire"]={o=30,i=4},["FluidForceSensor"]={o=20,i=0},["Folder"]={o=10,i=77},["ForceField"]={o=30,i=37},["Frame"]={o=150,i=48},["FunctionalTest"]={o=10,i=0},["GameSettings"]={o=20,i=0},["GeneratedFolder"]={o=10,i=77},["GlobalDataStore"]={o=-1,i=0},["GlobalSettings"]={o=20,i=0},["Glue"]={o=9999,i=0},["GroundController"]={o=20,i=0},["GuiBase2d"]={o=9999,i=0},["GuiButton"]={o=160,i=52},["GuiMain"]={o=140,i=47},["GuiObject"]={o=9999,i=0},["GuiService"]={o=9999,i=0},["HandRigDescription"]={o=222,i=53},["Handles"]={o=190,i=53},["HapticEffect"]={o=100,i=0},["Hat"]={o=30,i=45},["Highlight"]={o=20,i=133},["HingeConstraint"]={o=30,i=87},["Hint"]={o=110,i=33},["Hole"]={o=20,i=0},["Hopper"]={o=20,i=0},["HopperBin"]={o=240,i=22},["HttpService"]={o=9999,i=0},["Humanoid"]={o=30,i=9},["HumanoidDescription"]={o=22,i=104},["HumanoidRigDescription"]={o=220,i=53},["IKControl"]={o=220,i=53},["ImageButton"]={o=160,i=52},["ImageHandleAdornment"]={o=205,i=108},["ImageLabel"]={o=180,i=49},["InputAction"]={o=31,i=0},["InputActionLabel"]={o=185,i=0},["InputBinding"]={o=31,i=0},["InputContext"]={o=31,i=0},["InputObject"]={o=9999,i=0},["InsertService"]={o=9999,i=0},["Instance"]={o=9999,i=0},["IntConstrainedValue"]={o=30,i=4},["IntValue"]={o=30,i=4},["Item"]={o=20,i=0},["JointInstance"]={o=200,i=34},["JointsService"]={o=9999,i=0},["Keyframe"]={o=220,i=60},["KeyframeMarker"]={o=220,i=60},["LayerCollector"]={o=9999,i=0},["Light"]={o=30,i=13},["Lighting"]={o=30,i=13},["LineForce"]={o=30,i=101},["LineHandleAdornment"]={o=205,i=107},["LinearVelocity"]={o=30,i=132},["LocalBackpack"]={o=9999,i=0},["LocalBackpackItem"]={o=9999,i=0},["LocalScript"]={o=40,i=18},["LocalizationService"]={o=530,i=92},["LocalizationTable"]={o=30,i=97},["LogService"]={o=9999,i=0},["LuaSourceContainer"]={o=9999,i=0},["MakeupDescription"]={o=22,i=104},["MarketplaceService"]={o=9999,i=46},["MaterialService"]={o=30,i=131},["MaterialVariant"]={o=41,i=130},["MeshPart"]={o=105,i=73},["Message"]={o=110,i=33},["Model"]={o=100,i=2},["ModuleScript"]={o=50,i=76},["Motor"]={o=20,i=0},["Motor6D"]={o=200,i=106},["MotorFeature"]={o=9999,i=0},["Mouse"]={o=9999,i=0},["NegateOperation"]={o=104,i=72},["NetworkClient"]={o=30,i=16},["NetworkMarker"]={o=9999,i=0},["NetworkPeer"]={o=9999,i=0},["NetworkReplicator"]={o=30,i=29},["NetworkServer"]={o=30,i=15},["NetworkSettings"]={o=20,i=0},["NoCollisionConstraint"]={o=30,i=105},["NumberPose"]={o=220,i=60},["NumberValue"]={o=30,i=4},["ObjectValue"]={o=30,i=4},["OrderedDataStore"]={o=-1,i=0},["PVInstance"]={o=9999,i=0},["PackageLink"]={o=1,i=98},["Packages"]={o=9999,i=0},["Pants"]={o=20,i=44},["ParallelRampPart"]={o=120,i=1},["Part"]={o=110,i=1},["PartPairLasso"]={o=220,i=57},["ParticleEmitter"]={o=30,i=80},["ParticleEmitter2D"]={o=30,i=80},["Path2D"]={o=31,i=0},["PathfindingLink"]={o=210,i=137},["PathfindingModifier"]={o=210,i=128},["PhysicsActivitySensor"]={o=20,i=0},["PitchShiftSoundEffect"]={o=20,i=84},["Plane"]={o=30,i=134},["PlaneConstraint"]={o=30,i=134},["Platform"]={o=30,i=35},["PlatformLibraries"]={o=30,i=46},["Player"]={o=10,i=12},["PlayerGui"]={o=130,i=46},["PlayerScripts"]={o=130,i=78},["Players"]={o=20,i=21},["Plugin"]={o=30,i=86},["PluginCapabilities"]={o=30,i=0},["PluginDebugService"]={o=30,i=46},["PluginGuiService"]={o=30,i=46},["PluginManager"]={o=9999,i=0},["PluginManagerInterface"]={o=9999,i=0},["PluginMouse"]={o=9999,i=0},["PointLight"]={o=30,i=13},["PointsService"]={o=9999,i=0},["Pose"]={o=220,i=60},["PoseBase"]={o=220,i=60},["Preloaded"]={o=30,i=70},["PrismPart"]={o=120,i=1},["PrismaticConstraint"]={o=30,i=88},["ProceduralModel"]={o=100,i=0},["ProfilingItem"]={o=9999,i=0},["ProximityPrompt"]={o=30,i=124},["ProximityPromptService"]={o=9999,i=0},["PyramidHandleAdornment"]={o=205,i=0},["PyramidPart"]={o=120,i=1},["RayValue"]={o=30,i=4},["RemoteEvent"]={o=50,i=75},["RemoteFunction"]={o=40,i=74},["RenderSettings"]={o=20,i=0},["RenderingTest"]={o=40,i=5},["ReplicatedFirst"]={o=30,i=70},["ReplicatedStorage"]={o=30,i=70},["ReverbSoundEffect"]={o=20,i=84},["RightAngleRampPart"]={o=120,i=1},["RigidConstraint"]={o=30,i=135},["RobloxPluginGuiService"]={o=30,i=46},["RobloxReplicatedStorage"]={o=9999,i=0},["RocketPropulsion"]={o=140,i=14},["RodConstraint"]={o=30,i=90},["RootInstance"]={o=9999,i=0},["RopeConstraint"]={o=30,i=89},["RotateP"]={o=9999,i=0},["RotateV"]={o=9999,i=0},["RunService"]={o=9999,i=0},["ScreenGui"]={o=140,i=47},["Script"]={o=30,i=6},["ScriptContext"]={o=9999,i=0},["ScriptDebugger"]={o=9999,i=0},["ScrollingFrame"]={o=150,i=48},["Seat"]={o=30,i=35},["Selection"]={o=9999,i=0},["SelectionBox"]={o=210,i=54},["SelectionPartLasso"]={o=220,i=57},["SelectionPointLasso"]={o=220,i=57},["SelectionSphere"]={o=210,i=54},["ServerScriptService"]={o=30,i=71},["ServerStorage"]={o=30,i=69},["ServiceProvider"]={o=9999,i=0},["Shirt"]={o=20,i=43},["ShirtGraphic"]={o=20,i=40},["SkateboardPlatform"]={o=30,i=35},["Skin"]={o=20,i=0},["Sky"]={o=5,i=28},["SlidingBallConstraint"]={o=30,i=88},["Smoke"]={o=30,i=59},["Snap"]={o=200,i=34},["Sound"]={o=10,i=11},["SoundGroup"]={o=20,i=85},["SoundService"]={o=500,i=31},["Sparkles"]={o=30,i=42},["SpawnLocation"]={o=30,i=25},["SpecialMesh"]={o=30,i=8},["SphereHandleAdornment"]={o=205,i=112},["SpotLight"]={o=30,i=13},["SpringConstraint"]={o=30,i=91},["StandalonePluginScripts"]={o=130,i=78},["StarterCharacterScripts"]={o=130,i=78},["StarterGear"]={o=30,i=20},["StarterGui"]={o=30,i=46},["StarterPack"]={o=30,i=20},["StarterPlayer"]={o=30,i=79},["StarterPlayerScripts"]={o=130,i=78},["StatsItem"]={o=9999,i=0},["Status"]={o=100,i=2},["StockSound"]={o=-1,i=0},["StringValue"]={o=30,i=4},["Studio"]={o=9999,i=0},["StudioService"]={o=9999,i=0},["StyleBase"]={o=200,i=0},["StyleDerive"]={o=200,i=0},["StyleLink"]={o=200,i=0},["StyleQuery"]={o=200,i=0},["StyleRule"]={o=200,i=0},["StyleSheet"]={o=200,i=0},["SunRaysEffect"]={o=20,i=83},["SurfaceAppearance"]={o=40,i=10},["SurfaceGui"]={o=140,i=64},["SurfaceGuiBase"]={o=140,i=64},["SurfaceLight"]={o=30,i=13},["SurfaceSelection"]={o=210,i=55},["SwimController"]={o=20,i=0},["TaskScheduler"]={o=9999,i=0},["Team"]={o=10,i=24},["Teams"]={o=140,i=23},["TeleportService"]={o=9999,i=0},["Terrain"]={o=5,i=65},["TerrainDetail"]={o=42,i=144},["TerrainRegion"]={o=20,i=65},["TestService"]={o=1000,i=68},["TextBox"]={o=170,i=51},["TextButton"]={o=170,i=51},["TextChannel"]={o=14,i=140},["TextChannelWindow"]={o=16,i=0},["TextChatCommand"]={o=15,i=138},["TextChatService"]={o=511,i=143},["TextDocument"]={o=55,i=6},["TextLabel"]={o=190,i=50},["TextSource"]={o=10,i=139},["Texture"]={o=40,i=10},["Tool"]={o=30,i=17},["Torque"]={o=30,i=103},["TorsionSpringConstraint"]={o=30,i=125},["TouchTransmitter"]={o=30,i=37},["Trail"]={o=30,i=93},["TremoloSoundEffect"]={o=20,i=84},["TriangleMeshPart"]={o=9999,i=0},["TrussPart"]={o=120,i=1},["Tween"]={o=9999,i=0},["TweenBase"]={o=9999,i=0},["TweenService"]={o=9999,i=0},["UIAspectRatioConstraint"]={o=30,i=26},["UICorner"]={o=30,i=26},["UIDragDetector"]={o=30,i=41},["UIFlexItem"]={o=130,i=26},["UIGradient"]={o=30,i=26},["UIGridLayout"]={o=30,i=26},["UIGridStyleLayout"]={o=9999,i=0},["UIListLayout"]={o=30,i=26},["UIPadding"]={o=30,i=26},["UIPageLayout"]={o=30,i=26},["UIScale"]={o=30,i=26},["UIShadow"]={o=30,i=26},["UISizeConstraint"]={o=30,i=26},["UIStroke"]={o=30,i=26},["UITableLayout"]={o=30,i=26},["UITextSizeConstraint"]={o=30,i=26},["UnionOperation"]={o=105,i=73},["UniversalConstraint"]={o=30,i=123},["UnreliableRemoteEvent"]={o=51,i=75},["UserInputService"]={o=9999,i=0},["VRService"]={o=1000,i=0},["ValueBase"]={o=30,i=4},["Vector3Value"]={o=30,i=4},["VectorForce"]={o=30,i=102},["VehicleSeat"]={o=30,i=35},["VelocityMotor"]={o=9999,i=0},["VideoDisplay"]={o=10,i=11},["VideoFrame"]={o=18,i=120},["VideoPlayer"]={o=10,i=11},["ViewportCamera"]={o=5,i=0},["ViewportFrame"]={o=30,i=52},["VoiceChatInternal"]={o=9999,i=0},["VoiceChatService"]={o=520,i=136},["WedgePart"]={o=120,i=1},["Weld"]={o=200,i=34},["WeldConstraint"]={o=30,i=94},["Wire"]={o=10,i=11},["WireframeHandleAdornment"]={o=205,i=113},["Workspace"]={o=5,i=19},["WorldModel"]={o=22,i=19},["WrapDeformer"]={o=32,i=127},["WrapLayer"]={o=32,i=126},["WrapTarget"]={o=32,i=127},["WrapTextureTransfer"]={o=33,i=0},}
+
 		local dexOn = false
 		local selected = nil
 		local expanded = { [game] = true }
 		local treeConns = {}
 		local rowOf = {}
-		local rmdClasses = {} -- Name -> {Order=number, Icon=number}
-		local explorerOrders = {}
-		local rmdReady = false
-
-		local function parseRMD(xml)
-			if type(xml) ~= "string" or #xml < 100 then return end
-			local classes = {}
-			for block in xml:gmatch('<Item class="ReflectionMetadataClass">(.-)</Item>') do
-				local name = block:match('<string name="Name">([^<]+)</string>')
-				if name then
-					local order = tonumber(block:match('<string name="ExplorerOrder">([^<]+)</string>')) or 9999
-					local icon = tonumber(block:match('<string name="ExplorerImageIndex">([^<]+)</string>')) or 0
-					classes[name] = { Order = order, Icon = icon }
-				end
-			end
-			if next(classes) then
-				rmdClasses = classes
-				explorerOrders = {}
-				rmdReady = true
-			end
-		end
-
-		task.spawn(function()
-			local ok, xml = pcall(function()
-				return game:HttpGet("https://raw.githubusercontent.com/CloneTrooper1019/Roblox-Client-Tracker/roblox/ReflectionMetadata.xml")
-			end)
-			if ok then
-				parseRMD(xml)
-				if dexOn then
-					rebuildVisible()
-					if selected then refreshProps() end
-				end
-			end
-		end)
 
 		local function classOrder(className)
-			local cached = explorerOrders[className]
-			if cached then return cached end
-			local entry = rmdClasses[className]
-			local order = entry and entry.Order or 9999
-			explorerOrders[className] = order
-			return order
+			local e = RMD[className]
+			return e and e.o or 9999
 		end
 
 		local function classIcon(className)
-			local entry = rmdClasses[className]
-			return entry and entry.Icon or 0
+			local e = RMD[className]
+			return e and e.i or 0
 		end
 
 		local function nodeSorter(a, b)
@@ -3044,36 +3008,25 @@ do
 			return ch
 		end
 
-		local gap = U.SEC_GAP
-		local colW = math.floor((U.BODY_W - gap * 3) / 2)
-		local colH = U.BODY_H - gap * 2
+		-- U.section returns the inner ScrollingFrame content
+		local explList = U.section(page, "explorer", 1, 1, 1)
+		local propList = U.section(page, "properties", 2, 1, 1)
+		explList.ScrollBarThickness = 0
+		explList.ScrollBarImageTransparency = 1
+		propList.ScrollBarThickness = 0
+		propList.ScrollBarImageTransparency = 1
 
-		local function pane(title, col)
-			local x = col == 1 and gap or (gap * 2 + colW)
-			local f = U.section(page, title, col, 1, 1)
-			f.Size = UDim2.fromOffset(colW, colH)
-			f.Position = UDim2.fromOffset(x, gap)
-			local scroll = Instance.new("ScrollingFrame")
-			scroll.Name = "Content"
-			scroll.BackgroundTransparency = 1
-			scroll.BorderSizePixel = 0
-			scroll.ScrollBarThickness = 0
-			scroll.ScrollBarImageTransparency = 1
-			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-			scroll.CanvasSize = UDim2.new()
-			scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-			scroll.Size = UDim2.new(1, -8, 1, -22)
-			scroll.Position = UDim2.fromOffset(4, 20)
-			scroll.Parent = f
-			local lay = Instance.new("UIListLayout")
-			lay.SortOrder = Enum.SortOrder.LayoutOrder
-			lay.Padding = UDim.new(0, 0)
-			lay.Parent = scroll
-			return f, scroll
+		-- clear default padding gap a bit
+		for _, list in ipairs({ explList, propList }) do
+			for _, ch in ipairs(list:GetChildren()) do
+				if ch:IsA("UIPadding") then
+					ch.PaddingTop = UDim.new(0, 0)
+					ch.PaddingBottom = UDim.new(0, 0)
+				elseif ch:IsA("UIListLayout") then
+					ch.Padding = UDim.new(0, 0)
+				end
+			end
 		end
-
-		local explPane, explList = pane("explorer", 1)
-		local propPane, propList = pane("properties", 2)
 
 		local search = Instance.new("TextBox")
 		search.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
@@ -3085,12 +3038,10 @@ do
 		search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
 		search.PlaceholderText = "filter..."
 		search.Text = ""
-		search.Size = UDim2.new(1, -8, 0, 16)
-		search.Position = UDim2.fromOffset(4, 20)
-		search.Parent = explPane
+		search.Size = UDim2.new(1, 0, 0, 16)
+		search.LayoutOrder = -1000000
+		search.Parent = explList
 		U.edges(search, U.ELEMENT_BORDER, false, 3)
-		explList.Position = UDim2.fromOffset(4, 38)
-		explList.Size = UDim2.new(1, -8, 1, -40)
 
 		local function disconnectTree(inst)
 			local cns = treeConns[inst]
@@ -3135,15 +3086,18 @@ do
 			elseif t == "nil" then
 				return "nil"
 			end
-			return tostring(v)
+			local ok, s = pcall(tostring, v)
+			return ok and s or t
 		end
 
-		function refreshProps()
+		local function refreshProps()
 			for _, ch in ipairs(propList:GetChildren()) do
-				if not ch:IsA("UIListLayout") then ch:Destroy() end
+				if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") then
+					ch:Destroy()
+				end
 			end
 			if not selected then return end
-			local okAlive = pcall(function() return selected.ClassName end)
+			local okAlive, className = pcall(function() return selected.ClassName end)
 			if not okAlive then selected = nil return end
 
 			local entries = {}
@@ -3155,7 +3109,7 @@ do
 			end
 
 			add("Name", selected.Name)
-			add("ClassName", selected.ClassName)
+			add("ClassName", className)
 			pcall(function()
 				add("Parent", selected.Parent and selected.Parent:GetFullName() or "nil")
 			end)
@@ -3165,28 +3119,30 @@ do
 				local ok, list = pcall(getproperties, selected)
 				if ok and type(list) == "table" then
 					got = true
+					local n = 0
 					for k, v in pairs(list) do
 						local key = tostring(k)
 						if key ~= "Name" and key ~= "ClassName" and key ~= "Parent" then
 							add(key, v)
+							n += 1
+							if n > 300 then break end
 						end
 					end
 				end
 			end
 			if not got then
-				local names = {
+				for _, n in ipairs({
 					"Archivable", "Anchored", "CanCollide", "CanQuery", "CanTouch", "CastShadow", "Transparency",
 					"Reflectance", "Material", "Color", "BrickColor", "Size", "Position", "Orientation", "CFrame",
-					"Velocity", "RotVelocity", "Enabled", "Value", "Text", "TextColor3", "TextSize", "TextStrokeColor3",
+					"Velocity", "RotVelocity", "Enabled", "Value", "Text", "TextColor3", "TextSize",
 					"Image", "ImageColor3", "Visible", "ZIndex", "BackgroundColor3", "BackgroundTransparency",
-					"BorderSizePixel", "LayoutOrder", "AutomaticSize", "Health", "MaxHealth", "WalkSpeed", "JumpPower",
-					"JumpHeight", "HipHeight", "DisplayName", "UserId", "AccountAge", "Team", "TeamColor", "Brightness",
-					"ClockTime", "Ambient", "OutdoorAmbient", "FogColor", "FogEnd", "FogStart", "GlobalShadows",
-					"Volume", "PlaybackSpeed", "Playing", "Looped", "FillColor", "OutlineColor", "FillTransparency",
-					"OutlineTransparency", "DepthMode", "Adornee", "AlwaysOnTop", "PrimaryPart", "Massless",
-					"WorldPivot", "MeshId", "TextureId", "AnimationId", "SoundId", "Source",
-				}
-				for _, n in ipairs(names) do
+					"BorderSizePixel", "LayoutOrder", "Health", "MaxHealth", "WalkSpeed", "JumpPower",
+					"JumpHeight", "HipHeight", "DisplayName", "UserId", "Brightness", "ClockTime", "Ambient",
+					"OutdoorAmbient", "FogEnd", "FogStart", "Volume", "PlaybackSpeed", "Playing",
+					"FillColor", "OutlineColor", "FillTransparency", "OutlineTransparency", "DepthMode",
+					"Adornee", "AlwaysOnTop", "PrimaryPart", "Massless", "WorldPivot", "MeshId", "TextureId",
+					"SoundId", "Source", "Locked", "Shape", "TopSurface", "BottomSurface",
+				}) do
 					pcall(function()
 						local v = selected[n]
 						if v ~= nil then add(n, v) end
@@ -3203,6 +3159,7 @@ do
 
 			for i, e in ipairs(entries) do
 				local row = Instance.new("Frame")
+				row.Name = "Prop"
 				row.BackgroundTransparency = 1
 				row.BorderSizePixel = 0
 				row.Size = UDim2.new(1, 0, 0, 15)
@@ -3270,17 +3227,20 @@ do
 
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundTransparency = 1
-			icon.Size = UDim2.fromOffset(14, 14)
-			icon.Position = UDim2.fromOffset(pad + 11, 1)
+			icon.BorderSizePixel = 0
+			icon.Size = UDim2.fromOffset(16, 16)
+			icon.Position = UDim2.fromOffset(pad + 10, 0)
 			icon.Image = "rbxasset://textures/ClassImages.PNG"
+			icon.ScaleType = Enum.ScaleType.Stretch
+			local idx = classIcon(inst.ClassName)
 			icon.ImageRectSize = Vector2.new(16, 16)
-			icon.ImageRectOffset = Vector2.new(classIcon(inst.ClassName) * 16, 0)
+			icon.ImageRectOffset = Vector2.new(16 * idx, 0)
 			icon.Parent = btn
 
 			local lab = Instance.new("TextLabel")
 			lab.BackgroundTransparency = 1
 			lab.Size = UDim2.new(1, -(pad + 28), 1, 0)
-			lab.Position = UDim2.fromOffset(pad + 27, 0)
+			lab.Position = UDim2.fromOffset(pad + 28, 0)
 			lab.FontFace = U.font
 			lab.TextSize = U.TEXT_SZ
 			lab.TextColor3 = U.theme.Text
