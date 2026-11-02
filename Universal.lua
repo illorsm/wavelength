@@ -1295,21 +1295,15 @@ function U.buildShell()
 		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
 		Position = UDim2.fromOffset(0, U.LINE_H),
 	}, shell)
-	local titleLeft = U.label(U.titleBar, "wavelength", {
-		Size = UDim2.new(0.5, -12, 1, 0),
-		Position = UDim2.fromOffset(8, -1),
-		TextYAlignment = Enum.TextYAlignment.Center,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	table.insert(U.themeReg.labels, titleLeft)
-	local uniLbl = U.label(U.titleBar, "[universal]", {
-		Size = UDim2.new(0.5, -12, 1, 0),
-		Position = UDim2.new(1, -8, 0, -1),
-		AnchorPoint = Vector2.new(1, 0),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextYAlignment = Enum.TextYAlignment.Center,
-	})
-	table.insert(U.themeReg.labels, uniLbl)
+	do
+		local titleLeft = U.label(U.titleBar, "wavelength", {
+			Size = UDim2.new(1, -16, 1, 0),
+			Position = UDim2.fromOffset(8, -1),
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		table.insert(U.themeReg.labels, titleLeft)
+	end
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
@@ -2975,400 +2969,315 @@ task.defer(function()
 end)
 
 
+
 do
-	local dexActive = false
-	local selectedInst = nil
-	local expanded = {}
-	local rowPool = {}
-	local propPool = {}
-	local rootInstances = { game }
-
-	local CLASS_ICON = {
-		Workspace = 19, Folder = 77, Part = 1, MeshPart = 1, UnionOperation = 1, NegateOperation = 1,
-		BasePart = 1, Model = 54, Humanoid = 9, Camera = 5, Script = 6, LocalScript = 18,
-		ModuleScript = 56, RemoteEvent = 75, RemoteFunction = 74, BindableEvent = 75, BindableFunction = 74,
-		ScreenGui = 47, Frame = 48, TextLabel = 50, TextButton = 51, TextBox = 51, ImageLabel = 49,
-		ImageButton = 49, ScrollingFrame = 48, BillboardGui = 47, SurfaceGui = 47, Sound = 31,
-		Attachment = 34, Bone = 34, Motor6D = 34, Weld = 34, WeldConstraint = 34, ProximityPrompt = 60,
-		ClickDetector = 41, TouchTransmitter = 37, Decal = 7, Texture = 10, SpecialMesh = 8,
-		Shirt = 43, Pants = 44, ShirtGraphic = 45, Accessory = 32, Tool = 17, HopperBin = 17,
-		Player = 12, Players = 21, Lighting = 13, MaterialService = 13, ReplicatedStorage = 70,
-		ReplicatedFirst = 70, ServerStorage = 69, ServerScriptService = 14, StarterGui = 46,
-		StarterPack = 20, StarterPlayer = 79, Teams = 80, Team = 80, SoundService = 31,
-		Chat = 33, CoreGui = 46, RunService = 0, UserInputService = 0, TweenService = 0,
-		HttpService = 0, Debris = 0, InsertService = 0, CollectionService = 0, PathfindingService = 0,
-		Configuration = 58, BoolValue = 4, IntValue = 4, NumberValue = 4, StringValue = 4,
-		ObjectValue = 4, CFrameValue = 4, Vector3Value = 4, Color3Value = 4, RayValue = 4,
-		Highlight = 53, ParticleEmitter = 36, Fire = 36, Smoke = 36, Sparkles = 36, Trail = 36,
-		Beam = 36, PointLight = 13, SpotLight = 13, SurfaceLight = 13, Seat = 35, VehicleSeat = 35,
-		SpawnLocation = 25, UIListLayout = 48, UIGridLayout = 48, UIPadding = 48, UICorner = 48,
-		UIStroke = 48, UIGradient = 48, UIAspectRatioConstraint = 48, UISizeConstraint = 48,
-		WorldModel = 54, ViewportFrame = 48, VideoFrame = 48, CanvasGroup = 48,
-	}
-
-	local function classIcon(className)
-		local idx = CLASS_ICON[className] or 0
-		return "rbxasset://textures/ClassImages.png", Vector2.new(16 * idx, 0), Vector2.new(16, 16)
-	end
-
-	local function isService(inst)
-		return inst.Parent == game and inst ~= game
-	end
-
-	local function safeChildren(inst)
-		local ok, ch = pcall(function() return inst:GetChildren() end)
-		if not ok then return {} end
-		table.sort(ch, function(a, b)
-			return string.lower(a.Name) < string.lower(b.Name)
-		end)
-		return ch
-	end
-
-	local function canExpand(inst)
-		local ok, n = pcall(function() return #inst:GetChildren() end)
-		return ok and n > 0
-	end
-
-	-- Build UI on dex page
 	local page = U.pageFrames and U.pageFrames.dex
-	if not page then return end
-	for _, ch in ipairs(page:GetChildren()) do
-		if not ch:IsA("UIListLayout") then ch:Destroy() end
-	end
+	if page then
+		for _, ch in ipairs(page:GetChildren()) do
+			ch:Destroy()
+		end
 
-	local gap = U.SEC_GAP or 8
-	local colW = math.floor((U.BODY_W - gap * 3) / 2)
-	local colH = U.BODY_H - gap * 2
+		local dexOn = false
+		local selected = nil
+		local expanded = { [game] = true }
+		local treeConns = {}
+		local rowOf = {}
+		local listOrder = 0
 
-	local function makePane(title, col)
-		local x = (col == 1) and gap or (gap * 2 + colW)
-		local f = Instance.new("Frame")
-		f.Name = title
-		f.BackgroundColor3 = U.theme.SectionBg
-		f.BorderSizePixel = 0
-		f.Size = UDim2.fromOffset(colW, colH)
-		f.Position = UDim2.fromOffset(x, gap)
-		f.Parent = page
-		table.insert(U.themeReg.sectionBgs, f)
-		U.stroke(f, "SectionBorder")
-		local hdr = U.label(f, title, {
-			Size = UDim2.new(1, -8, 0, 16),
-			Position = UDim2.fromOffset(4, 2),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextYAlignment = Enum.TextYAlignment.Center,
-		})
-		table.insert(U.themeReg.labels, hdr)
-		local line = Instance.new("Frame")
-		line.BorderSizePixel = 0
-		line.BackgroundColor3 = U.theme.SectionBorder
-		line.Size = UDim2.new(1, -8, 0, 1)
-		line.Position = UDim2.fromOffset(4, 18)
-		line.Parent = f
-		table.insert(U.themeReg.sectionBorders, line)
-		local scroll = Instance.new("ScrollingFrame")
-		scroll.Name = "List"
-		scroll.BackgroundTransparency = 1
-		scroll.BorderSizePixel = 0
-		scroll.ScrollBarThickness = 4
-		scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-		scroll.Size = UDim2.new(1, -6, 1, -24)
-		scroll.Position = UDim2.fromOffset(3, 22)
-		scroll.CanvasSize = UDim2.new()
-		scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		scroll.Parent = f
-		local lay = Instance.new("UIListLayout")
-		lay.SortOrder = Enum.SortOrder.LayoutOrder
-		lay.Padding = UDim.new(0, 1)
-		lay.Parent = scroll
-		return f, scroll
-	end
+		local CLASS_ICON = {
+			Workspace=19, Folder=77, Part=1, MeshPart=8, UnionOperation=1, NegateOperation=1, Model=54,
+			Humanoid=9, Camera=5, Script=6, LocalScript=18, ModuleScript=56, RemoteEvent=75, RemoteFunction=74,
+			BindableEvent=67, BindableFunction=66, ScreenGui=47, Frame=48, TextLabel=50, TextButton=51, TextBox=51,
+			ImageLabel=49, ImageButton=49, ScrollingFrame=48, BillboardGui=47, SurfaceGui=47, Sound=31,
+			Attachment=34, Motor6D=34, Weld=34, WeldConstraint=34, ProximityPrompt=60, ClickDetector=41,
+			Decal=7, Texture=10, SpecialMesh=8, Shirt=43, Pants=44, ShirtGraphic=45, Accessory=32, Tool=17,
+			Player=12, Players=21, Lighting=13, ReplicatedStorage=70, ReplicatedFirst=70, ServerStorage=69,
+			ServerScriptService=14, StarterGui=46, StarterPack=20, StarterPlayer=79, Teams=80, Team=80,
+			SoundService=31, Chat=33, CoreGui=46, Configuration=58, BoolValue=4, IntValue=4, NumberValue=4,
+			StringValue=4, ObjectValue=4, CFrameValue=4, Vector3Value=4, Color3Value=4, Highlight=53,
+			ParticleEmitter=36, Fire=36, Smoke=36, Sparkles=36, Trail=36, Beam=36, PointLight=13, SpotLight=13,
+			SurfaceLight=13, Seat=35, VehicleSeat=35, SpawnLocation=25, UIListLayout=48, UIGridLayout=48,
+			UIPadding=48, UICorner=48, UIStroke=48, UIGradient=48, WorldModel=54, ViewportFrame=48,
+			VideoFrame=48, CanvasGroup=48, RunService=0, UserInputService=0, TweenService=0, HttpService=0,
+			Debris=0, InsertService=0, CollectionService=0, PathfindingService=0, MaterialService=13,
+			HopperBin=17, TouchTransmitter=37, Bone=34, RayValue=4,
+		}
 
-	local explPane, explList = makePane("explorer", 1)
-	local propPane, propList = makePane("properties", 2)
+		local function iconFor(className)
+			local idx = CLASS_ICON[className] or 0
+			return Vector2.new(idx * 16, 0)
+		end
 
-	local searchBox = Instance.new("TextBox")
-	searchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-	searchBox.BorderSizePixel = 0
-	searchBox.ClearTextOnFocus = false
-	searchBox.FontFace = U.font
-	searchBox.TextSize = U.TEXT_SZ
-	searchBox.TextColor3 = U.theme.Text
-	searchBox.PlaceholderText = "search..."
-	searchBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-	searchBox.Text = ""
-	searchBox.Size = UDim2.new(1, -8, 0, 18)
-	searchBox.Position = UDim2.fromOffset(4, 20)
-	searchBox.Parent = explPane
-	explList.Position = UDim2.fromOffset(3, 42)
-	explList.Size = UDim2.new(1, -6, 1, -44)
-	U.edges(searchBox, U.ELEMENT_BORDER, false, 3)
+		local gap = U.SEC_GAP
+		local colW = math.floor((U.BODY_W - gap * 3) / 2)
+		local colH = U.BODY_H - gap * 2
 
-	local function clearList(list, pool)
-		for _, ch in ipairs(list:GetChildren()) do
-			if ch:IsA("TextButton") or ch:IsA("Frame") then
-				ch.Visible = false
-				ch.Parent = nil
-				pool[#pool + 1] = ch
+		local function pane(title, col)
+			local x = col == 1 and gap or (gap * 2 + colW)
+			local f = U.section(page, title, col, 1, 1)
+			-- force geometry
+			f.Size = UDim2.fromOffset(colW, colH)
+			f.Position = UDim2.fromOffset(x, gap)
+			-- find content area under header line
+			local scroll = Instance.new("ScrollingFrame")
+			scroll.Name = "Content"
+			scroll.BackgroundTransparency = 1
+			scroll.BorderSizePixel = 0
+			scroll.ScrollBarThickness = 3
+			scroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 70)
+			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			scroll.CanvasSize = UDim2.new()
+			scroll.Size = UDim2.new(1, -8, 1, -22)
+			scroll.Position = UDim2.fromOffset(4, 20)
+			scroll.Parent = f
+			local lay = Instance.new("UIListLayout")
+			lay.SortOrder = Enum.SortOrder.LayoutOrder
+			lay.Padding = UDim.new(0, 0)
+			lay.Parent = scroll
+			return f, scroll
+		end
+
+		local explPane, explList = pane("explorer", 1)
+		local propPane, propList = pane("properties", 2)
+
+		local search = Instance.new("TextBox")
+		search.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+		search.BorderSizePixel = 0
+		search.ClearTextOnFocus = false
+		search.FontFace = U.font
+		search.TextSize = U.TEXT_SZ
+		search.TextColor3 = U.theme.Text
+		search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+		search.PlaceholderText = "filter..."
+		search.Text = ""
+		search.Size = UDim2.new(1, -8, 0, 16)
+		search.Position = UDim2.fromOffset(4, 20)
+		search.Parent = explPane
+		U.edges(search, U.ELEMENT_BORDER, false, 3)
+		explList.Position = UDim2.fromOffset(4, 38)
+		explList.Size = UDim2.new(1, -8, 1, -40)
+
+		local function disconnectTree(inst)
+			local c = treeConns[inst]
+			if c then
+				for _, x in ipairs(c) do pcall(function() x:Disconnect() end) end
+				treeConns[inst] = nil
 			end
 		end
-	end
 
-	local function getRow(pool, parent)
-		local r = table.remove(pool)
-		if r then
-			r.Parent = parent
-			r.Visible = true
-			return r
-		end
-		return nil
-	end
-
-	local rowInst = setmetatable({}, { __mode = "k" })
-	local function makeTreeRow()
-		local btn = Instance.new("TextButton")
-		btn.AutoButtonColor = false
-		btn.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-		btn.BackgroundTransparency = 1
-		btn.BorderSizePixel = 0
-		btn.Size = UDim2.new(1, -2, 0, 16)
-		btn.Text = ""
-		btn.ClipsDescendants = true
-		local arrow = Instance.new("TextLabel")
-		arrow.Name = "Arrow"
-		arrow.BackgroundTransparency = 1
-		arrow.Size = UDim2.fromOffset(12, 16)
-		arrow.Position = UDim2.fromOffset(0, 0)
-		arrow.FontFace = U.font
-		arrow.TextSize = 10
-		arrow.TextColor3 = U.theme.Text
-		arrow.Text = ""
-		arrow.Parent = btn
-		local icon = Instance.new("ImageLabel")
-		icon.Name = "Icon"
-		icon.BackgroundTransparency = 1
-		icon.Size = UDim2.fromOffset(14, 14)
-		icon.Position = UDim2.fromOffset(12, 1)
-		icon.Image = "rbxasset://textures/ClassImages.png"
-		icon.ImageRectSize = Vector2.new(16, 16)
-		icon.Parent = btn
-		local name = Instance.new("TextLabel")
-		name.Name = "Label"
-		name.BackgroundTransparency = 1
-		name.Size = UDim2.new(1, -30, 1, 0)
-		name.Position = UDim2.fromOffset(28, 0)
-		name.FontFace = U.font
-		name.TextSize = U.TEXT_SZ
-		name.TextColor3 = U.theme.Text
-		name.TextXAlignment = Enum.TextXAlignment.Left
-		name.TextTruncate = Enum.TextTruncate.AtEnd
-		name.Parent = btn
-		btn.MouseButton1Click:Connect(function()
-			local inst = rowInst[btn]
-			if not inst then return end
-			if canExpand(inst) then
-				expanded[inst] = not expanded[inst]
+		local function clearExplorer()
+			for inst, row in pairs(rowOf) do
+				disconnectTree(inst)
+				if row and row.Parent then row:Destroy() end
 			end
-			selectedInst = inst
-			rebuildTree()
-			rebuildProps()
-		end)
-		return btn
-	end
+			rowOf = {}
+			listOrder = 0
+		end
 
-	local function makePropRow()
-		local fr = Instance.new("Frame")
-		fr.BackgroundTransparency = 1
-		fr.BorderSizePixel = 0
-		fr.Size = UDim2.new(1, -2, 0, 16)
-		local k = Instance.new("TextLabel")
-		k.Name = "Key"
-		k.BackgroundTransparency = 1
-		k.Size = UDim2.new(0.42, -2, 1, 0)
-		k.Position = UDim2.fromOffset(2, 0)
-		k.FontFace = U.font
-		k.TextSize = U.TEXT_SZ
-		k.TextColor3 = Color3.fromRGB(160, 160, 160)
-		k.TextXAlignment = Enum.TextXAlignment.Left
-		k.TextTruncate = Enum.TextTruncate.AtEnd
-		k.Parent = fr
-		local v = Instance.new("TextLabel")
-		v.Name = "Val"
-		v.BackgroundTransparency = 1
-		v.Size = UDim2.new(0.58, -4, 1, 0)
-		v.Position = UDim2.new(0.42, 0, 0, 0)
-		v.FontFace = U.font
-		v.TextSize = U.TEXT_SZ
-		v.TextColor3 = U.theme.Text
-		v.TextXAlignment = Enum.TextXAlignment.Left
-		v.TextTruncate = Enum.TextTruncate.AtEnd
-		v.Parent = fr
-		return fr
-	end
-
-	local orderCounter = 0
-	local function appendTree(inst, depth, filter)
-		if not dexActive then return end
-		if filter ~= "" then
-			local match = string.find(string.lower(inst.Name), filter, 1, true)
-				or string.find(string.lower(inst.ClassName), filter, 1, true)
-			if not match and inst ~= game then
-				-- still show if any child matches: skip heavy for perf; only show matches
-				local show = false
-				for _, ch in ipairs(safeChildren(inst)) do
-					if string.find(string.lower(ch.Name), filter, 1, true) then show = true break end
-				end
-				if not show then return end
+		local function fmt(v)
+			local t = typeof(v)
+			if t == "Instance" then return v:GetFullName()
+			elseif t == "Color3" then return string.format("%d, %d, %d", v.R*255, v.G*255, v.B*255)
+			elseif t == "Vector3" then return string.format("%.2f, %.2f, %.2f", v.X, v.Y, v.Z)
+			elseif t == "Vector2" then return string.format("%.2f, %.2f", v.X, v.Y)
+			elseif t == "CFrame" then local p=v.Position return string.format("%.1f, %.1f, %.1f", p.X,p.Y,p.Z)
+			elseif t == "UDim2" then return string.format("{%.2f,%d},{%.2f,%d}", v.X.Scale,v.X.Offset,v.Y.Scale,v.Y.Offset)
+			elseif t == "EnumItem" then return v.Name
+			elseif t == "boolean" or t == "number" or t == "string" then return tostring(v)
 			end
+			return tostring(t)
 		end
-		orderCounter += 1
-		local btn = getRow(rowPool, explList) or makeTreeRow()
-		btn.Parent = explList
-		btn.Visible = true
-		btn.LayoutOrder = orderCounter
-		btn.BackgroundTransparency = (selectedInst == inst) and 0.6 or 1
-		btn.BackgroundColor3 = (selectedInst == inst) and Color3.fromRGB(60, 60, 90) or Color3.fromRGB(28, 28, 28)
 
-		local pad = 2 + depth * 12
-		btn.Arrow.Position = UDim2.fromOffset(pad, 0)
-		btn.Icon.Position = UDim2.fromOffset(pad + 12, 1)
-		btn.Label.Position = UDim2.fromOffset(pad + 28, 0)
-		btn.Label.Size = UDim2.new(1, -(pad + 30), 1, 0)
-
-		local hasKids = canExpand(inst)
-		local isOpen = expanded[inst] == true
-		btn.Arrow.Text = hasKids and (isOpen and "v" or ">") or " "
-		btn.Label.Text = inst.Name
-		btn.Label.TextColor3 = U.theme.Text
-		local img, rect, size = classIcon(inst.ClassName)
-		btn.Icon.Image = img
-		btn.Icon.ImageRectOffset = rect
-		btn.Icon.ImageRectSize = size
-
-		btn:SetAttribute("Depth", depth)
-		rowInst[btn] = inst
-
-		if hasKids and (expanded[inst] or (filter ~= "" and inst ~= game)) then
-			if filter ~= "" and not expanded[inst] then expanded[inst] = true end
-			for _, ch in ipairs(safeChildren(inst)) do
-				appendTree(ch, depth + 1, filter)
+		local function refreshProps()
+			for _, ch in ipairs(propList:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
 			end
-		end
-	end
-
-	function rebuildTree()
-		if not dexActive then return end
-		clearList(explList, rowPool)
-		orderCounter = 0
-		local filter = string.lower(searchBox.Text or "")
-		expanded[game] = true
-		appendTree(game, 0, filter)
-	end
-
-	local function fmtValue(v)
-		local t = typeof(v)
-		if t == "Instance" then return v:GetFullName()
-		elseif t == "Color3" then return string.format("%.0f, %.0f, %.0f", v.R*255, v.G*255, v.B*255)
-		elseif t == "Vector3" or t == "Vector2" then return string.format("%.2f, %.2f%s", v.X, v.Y, t == "Vector3" and string.format(", %.2f", v.Z) or "")
-		elseif t == "CFrame" then local p = v.Position return string.format("%.1f, %.1f, %.1f", p.X, p.Y, p.Z)
-		elseif t == "UDim2" then return string.format("{%.2f, %d},{%.2f, %d}", v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
-		elseif t == "EnumItem" then return tostring(v)
-		elseif t == "boolean" or t == "number" or t == "string" then return tostring(v)
-		end
-		return t
-	end
-
-	local function collectProps(inst)
-		local props = {}
-		local function add(k, v)
-			props[#props + 1] = { k, v }
-		end
-		add("Name", inst.Name)
-		add("ClassName", inst.ClassName)
-		pcall(function() add("Parent", inst.Parent and inst.Parent:GetFullName() or "nil") end)
-		if getproperties then
-			local ok, list = pcall(getproperties, inst)
-			if ok and type(list) == "table" then
-				for k, v in pairs(list) do
-					if k ~= "Name" and k ~= "ClassName" and k ~= "Parent" then
-						add(tostring(k), v)
+			if not selected or not selected.Parent and selected ~= game then
+				selected = nil
+				return
+			end
+			local entries = {}
+			local function add(k, v) entries[#entries+1] = {k, v} end
+			add("Name", selected.Name)
+			add("ClassName", selected.ClassName)
+			pcall(function() add("Parent", selected.Parent and selected.Parent.Name or "nil") end)
+			if getproperties then
+				local ok, list = pcall(getproperties, selected)
+				if ok and type(list) == "table" then
+					for k, v in pairs(list) do
+						if k ~= "Name" and k ~= "ClassName" and k ~= "Parent" then
+							add(tostring(k), v)
+						end
 					end
 				end
-				table.sort(props, function(a, b) return a[1] < b[1] end)
-				return props
+			else
+				for _, n in ipairs({
+					"Archivable","Anchored","CanCollide","CanQuery","CanTouch","CastShadow","Transparency",
+					"Reflectance","Material","Color","BrickColor","Size","Position","Orientation","CFrame",
+					"Velocity","Enabled","Value","Text","TextColor3","TextSize","Image","ImageColor3","Visible",
+					"ZIndex","BackgroundColor3","BackgroundTransparency","BorderSizePixel","LayoutOrder",
+					"Health","MaxHealth","WalkSpeed","JumpPower","JumpHeight","HipHeight","DisplayName","UserId",
+					"Brightness","ClockTime","Ambient","OutdoorAmbient","FogEnd","FogStart","Volume","PlaybackSpeed",
+					"FillColor","OutlineColor","FillTransparency","OutlineTransparency","DepthMode","Adornee",
+					"AlwaysOnTop","PrimaryPart","Massless","WorldPivot"
+				}) do
+					pcall(function()
+						local v = selected[n]
+						if v ~= nil then add(n, v) end
+					end)
+				end
 			end
-		end
-		local try = {
-			"Archivable", "AttachmentPoint", "BrickColor", "CFrame", "CanCollide", "CanQuery", "CanTouch",
-			"CastShadow", "Color", "Enabled", "Health", "MaxHealth", "Material", "Orientation", "Position",
-			"PrimaryPart", "Reflectance", "Size", "Text", "TextColor3", "TextSize", "Texture", "Transparency",
-			"Value", "Velocity", "Volume", "WalkSpeed", "JumpPower", "JumpHeight", "HipHeight",
-			"DisplayName", "UserId", "AccountAge", "Team", "TeamColor", "Brightness", "ClockTime",
-			"FogEnd", "FogStart", "Ambient", "OutdoorAmbient", "Image", "ImageColor3", "Visible",
-			"ZIndex", "AnchorPoint", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel",
-			"LayoutOrder", "AutomaticSize", "CanvasSize", "ScrollBarThickness", "Adornee", "AlwaysOnTop",
-			"FillColor", "OutlineColor", "FillTransparency", "OutlineTransparency", "DepthMode",
-			"Anchored", "Massless", "RootPriority", "WorldPivot",
-		}
-		for _, name in ipairs(try) do
 			pcall(function()
-				local v = inst[name]
-				if v ~= nil then add(name, v) end
+				for a, v in pairs(selected:GetAttributes()) do
+					add("@" .. a, v)
+				end
 			end)
-		end
-		for attr, val in pairs(inst:GetAttributes()) do
-			add("@" .. attr, val)
-		end
-		table.sort(props, function(a, b) return a[1] < b[1] end)
-		return props
-	end
-
-	function rebuildProps()
-		if not dexActive then return end
-		clearList(propList, propPool)
-		if not selectedInst or not selectedInst.Parent and selectedInst ~= game then
-			selectedInst = nil
-			return
-		end
-		local props = collectProps(selectedInst)
-		for i, entry in ipairs(props) do
-			local row = table.remove(propPool)
-			if not row then row = makePropRow() end
-			row.Parent = propList
-			row.Visible = true
-			row.LayoutOrder = i
-			row.Key.Text = entry[1]
-			row.Val.Text = fmtValue(entry[2])
-			row.Val.TextColor3 = U.theme.Text
-		end
-	end
-
-	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		if dexActive then rebuildTree() end
-	end)
-
-	expanded[game] = true
-	pcall(function() expanded[workspace] = true end)
-
-	U._tabListeners = U._tabListeners or {}
-	table.insert(U._tabListeners, function(name)
-		dexActive = (name == "dex")
-		if dexActive then
-			rebuildTree()
-			rebuildProps()
-		end
-	end)
-
-	-- light refresh while on tab
-	task.spawn(function()
-		while U.running do
-			task.wait(0.5)
-			if dexActive and U.running then
-				rebuildTree()
-				if selectedInst then rebuildProps() end
+			table.sort(entries, function(a,b) return a[1] < b[1] end)
+			for i, e in ipairs(entries) do
+				local row = Instance.new("Frame")
+				row.BackgroundTransparency = 1
+				row.Size = UDim2.new(1, 0, 0, 15)
+				row.LayoutOrder = i
+				row.Parent = propList
+				local k = Instance.new("TextLabel")
+				k.BackgroundTransparency = 1
+				k.Size = UDim2.new(0.4, -2, 1, 0)
+				k.Position = UDim2.fromOffset(2, 0)
+				k.FontFace = U.font
+				k.TextSize = U.TEXT_SZ
+				k.TextColor3 = Color3.fromRGB(150, 150, 150)
+				k.TextXAlignment = Enum.TextXAlignment.Left
+				k.TextTruncate = Enum.TextTruncate.AtEnd
+				k.Text = e[1]
+				k.Parent = row
+				local v = Instance.new("TextLabel")
+				v.BackgroundTransparency = 1
+				v.Size = UDim2.new(0.6, -4, 1, 0)
+				v.Position = UDim2.new(0.4, 0, 0, 0)
+				v.FontFace = U.font
+				v.TextSize = U.TEXT_SZ
+				v.TextColor3 = U.theme.Text
+				v.TextXAlignment = Enum.TextXAlignment.Left
+				v.TextTruncate = Enum.TextTruncate.AtEnd
+				v.Text = fmt(e[2])
+				v.Parent = row
 			end
 		end
-	end)
+
+		local function childrenOf(inst)
+			local ok, ch = pcall(function() return inst:GetChildren() end)
+			if not ok then return {} end
+			table.sort(ch, function(a,b) return a.Name:lower() < b.Name:lower() end)
+			return ch
+		end
+
+		local function matchesFilter(inst, filter)
+			if filter == "" then return true end
+			return inst.Name:lower():find(filter, 1, true) or inst.ClassName:lower():find(filter, 1, true)
+		end
+
+		local function buildRow(inst, depth)
+			listOrder += 1
+			local btn = Instance.new("TextButton")
+			btn.AutoButtonColor = false
+			btn.BackgroundColor3 = Color3.fromRGB(55, 55, 80)
+			btn.BackgroundTransparency = selected == inst and 0.45 or 1
+			btn.BorderSizePixel = 0
+			btn.Size = UDim2.new(1, 0, 0, 16)
+			btn.Text = ""
+			btn.LayoutOrder = listOrder
+			btn.Parent = explList
+			rowOf[inst] = btn
+
+			local pad = 2 + depth * 10
+			local kids = childrenOf(inst)
+			local hasKids = #kids > 0
+			local open = expanded[inst] == true
+
+			local arrow = Instance.new("TextLabel")
+			arrow.BackgroundTransparency = 1
+			arrow.Size = UDim2.fromOffset(10, 16)
+			arrow.Position = UDim2.fromOffset(pad, 0)
+			arrow.FontFace = U.font
+			arrow.TextSize = 10
+			arrow.TextColor3 = U.theme.Text
+			arrow.Text = hasKids and (open and "-" or "+") or " "
+			arrow.Parent = btn
+
+			local icon = Instance.new("ImageLabel")
+			icon.BackgroundTransparency = 1
+			icon.Size = UDim2.fromOffset(14, 14)
+			icon.Position = UDim2.fromOffset(pad + 11, 1)
+			icon.Image = "rbxasset://textures/ClassImages.png"
+			icon.ImageRectSize = Vector2.new(16, 16)
+			icon.ImageRectOffset = iconFor(inst.ClassName)
+			icon.Parent = btn
+
+			local lab = Instance.new("TextLabel")
+			lab.BackgroundTransparency = 1
+			lab.Size = UDim2.new(1, -(pad + 28), 1, 0)
+			lab.Position = UDim2.fromOffset(pad + 27, 0)
+			lab.FontFace = U.font
+			lab.TextSize = U.TEXT_SZ
+			lab.TextColor3 = U.theme.Text
+			lab.TextXAlignment = Enum.TextXAlignment.Left
+			lab.TextTruncate = Enum.TextTruncate.AtEnd
+			lab.Text = inst.Name
+			lab.Parent = btn
+
+			btn.MouseButton1Click:Connect(function()
+				if hasKids then
+					expanded[inst] = not open
+				end
+				selected = inst
+				rebuildVisible()
+				refreshProps()
+			end)
+
+			if open and hasKids then
+				local conns = {}
+				conns[#conns+1] = inst.ChildAdded:Connect(function()
+					if dexOn and expanded[inst] then rebuildVisible() end
+				end)
+				conns[#conns+1] = inst.ChildRemoved:Connect(function()
+					if dexOn and expanded[inst] then rebuildVisible() end
+				end)
+				treeConns[inst] = conns
+				local filter = search.Text:lower()
+				for _, ch in ipairs(kids) do
+					if filter == "" or matchesFilter(ch, filter) or expanded[ch] then
+						buildRow(ch, depth + 1)
+					end
+				end
+			end
+		end
+
+		function rebuildVisible()
+			if not dexOn then return end
+			clearExplorer()
+			local filter = search.Text:lower()
+			-- services under game
+			buildRow(game, 0)
+		end
+
+		search:GetPropertyChangedSignal("Text"):Connect(function()
+			if dexOn then rebuildVisible() end
+		end)
+
+		U._tabListeners = U._tabListeners or {}
+		table.insert(U._tabListeners, function(name)
+			dexOn = name == "dex"
+			if dexOn then
+				rebuildVisible()
+				if selected then refreshProps() end
+			else
+				-- disconnect tree listeners while hidden
+				for inst in pairs(treeConns) do disconnectTree(inst) end
+			end
+		end)
+	end
 end
+
 
 Library:Notify({ text = "wavelength universal loaded", time = 2 })
 
