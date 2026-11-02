@@ -1538,15 +1538,15 @@ function U.buildFloaters()
 		Size = UDim2.new(1, -12, 1, 0),
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
-	-- section top matches main UI body section inset (LINE_H + TITLE_H + PAD)
-	local secTop = U.LINE_H + U.TITLE_H + U.PAD
+	-- section top matches main UI: body starts at LINE_H+TITLE_H, sections at SEC_GAP
+	local secTop = U.LINE_H + U.TITLE_H + U.SEC_GAP
 	local pvSection = U.new("Frame", {
 		Name = "Section",
 		BackgroundColor3 = U.theme.SectionBg,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
-		Position = UDim2.fromOffset(U.PAD, secTop),
-		Size = UDim2.new(1, -U.PAD * 2, 1, -(secTop + U.PAD)),
+		Position = UDim2.fromOffset(U.SEC_GAP, secTop),
+		Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(secTop + U.SEC_GAP)),
 	}, pv)
 	U.stroke(pvSection, "SectionBorder")
 	table.insert(U.themeReg.sectionBgs or {}, pvSection)
@@ -2314,8 +2314,34 @@ local function mkLine()
 	end)
 	return ok and ln or nil
 end
-local function boxSolve(model, camOverride)
+local function projectPoint(cam, worldPos, viewportFrame)
+	if viewportFrame then
+		local sz = viewportFrame.AbsoluteSize
+		if sz.X > 0 and sz.Y > 0 then
+			cam.ViewportSize = Vector2.new(sz.X, sz.Y)
+		end
+	end
+	local sp, vis = cam:WorldToViewportPoint(worldPos)
+	if not vis or sp.Z <= 0 then return nil, false end
+	local x, y = sp.X, sp.Y
+	if viewportFrame then
+		local sz = viewportFrame.AbsoluteSize
+		local cv = cam.ViewportSize
+		if cv.X > 0 and cv.Y > 0 and (math.abs(cv.X - sz.X) > 1 or math.abs(cv.Y - sz.Y) > 1) then
+			x = (sp.X / cv.X) * sz.X
+			y = (sp.Y / cv.Y) * sz.Y
+		end
+	end
+	return Vector2.new(x, y), true
+end
+local function boxSolve(model, camOverride, viewportFrame)
 	camOverride = camOverride or camera
+	if viewportFrame then
+		local sz = viewportFrame.AbsoluteSize
+		if sz.X > 0 and sz.Y > 0 then
+			camOverride.ViewportSize = Vector2.new(sz.X, sz.Y)
+		end
+	end
 	local parts = boxParts(model)
 	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
 	local any = false
@@ -2327,11 +2353,11 @@ local function boxSolve(model, camOverride)
 			for _, ox in ipairs({-1,1}) do
 				for _, oy in ipairs({-1,1}) do
 					for _, oz in ipairs({-1,1}) do
-						local sp, vis = camOverride:WorldToViewportPoint((cf * CFrame.new(ox*sx, oy*sy, oz*sz)).Position)
-						if vis and sp.Z > 0 then
+						local pt, ok = projectPoint(camOverride, (cf * CFrame.new(ox*sx, oy*sy, oz*sz)).Position, viewportFrame)
+						if ok then
 							any = true
-							minX = math.min(minX, sp.X); minY = math.min(minY, sp.Y)
-							maxX = math.max(maxX, sp.X); maxY = math.max(maxY, sp.Y)
+							minX = math.min(minX, pt.X); minY = math.min(minY, pt.Y)
+							maxX = math.max(maxX, pt.X); maxY = math.max(maxY, pt.Y)
 						end
 					end
 				end
@@ -2548,12 +2574,13 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
 		local alpha = 1 - A("SkeletonColor")
 		local off = screenOffset or vec2(0, 0)
+		local vf = opts.viewportFrame
 		local idx = 0
 		for _, pair in ipairs(boneList(model)) do
 			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
 			if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
-				local sa, oa = w2s(a.Position, cam)
-				local sb, ob = w2s(b.Position, cam)
+				local sa, oa = projectPoint(cam, a.Position, vf)
+				local sb, ob = projectPoint(cam, b.Position, vf)
 				if oa and ob then
 					idx += 1; local ln = d.lines[idx]
 					if ln then
@@ -2765,7 +2792,12 @@ do
 				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
 				return
 			end
-			local bx, by, bw, bh = boxSolve(model, vcam)
+			-- sync camera viewport to frame so WorldToViewportPoint maps into local pixels
+			local vsz = viewport.AbsoluteSize
+			if vsz.X > 0 and vsz.Y > 0 then
+				vcam.ViewportSize = Vector2.new(vsz.X, vsz.Y)
+			end
+			local bx, by, bw, bh = boxSolve(model, vcam, viewport)
 			if not bx then
 				if prevObj.holder then prevObj.holder.Visible = false end
 				return
@@ -2782,6 +2814,7 @@ do
 				cam = vcam,
 				dt = 0,
 				screenOffset = vec2(ap.X, ap.Y),
+				viewportFrame = viewport,
 				localCoords = true,
 			})
 			-- try highlight on preview (WorldModel); may no-op on some clients
