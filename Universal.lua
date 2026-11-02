@@ -1,3 +1,8 @@
+--[[
+	wavelength universal
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/illorsm/wavelength/main/Universal.lua"))()
+]]
+
 local Library = (function()
 local env = (typeof(getgenv) == "function" and getgenv()) or _G
 env._SM = env._SM or {}
@@ -1335,7 +1340,10 @@ function U.ensureSnapGhosts()
 end
 
 function U.showSnapGhost(kind)
-	if U.menuOpen == false then return U.hideSnapGhost("wm"), U.hideSnapGhost("kb") end
+	if U.menuOpen == false then
+		U.hideSnapGhost("wm"); U.hideSnapGhost("kb"); U.hideSnapGhost("pv")
+		return
+	end
 	U.ensureSnapGhosts()
 	local f, g = panelOf(kind), U[kind .. "SnapGhost"]
 	if not U.shell or not f then return end
@@ -1482,10 +1490,71 @@ function U.buildFloaters()
 		U._kbRefreshing = false
 	end
 	U.onFlag("KeybindsList", function() U.refreshKeybindList() end)
+	
 	U.dragPanel(kb, "kb")
+
+	local PRE_W = math.floor(U.BODY_W / 2)
+	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
+	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
+	pv.Size = UDim2.fromOffset(PRE_W, shellH)
+	pv.Active = true
+	pv.Visible = false
+	pv.ClipsDescendants = true
+	U.pvPanel = pv
+	U.pvDocked = true
+	local pvTitle = U.label(pv, "preview", {
+		Position = UDim2.fromOffset(U.PAD, U.LINE_H),
+		Size = UDim2.new(1, -U.PAD * 2, 0, U.TITLE_H),
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
+	local pvSection = U.new("Frame", {
+		Name = "Section",
+		BackgroundColor3 = U.theme.SectionBg,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.TITLE_H),
+		Size = UDim2.new(1, -U.PAD * 2, 1, -(U.LINE_H + U.TITLE_H + U.PAD)),
+	}, pv)
+	U.stroke(pvSection, "SectionBorder")
+	local viewport = Instance.new("ViewportFrame")
+	viewport.Name = "View"
+	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	viewport.BorderSizePixel = 0
+	viewport.Size = UDim2.fromScale(1, 1)
+	viewport.Ambient = Color3.fromRGB(200, 200, 200)
+	viewport.LightColor = Color3.fromRGB(255, 255, 255)
+	viewport.LightDirection = Vector3.new(-1, -1, -1)
+	viewport.Parent = pvSection
+	U.pvViewport = viewport
+	local world = Instance.new("WorldModel")
+	world.Parent = viewport
+	U.pvWorld = world
+	local vcam = Instance.new("Camera")
+	vcam.Parent = viewport
+	viewport.CurrentCamera = vcam
+	U.pvCamera = vcam
+	U.pvYaw, U.pvPitch, U.pvDistScale = math.pi, 0.12, 1.35
+	U.pvFocus = Vector3.new(0, 3, 0)
+	U.pvBaseDist = 7
+	function U.pvUpdateCam()
+		local d = (U.pvBaseDist or 7) * (U.pvDistScale or 1.35)
+		local focus = U.pvFocus or Vector3.new(0, 3, 0)
+		local cf = CFrame.new(focus)
+			* CFrame.Angles(0, U.pvYaw or math.pi, 0)
+			* CFrame.Angles(-(U.pvPitch or 0.12), 0, 0)
+			* CFrame.new(0, 0, d)
+		vcam.CFrame = CFrame.lookAt(cf.Position, focus)
+	end
+	U.pvUpdateCam()
+	U.onFlag("Preview", function()
+		U.dock("pv")
+		U.syncFloatingVisibility()
+	end)
+	U.dragPanel(pv, "pv")
 end
 
 function U.buildConfig()
+
 	local FOLDER, selected, listFrame = "zwavelength", nil, nil
 	local function ensureFolder() if isfolder and not isfolder(FOLDER) then makefolder(FOLDER) end end
 	local function listConfigs()
@@ -1690,6 +1759,8 @@ function U.buildTabs()
 		local oldPage, newPage = U.pageFrames[from], U.pageFrames[name]
 		U.currentTab = name
 		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
+		U.syncFloatingVisibility()
+		if U.pvDocked then U.dock("pv") end
 		for n, b in pairs(U.tabButtons) do
 			b.BackgroundColor3, b.TextColor3 = (n == name) and ON or OFF, U.theme.Text
 			local acc = b:FindFirstChild("TabAccent")
@@ -1812,10 +1883,14 @@ function Library:GetGui() return U.gui end
 function Library:GetTheme() return U.theme end
 function Library:IsMenuOpen() return U.menuOpen ~= false end
 function Library:GetCurrentTab() return U.currentTab end
+function Library:GetPreviewViewport() return U.pvViewport end
+function Library:GetPreviewWorld() return U.pvWorld end
+function Library:GetPreviewCamera() return U.pvCamera end
 function Library:OnTabChanged(fn)
 	U._tabListeners = U._tabListeners or {}
 	table.insert(U._tabListeners, fn)
 end
+function Library:_U() return U end
 
 local function lname(o, default) return string.lower(tostring(o.Name or default)) end
 local function tip(o) return o.Tooltip or o.tooltip end
@@ -2004,437 +2079,463 @@ end
 
 end)()
 
---[[
-	wavelength universal — visuals + config (+ preview)
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/illorsm/wavelength/main/universal.lua"))()
-]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
-local cam = workspace.CurrentCamera
-
+local camera = workspace.CurrentCamera
 
 local Window = Library:CreateWindow({
 	Name = "wavelength",
 	Tabs = { "visuals", "dex", "config" },
 })
 
-local vis = Window:AddTab("visuals")
-local control = vis:AddSection("control", 1)
-control:AddToggle({
-	Name = "enable",
-	Flag = "VisEnable",
-	Default = true,
-	Keybind = true,
-	Key = "RightAlt",
-	KeybindText = "Visuals",
-})
-control:AddToggle({ Name = "ignore team", Flag = "VisIgnoreTeam", Default = false })
-control:AddToggle({ Name = "ignore self", Flag = "VisIgnoreSelf", Default = true })
-control:AddSlider({
-	Name = "render distance",
-	Flag = "VisDistance",
-	Min = 0,
-	Max = 2000,
-	Default = 1000,
-	Increment = 1,
-	Suffix = "st",
-	InfAtMax = true,
-})
+do
+	local tab = Window:AddTab("visuals")
+	local control = tab:AddSection("control", 1)
+	control:AddToggle({ Name = "enable", Flag = "VisualsEnabled", Default = false, Keybind = true, Key = "RightAlt", KeybindText = "Visuals" })
+	control:AddToggle({ Name = "ignore team", Flag = "IgnoreTeam", Default = false })
+	control:AddToggle({ Name = "ignore self", Flag = "IgnoreSelf", Default = true })
+	control:AddSlider({ Name = "render distance", Flag = "RenderDistance", Min = 0, Max = 250, Default = 250, Increment = 1, Suffix = "st", InfAtMax = true })
 
-local players = vis:AddSection("players", 2)
-local boxT = players:AddToggle({ Name = "box", Flag = "VisBox", Default = true })
-boxT:AddColorpicker({ Flag = "VisBoxColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "box" })
-boxT:AddDropdown({ Name = "type", Flag = "VisBoxType", Items = { "full", "corner" }, Default = "full", Limit = 1 })
-boxT:AddSlider({ Name = "length", Flag = "VisBoxLength", Min = 0, Max = 100, Default = 33, Increment = 1, Suffix = "%" })
+	local players = tab:AddSection("players", 2)
+	local box = players:AddToggle({ Name = "box", Flag = "Box", Default = false })
+	box:AddColorpicker({ Flag = "BoxColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "box" })
+	box:AddDropdown({ Name = "type", Flag = "BoxType", Items = { "square", "corner" }, Default = "square" })
+	box:AddSlider({ Name = "length", Flag = "BoxCornerLength", Min = 0, Max = 100, Default = 33, Increment = 1, Suffix = "%" })
 
-local fillT = players:AddToggle({ Name = "box fill", Flag = "VisBoxFill", Default = false })
-fillT:AddColorpicker({ Flag = "VisBoxFillColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
+	local boxFill = players:AddToggle({ Name = "box fill", Flag = "BoxFill", Default = false })
+	boxFill:AddColorpicker({ Flag = "BoxFillColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
 
-local hbT = players:AddToggle({ Name = "health bar", Flag = "VisHealthBar", Default = true })
-hbT:AddColorpicker({ Flag = "VisHBHigh", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
-hbT:AddColorpicker({ Flag = "VisHBLow", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	local hbar = players:AddToggle({ Name = "health bar", Flag = "HealthBar", Default = false })
+	hbar:AddColorpicker({ Flag = "HealthBarColor1", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
+	hbar:AddColorpicker({ Flag = "HealthBarColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	hbar:AddToggle({ Name = "dynamic color", Flag = "HealthBarDynamic", Default = true })
 
-local htT = players:AddToggle({ Name = "health", Flag = "VisHealthText", Default = false })
-htT:AddColorpicker({ Flag = "VisHTHigh", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
-htT:AddColorpicker({ Flag = "VisHTLow", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	local htxt = players:AddToggle({ Name = "health", Flag = "HealthText", Default = false })
+	htxt:AddColorpicker({ Flag = "HealthTextColor1", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "high" })
+	htxt:AddColorpicker({ Flag = "HealthTextColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "low" })
+	htxt:AddToggle({ Name = "dynamic color", Flag = "HealthTextDynamic", Default = true })
 
-local nameT = players:AddToggle({ Name = "name", Flag = "VisName", Default = true })
-nameT:AddColorpicker({ Flag = "VisNameColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "name" })
+	local nameT = players:AddToggle({ Name = "name", Flag = "NameESP", Default = false })
+	nameT:AddColorpicker({ Flag = "NameColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "name" })
 
-local distT = players:AddToggle({ Name = "distance", Flag = "VisDistanceText", Default = false })
-distT:AddColorpicker({ Flag = "VisDistColor", Default = Color3.fromRGB(200, 200, 200), NoAlpha = true, Name = "distance" })
+	local wep = players:AddToggle({ Name = "weapon", Flag = "WeaponESP", Default = false })
+	wep:AddColorpicker({ Flag = "WeaponColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "weapon" })
 
-local skT = players:AddToggle({ Name = "skeleton", Flag = "VisSkeleton", Default = false })
-skT:AddColorpicker({ Flag = "VisSkelColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "skeleton" })
-skT:AddSlider({ Name = "thickness", Flag = "VisSkelThick", Min = 1, Max = 3, Default = 1, Increment = 0.1 })
+	local dist = players:AddToggle({ Name = "distance", Flag = "DistanceESP", Default = false })
+	dist:AddColorpicker({ Flag = "DistanceColor", Default = Color3.fromRGB(255, 255, 255), NoAlpha = true, Name = "distance" })
 
-local hlT = players:AddToggle({ Name = "highlight", Flag = "VisHighlight", Default = false })
-hlT:AddColorpicker({ Flag = "VisHLFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
-hlT:AddColorpicker({ Flag = "VisHLOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
+	local sk = players:AddToggle({ Name = "skeleton", Flag = "Skeleton", Default = false })
+	sk:AddColorpicker({ Flag = "SkeletonColor", Default = Color3.fromRGB(255, 255, 255), Name = "skeleton" })
+	sk:AddColorpicker({ Flag = "SkeletonColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
+	sk:AddToggle({ Name = "visualize damage", Flag = "SkeletonVisDmg", Default = false })
+
+	local ad = players:AddToggle({ Name = "adornment", Flag = "Adornment", Default = false })
+	ad:AddColorpicker({ Flag = "AdornmentColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
+	ad:AddColorpicker({ Flag = "AdornmentDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	ad:AddToggle({ Name = "visualize damage", Flag = "AdornmentVisDmg", Default = false })
+end
 
 Window:AddTab("dex")
 Window:AddSettingsTab()
 Window:Init()
 
-local F = Library.Flags
-local function flag(n, d)
-	local v = Library:GetFlag(n)
-	if v == nil then return d end
-	return v
-end
+local U = Library:_U()
+local F = U.vflags
+local guiParent = U.guiParent()
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "SM_ESP"
+espGui.IgnoreGuiInset = true
+espGui.ResetOnSpawn = false
+espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+espGui.Parent = guiParent
 
-local function getHealth(char)
-	if not char then return 100, 100 end
+local objects, lastHP, dmgStart = {}, {}, {}
+local BONES = {
+	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+	{"UpperTorso","LeftUpperArm"},{"UpperTorso","RightUpperArm"},
+	{"LeftUpperArm","LeftLowerArm"},{"RightUpperArm","RightLowerArm"},
+	{"LeftLowerArm","LeftHand"},{"RightLowerArm","RightHand"},
+	{"LowerTorso","LeftUpperLeg"},{"LowerTorso","RightUpperLeg"},
+	{"LeftUpperLeg","LeftLowerLeg"},{"RightUpperLeg","RightLowerLeg"},
+	{"LeftLowerLeg","LeftFoot"},{"RightLowerLeg","RightFoot"},
+}
+local BOX_PARTS = { "Head", "LeftHand", "RightHand", "RightFoot" }
+local BODY_PARTS = {
+	"Head","UpperTorso","LowerTorso",
+	"LeftUpperArm","RightUpperArm","LeftLowerArm","RightLowerArm","LeftHand","RightHand",
+	"LeftUpperLeg","RightUpperLeg","LeftLowerLeg","RightLowerLeg","LeftFoot","RightFoot",
+}
+local FONT, FONT_SZ, FONT_Y = U.font, 12, -1
+local rgb = Color3.fromRGB
+local dim2, dim_offset = UDim2.new, UDim2.fromOffset
+local vec2 = Vector2.new
+
+local function C(key, fb)
+	local v = F[key]
+	return typeof(v) == "Color3" and v or (fb or Color3.new(1,1,1))
+end
+local function A(key)
+	local v = F[key .. "Transparency"]
+	return type(v) == "number" and v or 0
+end
+local function on() return F.VisualsEnabled == true end
+local function maxDist()
+	local v = tonumber(F.RenderDistance) or 250
+	return v >= 250 and 1e9 or v
+end
+local function w2s(p)
+	local v, vis = camera:WorldToViewportPoint(p)
+	return vec2(v.X, v.Y), vis and v.Z > 0
+end
+local function healthOf(char)
 	for _, key in ipairs({ "Health", "health", "HP", "hp" }) do
 		local a = char:GetAttribute(key)
-		if typeof(a) == "number" then
-			local maxA = char:GetAttribute("MaxHealth") or char:GetAttribute("maxHealth") or 100
-			return a, typeof(maxA) == "number" and maxA or 100
-		end
+		if typeof(a) == "number" then return a end
+		if type(a) == "string" then local n = tonumber(a); if n then return n end end
 	end
 	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then return hum.Health, hum.MaxHealth end
-	return 100, 100
+	if hum then return hum.Health end
+	return 100
 end
-
-local function sameTeam(p)
-	if not flag("VisIgnoreTeam", false) then return false end
+local function maxHealthOf(char)
+	local a = char:GetAttribute("MaxHealth") or char:GetAttribute("maxHealth")
+	if typeof(a) == "number" then return a end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then return hum.MaxHealth end
+	return 100
+end
+local function isTeammate(p)
+	if not F.IgnoreTeam then return false end
 	if not lp.Team or not p.Team then return false end
 	return lp.Team == p.Team
 end
-
-local bones = {
-	{ "Head", "UpperTorso" },
-	{ "UpperTorso", "LowerTorso" },
-	{ "UpperTorso", "LeftUpperArm" },
-	{ "UpperTorso", "RightUpperArm" },
-	{ "LeftUpperArm", "LeftLowerArm" },
-	{ "RightUpperArm", "RightLowerArm" },
-	{ "LeftLowerArm", "LeftHand" },
-	{ "RightLowerArm", "RightHand" },
-	{ "LowerTorso", "LeftUpperLeg" },
-	{ "LowerTorso", "RightUpperLeg" },
-	{ "LeftUpperLeg", "LeftLowerLeg" },
-	{ "RightUpperLeg", "RightLowerLeg" },
-	{ "LeftLowerLeg", "LeftFoot" },
-	{ "RightLowerLeg", "RightFoot" },
-}
-
-local function w2s(v3)
-	local v, on = cam:WorldToViewportPoint(v3)
-	return Vector2.new(v.X, v.Y), on, v.Z
+local function weaponOf(char)
+	for _, ch in ipairs(char:GetChildren()) do
+		if ch:IsA("Tool") then return ch.Name end
+		if ch:IsA("Model") and ch.Name ~= "HumanoidRootPart" then return ch.Name end
+	end
+	local tool = char:FindFirstChildOfClass("Tool")
+	return tool and tool.Name or nil
 end
-
-local function boxOf(char)
-	local parts = {}
-	for _, n in ipairs({ "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "LeftHand", "RightHand", "LeftFoot", "RightFoot" }) do
-		local p = char:FindFirstChild(n)
-		if p and p:IsA("BasePart") then parts[#parts + 1] = p end
-	end
-	if #parts == 0 then
-		for _, d in ipairs(char:GetChildren()) do
-			if d:IsA("BasePart") then parts[#parts + 1] = d end
-		end
-	end
-	if #parts == 0 then return end
+local function create(class, props)
+	local o = Instance.new(class)
+	if props then for k,v in pairs(props) do o[k]=v end end
+	return o
+end
+local function addOutline(label)
+	for _, c in ipairs(label:GetChildren()) do if c:IsA("UIStroke") then c:Destroy() end end
+	local s = Instance.new("UIStroke")
+	s.Name = "Outline"; s.Color = rgb(0,0,0); s.Thickness = 1; s.Transparency = 0
+	s.LineJoinMode = Enum.LineJoinMode.Round; s.Parent = label
+end
+local function mkLine()
+	local ok, ln = pcall(function()
+		local d = Drawing.new("Line"); d.Visible = false; d.ZIndex = 10; d.Thickness = 1; return d
+	end)
+	return ok and ln or nil
+end
+local function boxSolve(model, camOverride, sizeMul)
+	camOverride = camOverride or camera
+	sizeMul = sizeMul or 0.55
 	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
 	local any = false
-	for _, p in ipairs(parts) do
-		local cf, size = p.CFrame, p.Size
-		for _, ox in ipairs({ -0.5, 0.5 }) do
-			for _, oy in ipairs({ -0.5, 0.5 }) do
-				for _, oz in ipairs({ -0.5, 0.5 }) do
-					local wp = (cf * CFrame.new(size.X * ox, size.Y * oy, size.Z * oz)).Position
-					local s, on = w2s(wp)
-					if on then
-						any = true
-						minX, minY = math.min(minX, s.X), math.min(minY, s.Y)
-						maxX, maxY = math.max(maxX, s.X), math.max(maxY, s.Y)
+	for i = 1, #BOX_PARTS do
+		local part = model:FindFirstChild(BOX_PARTS[i])
+		if part and part:IsA("BasePart") then
+			local cf = part.CFrame
+			local sx, sy, sz = part.Size.X * sizeMul, part.Size.Y * sizeMul, part.Size.Z * sizeMul
+			for _, ox in ipairs({-1,1}) do
+				for _, oy in ipairs({-1,1}) do
+					for _, oz in ipairs({-1,1}) do
+						local sp, vis = camOverride:WorldToViewportPoint((cf * CFrame.new(ox*sx, oy*sy, oz*sz)).Position)
+						if vis and sp.Z > 0 then
+							any = true
+							minX = math.min(minX, sp.X); minY = math.min(minY, sp.Y)
+							maxX = math.max(maxX, sp.X); maxY = math.max(maxY, sp.Y)
+						end
 					end
 				end
 			end
 		end
 	end
 	if not any then return end
-	local pad = 2
-	return minX - pad, minY - pad, maxX + pad, maxY + pad
+	local pad = 3
+	minX -= pad; minY -= pad; maxX += pad; maxY += pad
+	return minX, minY, maxX - minX, maxY - minY
 end
-
-local drawings = {}
-local function getDraw(key, class)
-	local t = drawings[key]
-	if t and t.ClassName == class then return t end
-	if t then pcall(function() t:Remove() end) end
-	local d = Drawing.new(class)
-	drawings[key] = d
-	return d
+local function healthbarWidth() return 2 end
+local function healthTextXOff()
+	if F.HealthBar then return -((0 + 1) + (healthbarWidth() + 2)) end
+	return -2
 end
+local function lerpColor(a, b, t) return a:Lerp(b, math.clamp(t, 0, 1)) end
 
-local function hideAll()
-	for _, d in pairs(drawings) do
-		pcall(function() d.Visible = false end)
+local function buildBoxes(d)
+	if d.box_handler or (d.corners and #d.corners > 0) then return end
+	if F.BoxType == "corner" then
+		d.corners = {}
+		for i = 1, 16 do
+			d.corners[i] = create("Frame", {
+				Parent = d.holder, BorderSizePixel = 0,
+				BackgroundColor3 = (i <= 8) and rgb(0,0,0) or C("BoxColor"),
+				ZIndex = (i <= 8) and 1 or 2,
+			})
+		end
+	else
+		d.box_outline = create("UIStroke", { Parent = d.holder, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
+		d.box_handler = create("Frame", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 2 })
+		d.box_color = create("UIStroke", { Parent = d.box_handler, Color = C("BoxColor"), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
+		d.outline = create("Frame", { Parent = d.box_handler, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 2 })
+		d.outline_stroke = create("UIStroke", { Parent = d.outline, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
 	end
 end
-
-local highlights = {}
-local function setHighlight(char, on)
-	local existing = highlights[char]
-	if not on then
-		if existing then existing:Destroy() highlights[char] = nil end
-		return
-	end
-	local h = existing or char:FindFirstChildOfClass("Highlight")
-	if not h then
-		h = Instance.new("Highlight")
-		h.Parent = char
-	end
-	highlights[char] = h
-	local fc = flag("VisHLFill", Color3.new(1, 1, 1))
-	local oc = flag("VisHLOutline", Color3.new(0, 0, 0))
-	local ft = Library:GetFlag("VisHLFillTransparency") or 0.5
-	local ot = Library:GetFlag("VisHLOutlineTransparency") or 0
-	h.FillColor = fc
-	h.OutlineColor = oc
-	h.FillTransparency = typeof(ft) == "number" and ft or 0.5
-	h.OutlineTransparency = typeof(ot) == "number" and ot or 0
-	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+local function destroyBoxes(d)
+	if d.box_outline then d.box_outline:Destroy() end
+	if d.box_handler then d.box_handler:Destroy() end
+	d.box_outline, d.box_handler, d.box_color, d.outline, d.outline_stroke = nil,nil,nil,nil,nil
+	if d.corners then for _, s in ipairs(d.corners) do s:Destroy() end; d.corners = nil end
 end
-
-local function lerpColor(a, b, t)
-	return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
-end
-
-local function drawPlayer(p, char, idx)
-	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
-	if not hrp then return end
-	local dist = (cam.CFrame.Position - hrp.Position).Magnitude
-	local maxD = flag("VisDistance", 1000)
-	if maxD < 2000 and dist > maxD then return end
-
-	local x1, y1, x2, y2 = boxOf(char)
-	if not x1 then return end
-	local w, h = x2 - x1, y2 - y1
-	local hp, maxHp = getHealth(char)
-	local ratio = maxHp > 0 and math.clamp(hp / maxHp, 0, 1) or 1
-
-	if flag("VisBoxFill", false) then
-		local f = getDraw(idx .. "_fill", "Square")
-		f.Filled = true
-		f.Color = flag("VisBoxFillColor", Color3.new(1, 1, 1))
-		f.Transparency = 1 - (Library:GetFlag("VisBoxFillColorTransparency") or 0.7)
-		f.Size = Vector2.new(w, h)
-		f.Position = Vector2.new(x1, y1)
-		f.Visible = true
-	end
-
-	if flag("VisBox", true) then
-		local col = flag("VisBoxColor", Color3.new(1, 1, 1))
-		local typ = flag("VisBoxType", "full")
-		if typ == "corner" then
-			local len = math.clamp((flag("VisBoxLength", 33) / 100) * math.min(w, h), 2, math.min(w, h) / 2)
-			local segs = {
-				{ x1, y1, x1 + len, y1 }, { x1, y1, x1, y1 + len },
-				{ x2 - len, y1, x2, y1 }, { x2, y1, x2, y1 + len },
-				{ x1, y2, x1 + len, y2 }, { x1, y2 - len, x1, y2 },
-				{ x2 - len, y2, x2, y2 }, { x2, y2 - len, x2, y2 },
-			}
-			for i, s in ipairs(segs) do
-				local l = getDraw(idx .. "_bc" .. i, "Line")
-				l.From, l.To, l.Color, l.Thickness, l.Visible = Vector2.new(s[1], s[2]), Vector2.new(s[3], s[4]), col, 1, true
-			end
-		else
-			local box = getDraw(idx .. "_box", "Square")
-			box.Filled = false
-			box.Thickness = 1
-			box.Color = col
-			box.Size = Vector2.new(w, h)
-			box.Position = Vector2.new(x1, y1)
-			box.Visible = true
+local function buildAdornments(d, model)
+	if d.adornments and #d.adornments > 0 then return end
+	d.adornments = {}
+	for i = 1, #BODY_PARTS do
+		local part = model:FindFirstChild(BODY_PARTS[i])
+		if part and part:IsA("BasePart") then
+			local adorn = Instance.new("BoxHandleAdornment")
+			adorn.Size = part.Size; adorn.Name = "SM_Adorn"; adorn.Adornee = part
+			adorn.AlwaysOnTop = true; adorn.ZIndex = 5; adorn.Visible = false; adorn.Parent = part
+			d.adornments[#d.adornments+1] = adorn
 		end
 	end
-
-	if flag("VisHealthBar", true) then
-		local barW = 2
-		local outline = getDraw(idx .. "_hbo", "Square")
-		outline.Filled = true
-		outline.Color = Color3.new(0, 0, 0)
-		outline.Size = Vector2.new(barW + 2, h + 2)
-		outline.Position = Vector2.new(x1 - barW - 4, y1 - 1)
-		outline.Visible = true
-		local bar = getDraw(idx .. "_hb", "Square")
-		bar.Filled = true
-		bar.Color = lerpColor(flag("VisHBLow", Color3.new(1, 0, 0)), flag("VisHBHigh", Color3.new(0, 1, 0)), ratio)
-		local bh = h * ratio
-		bar.Size = Vector2.new(barW, bh)
-		bar.Position = Vector2.new(x1 - barW - 3, y1 + (h - bh))
-		bar.Visible = true
+end
+local function destroyAdornments(d)
+	if not d.adornments then return end
+	for _, a in ipairs(d.adornments) do pcall(function() a:Destroy() end) end
+	d.adornments = nil
+end
+local function ensure(model)
+	local d = objects[model]
+	if d then return d end
+	d = { holder = create("Frame", { Parent = espGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
+	d.holder.Name = model.Name
+	d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
+	local function mkTxt()
+		local t = create("TextLabel", {
+			Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0,
+			FontFace = FONT, TextSize = FONT_SZ, TextStrokeTransparency = 1, TextScaled = false, Visible = false,
+		})
+		addOutline(t); return t
 	end
-
-	if flag("VisHealthText", false) then
-		local t = getDraw(idx .. "_ht", "Text")
-		t.Text = tostring(math.floor(hp + 0.5))
-		t.Size = 12
-		t.Center = false
-		t.Outline = true
-		t.Color = lerpColor(flag("VisHTLow", Color3.new(1, 0, 0)), flag("VisHTHigh", Color3.new(0, 1, 0)), ratio)
-		t.Position = Vector2.new(x1 - 28, y1)
-		t.Visible = true
+	d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
+	d.weapon = mkTxt(); d.weapon.TextXAlignment = Enum.TextXAlignment.Center
+	d.dist = mkTxt(); d.dist.TextXAlignment = Enum.TextXAlignment.Center
+	d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
+	local w = healthbarWidth()
+	d.healthbar_holder = create("Frame", {
+		Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false,
+		Position = dim2(0, 0, 0, -1), Size = dim2(0, w + 2, 1, 2),
+	})
+	d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
+	d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
+	for i = 1, 14 do d.lines[i] = mkLine() end
+	objects[model] = d
+	return d
+end
+local function destroy(model)
+	local d = objects[model]
+	if not d then return end
+	if d.holder then d.holder:Destroy() end
+	destroyAdornments(d)
+	for _, ln in pairs(d.lines) do pcall(function() ln.Visible=false; ln:Remove() end) end
+	objects[model] = nil; lastHP[model] = nil; dmgStart[model] = nil
+end
+local function dmgT(model)
+	local s = dmgStart[model]
+	if not s then return 0 end
+	local e = tick() - s
+	if e >= 2 then dmgStart[model] = nil; return 0 end
+	return 1 - (e / 2)
+end
+local function drawOK(p, char)
+	if not on() or not char then return false end
+	if F.IgnoreSelf and p == lp then return false end
+	if isTeammate(p) then return false end
+	local hp = healthOf(char)
+	if hp <= 0 then return false end
+	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
+	if not hrp then return false end
+	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character.PrimaryPart)
+	if root and (hrp.Position - root.Position).Magnitude > maxDist() then return false end
+	return true
+end
+local function updateModel(p, model)
+	if not drawOK(p, model) then
+		local d = objects[model]
+		if d then
+			d.holder.Visible = false
+			if d.adornments then for _, a in ipairs(d.adornments) do a.Visible = false end end
+			for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
+		end
+		return
 	end
-
-	local textY = y1 - 14
-	if flag("VisName", true) then
-		local t = getDraw(idx .. "_name", "Text")
-		t.Text = p.DisplayName or p.Name
-		t.Size = 12
-		t.Center = true
-		t.Outline = true
-		t.Color = flag("VisNameColor", Color3.new(1, 1, 1))
-		t.Position = Vector2.new(x1 + w / 2, textY)
-		t.Visible = true
-		textY += 12
+	local bx, by, bw, bh = boxSolve(model)
+	if not bx then
+		local d = objects[model]
+		if d then d.holder.Visible = false; for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
+		return
 	end
-	if flag("VisDistanceText", false) then
-		local t = getDraw(idx .. "_dist", "Text")
-		t.Text = math.floor(dist) .. "st"
-		t.Size = 12
-		t.Center = true
-		t.Outline = true
-		t.Color = flag("VisDistColor", Color3.new(0.8, 0.8, 0.8))
-		t.Position = Vector2.new(x1 + w / 2, y2 + 2)
-		t.Visible = true
+	local d = ensure(model)
+	d.holder.Visible = true
+	d.holder.Position = dim_offset(bx, by)
+	d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
+	local hp = healthOf(model)
+	local maxH = maxHealthOf(model)
+	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
+	local prev = lastHP[model]
+	if prev ~= nil and hp < prev - 0.5 then
+		if F.SkeletonVisDmg or F.AdornmentVisDmg then dmgStart[model] = tick() end
 	end
+	lastHP[model] = hp
+	local dt = dmgT(model)
 
-	if flag("VisSkeleton", false) then
-		local thick = flag("VisSkelThick", 1)
-		local col = flag("VisSkelColor", Color3.new(1, 1, 1))
-		for i, pair in ipairs(bones) do
-			local a, b = char:FindFirstChild(pair[1]), char:FindFirstChild(pair[2])
+	if F.Box then
+		local isCorner = F.BoxType == "corner"
+		if (isCorner and d.box_handler) or (not isCorner and d.corners) then destroyBoxes(d) end
+		buildBoxes(d)
+		local boxColor, boxT = C("BoxColor"), A("BoxColor")
+		if isCorner and d.corners then
+			local w, h = bw, bh
+			local pct = math.clamp(tonumber(F.BoxCornerLength) or 50, 0, 100) / 100
+			local t, bt = 1, 1
+			local lenX = math.max(math.floor(w * pct * 0.5), 2)
+			local lenY = math.max(math.floor(h * pct * 0.5), 2)
+			local segs = d.corners
+			local function set_pair(bi, ci, x, y, sw, sh)
+				local b = segs[bi]; b.Visible = true; b.BackgroundColor3 = rgb(0,0,0); b.BackgroundTransparency = boxT
+				b.Position = dim_offset(x - bt, y - bt); b.Size = dim_offset(sw + bt * 2, sh + bt * 2)
+				local c = segs[ci]; c.Visible = true; c.BackgroundColor3 = boxColor; c.BackgroundTransparency = boxT
+				c.Position = dim_offset(x, y); c.Size = dim_offset(sw, sh)
+			end
+			set_pair(1,9, 0,0, lenX,t); set_pair(2,10, 0,t, t,lenY-t)
+			set_pair(3,11, w-lenX,0, lenX,t); set_pair(4,12, w-t,t, t,lenY-t)
+			set_pair(5,13, 0,h-t, lenX,t); set_pair(6,14, 0,h-lenY, t,lenY-t)
+			set_pair(7,15, w-lenX,h-t, lenX,t); set_pair(8,16, w-t,h-lenY, t,lenY-t)
+		elseif d.box_color then
+			d.box_color.Color = boxColor; d.box_color.Transparency = boxT
+			if d.box_outline then d.box_outline.Transparency = boxT end
+			if d.outline_stroke then d.outline_stroke.Transparency = boxT end
+		end
+	else destroyBoxes(d) end
+
+	if F.BoxFill then
+		d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0); d.fill.Position = dim2(0,0,0,0)
+		d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor"); d.fill.ZIndex = 0
+	else d.fill.Visible = false end
+
+	if F.HealthBar then
+		local w = healthbarWidth()
+		d.healthbar_holder.Visible = true
+		d.healthbar_holder.Size = dim2(0, w + 2, 1, 2)
+		d.healthbar_holder.Position = dim2(0, 0, 0, -1)
+		local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1", rgb(0,255,0))
+		d.healthbar_fill.BackgroundColor3 = col
+		d.healthbar_fill.Size = dim2(1, 0, frac, 0)
+		d.healthbar_fill.Position = dim2(0, 0, 1 - frac, 0)
+	else d.healthbar_holder.Visible = false end
+
+	if F.HealthText then
+		d.hpTxt.Visible = true
+		local col = (F.HealthTextDynamic ~= false) and lerpColor(C("HealthTextColor2", rgb(255,0,0)), C("HealthTextColor1", rgb(0,255,0)), frac) or C("HealthTextColor1")
+		d.hpTxt.TextColor3 = col; d.hpTxt.Text = tostring(math.floor(hp + 0.5)); d.hpTxt.TextSize = FONT_SZ
+		local xOff = healthTextXOff()
+		if F.HealthBar then d.hpTxt.Position = dim2(0, xOff, 1 - frac, -1 + FONT_Y)
+		else d.hpTxt.Position = dim2(0, xOff, 0, -1 + FONT_Y) end
+	else d.hpTxt.Visible = false end
+
+	if F.NameESP then
+		d.name.Visible = true; d.name.Text = p.DisplayName or p.Name
+		d.name.TextColor3 = C("NameColor"); d.name.TextTransparency = A("NameColor"); d.name.TextSize = FONT_SZ
+		d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1, 0, 0, 0); d.name.AnchorPoint = vec2(0.5, 1)
+	else d.name.Visible = false end
+
+	local yOff = 1
+	if F.DistanceESP then
+		local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+		local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character.PrimaryPart)
+		local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
+		d.dist.Visible = true; d.dist.Text = math.floor(distv + 0.5) .. "st"
+		d.dist.TextColor3 = C("DistanceColor"); d.dist.TextTransparency = A("DistanceColor"); d.dist.TextSize = FONT_SZ
+		d.dist.Position = dim2(0, 0, 1, yOff); d.dist.Size = dim2(1, 0, 0, 12); yOff += 12
+	else d.dist.Visible = false end
+
+	if F.WeaponESP then
+		local wn = weaponOf(model) or ""
+		d.weapon.Visible = wn ~= ""; d.weapon.Text = wn
+		d.weapon.TextColor3 = C("WeaponColor"); d.weapon.TextTransparency = A("WeaponColor"); d.weapon.TextSize = FONT_SZ
+		d.weapon.Position = dim2(0, 0, 1, yOff); d.weapon.Size = dim2(1, 0, 0, 12)
+	else d.weapon.Visible = false end
+
+	if F.Skeleton then
+		local sk = C("SkeletonColor")
+		if dt > 0 and F.SkeletonVisDmg then sk = lerpColor(sk, C("SkeletonColor2", rgb(255,0,0)), dt) end
+		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
+		local alpha = 1 - A("SkeletonColor")
+		local idx = 0
+		for _, pair in ipairs(BONES) do
+			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
 			if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
-				local s1, o1 = w2s(a.Position)
-				local s2, o2 = w2s(b.Position)
-				if o1 and o2 then
-					local l = getDraw(idx .. "_sk" .. i, "Line")
-					l.From, l.To, l.Color, l.Thickness, l.Visible = s1, s2, col, thick, true
+				local sa, oa = w2s(a.Position); local sb, ob = w2s(b.Position)
+				if oa and ob then
+					idx += 1; local ln = d.lines[idx]
+					if ln then ln.From, ln.To = sa, sb; ln.Color, ln.Thickness = sk, th; ln.Transparency = alpha; ln.Visible = true end
 				end
 			end
 		end
-	end
+		for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
+	else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
 
-	setHighlight(char, flag("VisHighlight", false))
+	if F.Adornment then
+		buildAdornments(d, model)
+		local col = C("AdornmentColor")
+		if dt > 0 and F.AdornmentVisDmg then col = lerpColor(col, C("AdornmentDamage", rgb(255,0,0)), dt) end
+		local tr = A("AdornmentColor")
+		if d.adornments then for _, a in ipairs(d.adornments) do a.Visible = true; a.Color3 = col; a.Transparency = tr end end
+	else destroyAdornments(d) end
 end
 
-RunService.RenderStepped:Connect(function()
-	hideAll()
-	if not flag("VisEnable", true) then
-		for char in pairs(highlights) do setHighlight(char, false) end
+local function clearAll()
+	for m in pairs(objects) do destroy(m) end
+end
+U.onFlag("VisualsEnabled", function() if not on() then clearAll() end end)
+
+local wasOn = false
+RunService:BindToRenderStep("SM_ESP", Enum.RenderPriority.Camera.Value + 1, function()
+	if not U.running then return end
+	camera = workspace.CurrentCamera
+	if not on() then
+		if wasOn then clearAll(); wasOn = false end
 		return
 	end
-	local i = 0
+	wasOn = true
+	local seen = {}
 	for _, p in ipairs(Players:GetPlayers()) do
-		if flag("VisIgnoreSelf", true) and p == lp then continue end
-		if sameTeam(p) then continue end
 		local char = p.Character
-		if not char then continue end
-		i += 1
-		drawPlayer(p, char, i)
+		if char then seen[char] = true; updateModel(p, char) end
+	end
+	for m in pairs(objects) do
+		if not seen[m] or not m.Parent then destroy(m) end
 	end
 end)
 
 do
-	local BODY_W, TITLE_H, LINE_H = 560, 22, 2
-	local PRE_W = math.floor(BODY_W / 2)
-	local shellH
-
-	local function guiParent()
-		if typeof(gethui) == "function" then
-			local ok, g = pcall(gethui)
-			if ok and g then return g end
-		end
-		return lp:WaitForChild("PlayerGui")
-	end
-
-	local previewGui = Instance.new("ScreenGui")
-	previewGui.Name = "wavelength_preview"
-	previewGui.ResetOnSpawn = false
-	previewGui.IgnoreGuiInset = true
-	previewGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	previewGui.Parent = guiParent()
-
-	local panel = Instance.new("Frame")
-	panel.Name = "PreviewPanel"
-	panel.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-	panel.BorderSizePixel = 0
-	panel.Active = true
-	panel.Visible = false
-	panel.ZIndex = 50
-	panel.Parent = previewGui
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.new(0, 0, 0)
-	stroke.LineJoinMode = Enum.LineJoinMode.Miter
-	stroke.Parent = panel
-
-	local accent = Instance.new("Frame")
-	accent.Size = UDim2.new(1, 0, 0, 2)
-	accent.BorderSizePixel = 0
-	accent.BackgroundColor3 = Color3.new(1, 1, 1)
-	accent.ZIndex = 2
-	accent.Parent = panel
-	local ag = Instance.new("UIGradient")
-	ag.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-		ColorSequenceKeypoint.new(0.5, Color3.new(0, 0, 0)),
-		ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
-	})
-	ag.Parent = accent
-	task.spawn(function()
-		while accent.Parent do
-			ag.Offset = Vector2.new((tick() * 0.35 % 2) - 1, 0)
-			task.wait(0.03)
-		end
-	end)
-
-	local title = Instance.new("TextLabel")
-	title.BackgroundTransparency = 1
-	title.Text = "preview"
-	title.TextColor3 = Color3.fromRGB(235, 235, 235)
-	title.TextSize = 12
-	title.Font = Enum.Font.Code
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Size = UDim2.new(1, -12, 0, 22)
-	title.Position = UDim2.fromOffset(6, 2)
-	title.Parent = panel
-
-	local section = Instance.new("Frame")
-	section.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-	section.BorderSizePixel = 0
-	section.Position = UDim2.fromOffset(8, 28)
-	section.Size = UDim2.new(1, -16, 1, -36)
-	section.ClipsDescendants = true
-	section.Parent = panel
-	local ss = Instance.new("UIStroke")
-	ss.Thickness = 2
-	ss.Color = Color3.new(0, 0, 0)
-	ss.Parent = section
-
-	local viewport = Instance.new("ViewportFrame")
-	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
-	viewport.BorderSizePixel = 0
-	viewport.Size = UDim2.fromScale(1, 1)
-	viewport.Ambient = Color3.fromRGB(200, 200, 200)
-	viewport.LightColor = Color3.fromRGB(255, 255, 255)
-	viewport.LightDirection = Vector3.new(-1, -1, -1)
-	viewport.Parent = section
-
-	local world = Instance.new("WorldModel")
-	world.Parent = viewport
-
-	local function makeChar()
+	local world = Library:GetPreviewWorld()
+	local viewport = Library:GetPreviewViewport()
+	local vcam = Library:GetPreviewCamera()
+	if world and viewport and vcam then
 		local desc = Instance.new("HumanoidDescription")
 		local white = Color3.fromRGB(255, 255, 255)
 		desc.HeadColor, desc.TorsoColor = white, white
@@ -2445,316 +2546,208 @@ do
 		local ok, model = pcall(function()
 			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
 		end)
-		if not ok or not model then return nil end
-		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-				d.Color = white
-				d.Material = Enum.Material.SmoothPlastic
-			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") then
-				d:Destroy()
+		if ok and model then
+			for _, d in ipairs(model:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true; d.CanCollide = false; d.Color = white; d.Material = Enum.Material.SmoothPlastic
+				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") then
+					d:Destroy()
+				end
 			end
+			local hrp = model:FindFirstChild("HumanoidRootPart")
+			if hrp then model.PrimaryPart = hrp; hrp.Transparency = 1; model:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.pi, 0)) end
+			model.Name = "PreviewCharacter"; model.Parent = world
+			U.pvModel = model
+			local ok2, cf, size = pcall(function() return model:GetBoundingBox() end)
+			if ok2 and cf then
+				U.pvFocus = cf.Position
+				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.55
+			end
+			U.pvYaw = math.pi
+			U.pvPitch = 0.12
+			U.pvDistScale = 1.35
+			U.pvUpdateCam()
 		end
-		local hrp = model:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			model.PrimaryPart = hrp
-			hrp.Transparency = 1
-			model:PivotTo(CFrame.new(0, 3, 0))
+
+		local dragging, last
+		UIS.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+			local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
+			local p = input.Position
+			if p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y then
+				dragging, last = true, p
+			end
+		end)
+		UIS.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+		end)
+		UIS.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local d = input.Position - last; last = input.Position
+				U.pvYaw -= d.X * 0.01
+				U.pvPitch = math.clamp((U.pvPitch or 0) + d.Y * 0.01, -1.2, 1.2)
+				U.pvUpdateCam()
+			elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+				local panel = U.pvPanel
+				if not panel or not panel.Visible then return end
+				local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
+				local m = UIS:GetMouseLocation()
+				if m.X < ap.X or m.X > ap.X + as.X or m.Y < ap.Y or m.Y > ap.Y + as.Y then return end
+				U.pvDistScale = math.clamp((U.pvDistScale or 1.35) - input.Position.Z * 0.1, 0.5, 3)
+				U.pvUpdateCam()
+			end
+		end)
+
+		local prevGui = Instance.new("ScreenGui")
+		prevGui.Name = "SM_PREVIEW_ESP"
+		prevGui.IgnoreGuiInset = true
+		prevGui.ResetOnSpawn = false
+		prevGui.Parent = guiParent
+		local prevObj = {}
+		local function ensurePrev()
+			if prevObj.holder then return prevObj end
+			local d = { holder = create("Frame", { Parent = prevGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
+			d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
+			local function mkTxt()
+				local t = create("TextLabel", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, FontFace = FONT, TextSize = FONT_SZ, TextStrokeTransparency = 1, Visible = false })
+				addOutline(t); return t
+			end
+			d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
+			d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
+			local w = healthbarWidth()
+			d.healthbar_holder = create("Frame", { Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false, Position = dim2(0,0,0,-1), Size = dim2(0, w+2, 1, 2) })
+			d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
+			d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
+			for i = 1, 14 do d.lines[i] = mkLine() end
+			prevObj = d
+			return d
 		end
-		model.Parent = world
-		return model
-	end
+		local function updatePreviewESP()
+			local model = U.pvModel
+			local panel = U.pvPanel
+			if not model or not panel or not panel.Visible then
+				if prevObj.holder then prevObj.holder.Visible = false end
+				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
+				return
+			end
+			local ap = viewport.AbsolutePosition
+			local bx, by, bw, bh = boxSolve(model, vcam, 0.55)
+			if not bx then
+				if prevObj.holder then prevObj.holder.Visible = false end
+				return
+			end
+			local d = ensurePrev()
+			d.holder.Visible = true
+			d.holder.Position = dim_offset(ap.X + bx, ap.Y + by)
+			d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
+			local frac = 0.75
 
-	local model = makeChar()
-	local vcam = Instance.new("Camera")
-	vcam.Parent = viewport
-	viewport.CurrentCamera = vcam
+			if F.Box then
+				local isCorner = F.BoxType == "corner"
+				if (isCorner and d.box_handler) or (not isCorner and d.corners) then destroyBoxes(d) end
+				local oldBox = F.BoxType
+				buildBoxes(d)
+				local boxColor, boxT = C("BoxColor"), A("BoxColor")
+				if isCorner and d.corners then
+					local w, h = bw, bh
+					local pct = math.clamp(tonumber(F.BoxCornerLength) or 50, 0, 100) / 100
+					local t, bt = 1, 1
+					local lenX = math.max(math.floor(w * pct * 0.5), 2)
+					local lenY = math.max(math.floor(h * pct * 0.5), 2)
+					local segs = d.corners
+					local function set_pair(bi, ci, x, y, sw, sh)
+						local b = segs[bi]; b.Visible = true; b.BackgroundColor3 = rgb(0,0,0); b.BackgroundTransparency = boxT
+						b.Position = dim_offset(x - bt, y - bt); b.Size = dim_offset(sw + bt * 2, sh + bt * 2)
+						local c = segs[ci]; c.Visible = true; c.BackgroundColor3 = boxColor; c.BackgroundTransparency = boxT
+						c.Position = dim_offset(x, y); c.Size = dim_offset(sw, sh)
+					end
+					set_pair(1,9, 0,0, lenX,t); set_pair(2,10, 0,t, t,lenY-t)
+					set_pair(3,11, w-lenX,0, lenX,t); set_pair(4,12, w-t,t, t,lenY-t)
+					set_pair(5,13, 0,h-t, lenX,t); set_pair(6,14, 0,h-lenY, t,lenY-t)
+					set_pair(7,15, w-lenX,h-t, lenX,t); set_pair(8,16, w-t,h-lenY, t,lenY-t)
+				elseif d.box_color then
+					d.box_color.Color = boxColor; d.box_color.Transparency = boxT
+					if d.box_outline then d.box_outline.Transparency = boxT end
+					if d.outline_stroke then d.outline_stroke.Transparency = boxT end
+				end
+			else destroyBoxes(d) end
 
-	local yaw, pitch, distScale = 0.55, 0.2, 1
-	local baseDist, focus = 6, Vector3.new(0, 3, 0)
-	if model then
-		local ok, cf, size = pcall(function() return model:GetBoundingBox() end)
-		if ok and cf then
-			focus = cf.Position
-			baseDist = math.max(size.X, size.Y, size.Z) * 1.15
-		end
-	end
+			if F.BoxFill then
+				d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0); d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor")
+			else d.fill.Visible = false end
 
-	local function updateCam()
-		local distance = baseDist * distScale
-		local cf = CFrame.new(focus) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(-pitch, 0, 0) * CFrame.new(0, 0, distance)
-		vcam.CFrame = CFrame.lookAt(cf.Position, focus)
-	end
-	updateCam()
+			if F.HealthBar then
+				d.healthbar_holder.Visible = true
+				local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1")
+				d.healthbar_fill.BackgroundColor3 = col
+				d.healthbar_fill.Size = dim2(1,0,frac,0); d.healthbar_fill.Position = dim2(0,0,1-frac,0)
+			else d.healthbar_holder.Visible = false end
 
-	local overlay = Instance.new("Frame")
-	overlay.BackgroundTransparency = 1
-	overlay.Size = UDim2.fromScale(1, 1)
-	overlay.ZIndex = 5
-	overlay.Parent = section
+			if F.HealthText then
+				d.hpTxt.Visible = true; d.hpTxt.Text = "75"; d.hpTxt.TextColor3 = C("HealthTextColor1"); d.hpTxt.TextSize = FONT_SZ
+				d.hpTxt.Position = dim2(0, healthTextXOff(), 1-frac, -1+FONT_Y)
+			else d.hpTxt.Visible = false end
 
-	local function proj(worldPos)
-		local v, onScreen = vcam:WorldToViewportPoint(worldPos)
-		local vs = viewport.AbsoluteSize
-		return Vector2.new(v.X, v.Y), onScreen and v.Z > 0, v.Z
-	end
+			if F.NameESP then
+				d.name.Visible = true; d.name.Text = "preview"; d.name.TextColor3 = C("NameColor"); d.name.TextSize = FONT_SZ
+				d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1,0,0,0)
+			else d.name.Visible = false end
 
-	local function boxModel()
-		if not model then return end
-		local parts = {}
-		for _, n in ipairs({ "Head", "UpperTorso", "LowerTorso", "LeftHand", "RightHand", "LeftFoot", "RightFoot" }) do
-			local p = model:FindFirstChild(n)
-			if p then parts[#parts + 1] = p end
-		end
-		local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
-		local any = false
-		for _, p in ipairs(parts) do
-			local cf, size = p.CFrame, p.Size
-			for _, ox in ipairs({ -0.5, 0.5 }) do
-				for _, oy in ipairs({ -0.5, 0.5 }) do
-					for _, oz in ipairs({ -0.5, 0.5 }) do
-						local s, on = proj((cf * CFrame.new(size * Vector3.new(ox, oy, oz))).Position)
-						if on then
-							any = true
-							minX, minY = math.min(minX, s.X), math.min(minY, s.Y)
-							maxX, maxY = math.max(maxX, s.X), math.max(maxY, s.Y)
+			if F.Skeleton then
+				local skc = C("SkeletonColor"); local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
+				local idx = 0
+				for _, pair in ipairs(BONES) do
+					local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
+					if a and b then
+						local sa, oa = vcam:WorldToViewportPoint(a.Position)
+						local sb, ob = vcam:WorldToViewportPoint(b.Position)
+						if oa and sa.Z > 0 and ob and sb.Z > 0 then
+							idx += 1; local ln = d.lines[idx]
+							if ln then
+								ln.From = vec2(ap.X + sa.X, ap.Y + sa.Y)
+								ln.To = vec2(ap.X + sb.X, ap.Y + sb.Y)
+								ln.Color, ln.Thickness, ln.Visible = skc, th, true
+							end
 						end
 					end
 				end
-			end
-		end
-		if not any then return end
-		return minX, minY, maxX, maxY
-	end
+				for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
+			else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
 
-	local prevDraws = {}
-	local function pd(key, class)
-		local d = prevDraws[key]
-		if d and d.ClassName == class then return d end
-		if d then pcall(function() d:Remove() end) end
-		d = Drawing.new(class)
-		prevDraws[key] = d
-		return d
-	end
-	local function hidePrev()
-		for _, d in pairs(prevDraws) do pcall(function() d.Visible = false end) end
-	end
-
-	local function drawPreviewESP()
-		hidePrev()
-		if not panel.Visible or not model then return end
-		local ap = viewport.AbsolutePosition
-		local x1, y1, x2, y2 = boxModel()
-		if not x1 then return end
-		x1, y1, x2, y2 = x1 + ap.X, y1 + ap.Y, x2 + ap.X, y2 + ap.Y
-		local w, h = x2 - x1, y2 - y1
-		local hpRatio = 0.75
-
-		if flag("VisBoxFill", false) then
-			local f = pd("fill", "Square")
-			f.Filled, f.Visible = true, true
-			f.Color = flag("VisBoxFillColor", Color3.new(1, 1, 1))
-			f.Transparency = 0.3
-			f.Size = Vector2.new(w, h)
-			f.Position = Vector2.new(x1, y1)
-		end
-		if flag("VisBox", true) then
-			local b = pd("box", "Square")
-			b.Filled, b.Thickness, b.Visible = false, 1, true
-			b.Color = flag("VisBoxColor", Color3.new(1, 1, 1))
-			b.Size = Vector2.new(w, h)
-			b.Position = Vector2.new(x1, y1)
-		end
-		if flag("VisHealthBar", true) then
-			local o = pd("hbo", "Square")
-			o.Filled, o.Visible = true, true
-			o.Color = Color3.new(0, 0, 0)
-			o.Size = Vector2.new(4, h + 2)
-			o.Position = Vector2.new(x1 - 6, y1 - 1)
-			local bar = pd("hb", "Square")
-			bar.Filled, bar.Visible = true, true
-			bar.Color = lerpColor(flag("VisHBLow", Color3.new(1, 0, 0)), flag("VisHBHigh", Color3.new(0, 1, 0)), hpRatio)
-			local bh = h * hpRatio
-			bar.Size = Vector2.new(2, bh)
-			bar.Position = Vector2.new(x1 - 5, y1 + (h - bh))
-		end
-		if flag("VisName", true) then
-			local t = pd("name", "Text")
-			t.Text, t.Size, t.Center, t.Outline, t.Visible = "preview", 12, true, true, true
-			t.Color = flag("VisNameColor", Color3.new(1, 1, 1))
-			t.Position = Vector2.new(x1 + w / 2, y1 - 14)
-		end
-		if flag("VisSkeleton", false) then
-			local col = flag("VisSkelColor", Color3.new(1, 1, 1))
-			local thick = flag("VisSkelThick", 1)
-			for i, pair in ipairs(bones) do
-				local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
-				if a and b then
-					local s1, o1 = proj(a.Position)
-					local s2, o2 = proj(b.Position)
-					if o1 and o2 then
-						local l = pd("sk" .. i, "Line")
-						l.From = s1 + ap
-						l.To = s2 + ap
-						l.Color, l.Thickness, l.Visible = col, thick, true
+			if F.Adornment then
+				if not model:GetAttribute("SM_PrevAdorn") then
+					for _, name in ipairs(BODY_PARTS) do
+						local part = model:FindFirstChild(name)
+						if part and part:IsA("BasePart") then
+							local adorn = Instance.new("BoxHandleAdornment")
+							adorn.Size = part.Size; adorn.Adornee = part; adorn.AlwaysOnTop = true
+							adorn.Color3 = C("AdornmentColor"); adorn.Transparency = A("AdornmentColor")
+							adorn.Parent = part
+						end
 					end
+					model:SetAttribute("SM_PrevAdorn", true)
+				else
+					for _, a in ipairs(model:GetDescendants()) do
+						if a:IsA("BoxHandleAdornment") then
+							a.Visible = true; a.Color3 = C("AdornmentColor"); a.Transparency = A("AdornmentColor")
+						end
+					end
+				end
+			else
+				if model:GetAttribute("SM_PrevAdorn") then
+					for _, a in ipairs(model:GetDescendants()) do
+						if a:IsA("BoxHandleAdornment") then a:Destroy() end
+					end
+					model:SetAttribute("SM_PrevAdorn", nil)
 				end
 			end
 		end
-		if flag("VisHighlight", false) then
-			local h = model:FindFirstChildOfClass("Highlight") or Instance.new("Highlight")
-			h.Parent = model
-			h.FillColor = flag("VisHLFill", Color3.new(1, 1, 1))
-			h.OutlineColor = flag("VisHLOutline", Color3.new(0, 0, 0))
-			h.FillTransparency = 0.5
-		else
-			local h = model:FindFirstChildOfClass("Highlight")
-			if h then h:Destroy() end
-		end
-	end
-
-	local docked = true
-	local gap = 6
-	local ghost = Instance.new("Frame")
-	ghost.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	ghost.BackgroundTransparency = 0.35
-	ghost.BorderSizePixel = 0
-	ghost.Visible = false
-	ghost.ZIndex = 40
-	ghost.Parent = previewGui
-	local gs = Instance.new("UIStroke")
-	gs.Thickness = 2
-	gs.Color = Color3.new(0, 0, 0)
-	gs.Parent = ghost
-
-	local function shellFrame()
-		return Library:GetShell()
-	end
-
-	local function dockPos()
-		local sh = shellFrame()
-		if not sh then return end
-		shellH = sh.AbsoluteSize.Y
-		panel.Size = UDim2.fromOffset(PRE_W, shellH)
-		if docked then
-			local sp = sh.AbsolutePosition
-			local ss = sh.AbsoluteSize
-			panel.Position = UDim2.fromOffset(sp.X + ss.X + gap, sp.Y)
-		end
-	end
-
-	local function shouldShow()
-		return flag("Preview", true)
-			and Library:GetCurrentTab() == "visuals"
-			and (Library:IsMenuOpen() or not docked)
-	end
-
-	local function refreshVis()
-		panel.Visible = shouldShow()
-		if panel.Visible and docked then dockPos() end
-		if not panel.Visible then hidePrev() end
-	end
-
-	Library:OnFlag("Preview", refreshVis)
-	Library:OnTabChanged(function()
-		refreshVis()
-	end)
-
-	task.spawn(function()
-		while true do
-			task.wait(0.05)
-			refreshVis()
-			if panel.Visible and docked then dockPos() end
-		end
-	end)
-
-	RunService.RenderStepped:Connect(function()
-		if panel.Visible then
-			drawPreviewESP()
-		else
-			hidePrev()
-		end
-	end)
-
-	local dragging, last
-	UIS.InputBegan:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
-		local p = input.Position
-		if p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y then
-			dragging, last = true, p
-		end
-	end)
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-	UIS.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local d = input.Position - last
-			last = input.Position
-			yaw -= d.X * 0.01
-			pitch = math.clamp(pitch + d.Y * 0.01, -1.2, 1.2)
-			updateCam()
-		end
-	end)
-
-	UIS.InputChanged:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
-		if not panel.Visible then return end
-		local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
-		local m = UIS:GetMouseLocation()
-		if m.X < ap.X or m.X > ap.X + as.X or m.Y < ap.Y or m.Y > ap.Y + as.Y then return end
-		distScale = math.clamp(distScale - input.Position.Z * 0.1, 0.4, 3)
-		updateCam()
-	end)
-
-	do
-		local drag, start, origin
-		panel.InputBegan:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-			local rel = input.Position.Y - panel.AbsolutePosition.Y
-			if rel > 26 then return end
-			drag, start, origin = true, input.Position, panel.Position
-			docked = false
-			local sh = shellFrame()
-			if sh then
-				ghost.Size = UDim2.fromOffset(PRE_W, sh.AbsoluteSize.Y)
-				ghost.Position = UDim2.fromOffset(sh.AbsolutePosition.X + sh.AbsoluteSize.X + gap, sh.AbsolutePosition.Y)
-				ghost.Visible = Library:IsMenuOpen()
-			end
-			input.Changed:Connect(function()
-				if input.UserInputState ~= Enum.UserInputState.End then return end
-				drag = false
-				if ghost.Visible then
-					local gp, gs_, pp, ps = ghost.AbsolutePosition, ghost.AbsoluteSize, panel.AbsolutePosition, panel.AbsoluteSize
-					local cx, cy = pp.X + ps.X * 0.5, pp.Y + ps.Y * 0.5
-					if cx >= gp.X and cx <= gp.X + gs_.X and cy >= gp.Y and cy <= gp.Y + gs_.Y then
-						docked = true
-						dockPos()
-					end
-				end
-				ghost.Visible = false
-				refreshVis()
-			end)
-		end)
-		UIS.InputChanged:Connect(function(input)
-			if not drag then return end
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
-			local d = input.Position - start
-			panel.Position = UDim2.fromOffset(origin.X.Offset + d.X, origin.Y.Offset + d.Y)
-			local sh = shellFrame()
-			if sh and Library:IsMenuOpen() then
-				ghost.Position = UDim2.fromOffset(sh.AbsolutePosition.X + sh.AbsoluteSize.X + gap, sh.AbsolutePosition.Y)
-				ghost.Size = UDim2.fromOffset(PRE_W, sh.AbsoluteSize.Y)
-				ghost.Visible = true
-			end
+		RunService:BindToRenderStep("SM_PREVIEW_ESP", Enum.RenderPriority.Camera.Value + 2, function()
+			if not U.running then return end
+			updatePreviewESP()
 		end)
 	end
-
-	refreshVis()
 end
 
 Library:Notify({ text = "wavelength universal loaded", time = 2 })
+
