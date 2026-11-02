@@ -2143,7 +2143,6 @@ do
 	local control = tab:AddSection("control", 1)
 	control:AddToggle({ Name = "enable", Flag = "VisualsEnabled", Default = false, Keybind = true, Key = "RightAlt", KeybindText = "Visuals" })
 	control:AddToggle({ Name = "ignore self", Flag = "IgnoreSelf", Default = true })
-	control:AddSlider({ Name = "render distance", Flag = "RenderDistance", Min = 0, Max = 250, Default = 250, Increment = 1, Suffix = "st", InfAtMax = true })
 	control:AddDropdown({
 		Name = "parent",
 		Flag = "VisParent",
@@ -2151,6 +2150,7 @@ do
 		Default = "gethui",
 		Limit = 1,
 	})
+	control:AddSlider({ Name = "render distance", Flag = "RenderDistance", Min = 0, Max = 250, Default = 250, Increment = 1, Suffix = "st", InfAtMax = true })
 
 	local players = tab:AddSection("players", 2)
 	local box = players:AddToggle({ Name = "box", Flag = "Box", Default = false })
@@ -2188,6 +2188,7 @@ do
 	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
 	hl:AddColorpicker({ Flag = "HighlightOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
 	hl:AddColorpicker({ Flag = "HighlightDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	hl:AddDropdown({ Name = "type", Flag = "HighlightType", Items = { "always", "occluded" }, Default = "always", Limit = 1 })
 	hl:AddToggle({ Name = "visualize damage", Flag = "HighlightVisDmg", Default = false })
 end
 
@@ -2315,33 +2316,27 @@ local function mkLine()
 	return ok and ln or nil
 end
 local function projectPoint(cam, worldPos, viewportFrame)
-	if viewportFrame then
-		local sz = viewportFrame.AbsoluteSize
-		if sz.X > 0 and sz.Y > 0 then
-			cam.ViewportSize = Vector2.new(sz.X, sz.Y)
-		end
+	if not viewportFrame then
+		local sp, vis = cam:WorldToViewportPoint(worldPos)
+		if not vis or sp.Z <= 0 then return nil, false end
+		return Vector2.new(sp.X, sp.Y), true
 	end
-	local sp, vis = cam:WorldToViewportPoint(worldPos)
-	if not vis or sp.Z <= 0 then return nil, false end
-	local x, y = sp.X, sp.Y
-	if viewportFrame then
-		local sz = viewportFrame.AbsoluteSize
-		local cv = cam.ViewportSize
-		if cv.X > 0 and cv.Y > 0 and (math.abs(cv.X - sz.X) > 1 or math.abs(cv.Y - sz.Y) > 1) then
-			x = (sp.X / cv.X) * sz.X
-			y = (sp.Y / cv.Y) * sz.Y
-		end
-	end
+	-- manual projection into ViewportFrame local pixels (ViewportSize is read-only)
+	local size = viewportFrame.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then return nil, false end
+	local rel = cam.CFrame:PointToObjectSpace(worldPos)
+	local depth = -rel.Z
+	if depth <= 0.05 then return nil, false end
+	local halfH = math.tan(math.rad(cam.FieldOfView) * 0.5)
+	local halfW = halfH * (size.X / size.Y)
+	local ndcX = rel.X / (depth * halfW)
+	local ndcY = rel.Y / (depth * halfH)
+	local x = (ndcX + 1) * 0.5 * size.X
+	local y = (1 - ndcY) * 0.5 * size.Y
 	return Vector2.new(x, y), true
 end
 local function boxSolve(model, camOverride, viewportFrame)
 	camOverride = camOverride or camera
-	if viewportFrame then
-		local sz = viewportFrame.AbsoluteSize
-		if sz.X > 0 and sz.Y > 0 then
-			camOverride.ViewportSize = Vector2.new(sz.X, sz.Y)
-		end
-	end
 	local parts = boxParts(model)
 	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
 	local any = false
@@ -2427,6 +2422,8 @@ local function setHighlight(model, on, dt)
 	h.OutlineColor = outline
 	h.FillTransparency = A("HighlightFill")
 	h.OutlineTransparency = A("HighlightOutline")
+	local ht = string.lower(tostring(F.HighlightType or "always"))
+	h.DepthMode = (ht == "occluded") and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
 	h.Enabled = true
 end
 
@@ -2671,7 +2668,7 @@ do
 		desc.LeftArmColor, desc.RightArmColor = white, white
 		desc.LeftLegColor, desc.RightLegColor = white, white
 		desc.Shirt, desc.Pants, desc.GraphicTShirt = 0, 0, 0
-		desc.Face = 0
+		pcall(function() desc.Face = 0 end)
 		local ok, model = pcall(function()
 			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
 		end)
@@ -2681,14 +2678,14 @@ do
 					d.Anchored = true; d.CanCollide = false; d.Color = white; d.Material = Enum.Material.SmoothPlastic
 				elseif d:IsA("Decal") or d:IsA("Texture") then
 					d:Destroy()
-				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") or d:IsA("ShirtGraphic") then
+				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") or d:IsA("ShirtGraphic") or d:IsA("CharacterMesh") then
 					d:Destroy()
 				end
 			end
 			local head = model:FindFirstChild("Head")
 			if head then
-				for _, c in ipairs(head:GetChildren()) do
-					if c:IsA("Decal") or c:IsA("Texture") then c:Destroy() end
+				for _, ch in ipairs(head:GetDescendants()) do
+					if ch:IsA("Decal") or ch:IsA("Texture") then ch:Destroy() end
 				end
 			end
 			local hrp = model:FindFirstChild("HumanoidRootPart")
@@ -2792,11 +2789,6 @@ do
 				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
 				return
 			end
-			-- sync camera viewport to frame so WorldToViewportPoint maps into local pixels
-			local vsz = viewport.AbsoluteSize
-			if vsz.X > 0 and vsz.Y > 0 then
-				vcam.ViewportSize = Vector2.new(vsz.X, vsz.Y)
-			end
 			local bx, by, bw, bh = boxSolve(model, vcam, viewport)
 			if not bx then
 				if prevObj.holder then prevObj.holder.Visible = false end
@@ -2834,6 +2826,43 @@ do
 		end)
 	end
 end
+
+
+-- live-align preview section top with first main UI section when docked
+task.defer(function()
+	local function alignPreviewSection()
+		if not U.shell or not U.pvPanel then return end
+		local pvSection = U.pvPanel:FindFirstChild("Section")
+		if not pvSection then return end
+		local ref
+		for _, page in pairs(U.pageFrames or {}) do
+			for _, ch in ipairs(page:GetChildren()) do
+				if ch:IsA("Frame") and ch:FindFirstChildOfClass("UIStroke") then
+					ref = ch
+					break
+				end
+			end
+			if ref then break end
+		end
+		if not ref then return end
+		local shellTop = U.shell.AbsolutePosition.Y
+		local secTopAbs = ref.AbsolutePosition.Y
+		local relY = secTopAbs - shellTop
+		if relY > 0 and math.abs(pvSection.Position.Y.Offset - relY) > 0.5 then
+			local bottomPad = U.SEC_GAP or 8
+			pvSection.Position = UDim2.fromOffset(U.SEC_GAP, relY)
+			pvSection.Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(relY + bottomPad))
+		end
+	end
+	alignPreviewSection()
+	U.shell:GetPropertyChangedSignal("AbsolutePosition"):Connect(alignPreviewSection)
+	if U.pvPanel then
+		U.pvPanel:GetPropertyChangedSignal("AbsolutePosition"):Connect(alignPreviewSection)
+		U.pvPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+			if U.pvPanel.Visible then task.defer(alignPreviewSection) end
+		end)
+	end
+end)
 
 Library:Notify({ text = "wavelength universal loaded", time = 2 })
 
