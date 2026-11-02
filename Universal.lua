@@ -1355,8 +1355,10 @@ function U.showSnapGhost(kind)
 	U.ensureSnapGhosts()
 	local f, g = panelOf(kind), U[kind .. "SnapGhost"]
 	if not U.shell or not f then return end
-	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), panelH(f))
-	g.AnchorPoint, g.Position = U.dockPos(kind, panelH(f))
+	local h = panelH(f)
+	if kind == "pv" then h = U.LINE_H + U.TITLE_H end
+	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), h)
+	g.AnchorPoint, g.Position = U.dockPos(kind, h)
 	g.Visible = true
 end
 
@@ -1389,6 +1391,10 @@ function U.dragPanel(f, kind)
 	local dragging, ds, sp
 	f.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if kind == "pv" then
+			local relY = input.Position.Y - f.AbsolutePosition.Y
+			if relY > (U.LINE_H + U.TITLE_H + 2) then return end
+		end
 		dragging, ds, sp = true, input.Position, f.Position
 		U[kind .. "Docked"] = false
 		U.showSnapGhost(kind)
@@ -1513,25 +1519,37 @@ function U.buildFloaters()
 	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
 	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
 	pv.Size = UDim2.fromOffset(PRE_W, shellH)
+	pv.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 	pv.Active = true
 	pv.Visible = false
 	pv.ClipsDescendants = true
 	U.pvPanel = pv
 	U.pvDocked = true
-	local pvTitle = U.label(pv, "preview", {
-		Position = UDim2.fromOffset(U.PAD, U.LINE_H),
-		Size = UDim2.new(1, -U.PAD * 2, 0, U.TITLE_H),
+	local pvTitleBar = U.new("Frame", {
+		Name = "TitleBar",
+		BackgroundColor3 = Color3.fromRGB(28, 28, 28),
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, U.TITLE_H),
+		Position = UDim2.fromOffset(0, U.LINE_H),
+		ZIndex = 2,
+	}, pv)
+	U.label(pvTitleBar, "preview", {
+		Position = UDim2.fromOffset(6, 0),
+		Size = UDim2.new(1, -12, 1, 0),
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
+	-- section top matches main UI body section inset (LINE_H + TITLE_H + PAD)
+	local secTop = U.LINE_H + U.TITLE_H + U.PAD
 	local pvSection = U.new("Frame", {
 		Name = "Section",
 		BackgroundColor3 = U.theme.SectionBg,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
-		Position = UDim2.fromOffset(U.PAD, U.LINE_H + U.TITLE_H),
-		Size = UDim2.new(1, -U.PAD * 2, 1, -(U.LINE_H + U.TITLE_H + U.PAD)),
+		Position = UDim2.fromOffset(U.PAD, secTop),
+		Size = UDim2.new(1, -U.PAD * 2, 1, -(secTop + U.PAD)),
 	}, pv)
 	U.stroke(pvSection, "SectionBorder")
+	table.insert(U.themeReg.sectionBgs or {}, pvSection)
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "View"
 	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
@@ -1542,6 +1560,15 @@ function U.buildFloaters()
 	viewport.LightDirection = Vector3.new(-1, -1, -1)
 	viewport.Parent = pvSection
 	U.pvViewport = viewport
+	local pvOverlay = U.new("Frame", {
+		Name = "ESPOverlay",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 10,
+		ClipsDescendants = true,
+	}, pvSection)
+	U.pvOverlay = pvOverlay
 	local world = Instance.new("WorldModel")
 	world.Parent = viewport
 	U.pvWorld = world
@@ -2102,6 +2129,7 @@ end)()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
@@ -2114,9 +2142,15 @@ do
 	local tab = Window:AddTab("visuals")
 	local control = tab:AddSection("control", 1)
 	control:AddToggle({ Name = "enable", Flag = "VisualsEnabled", Default = false, Keybind = true, Key = "RightAlt", KeybindText = "Visuals" })
-	control:AddToggle({ Name = "ignore team", Flag = "IgnoreTeam", Default = false })
 	control:AddToggle({ Name = "ignore self", Flag = "IgnoreSelf", Default = true })
 	control:AddSlider({ Name = "render distance", Flag = "RenderDistance", Min = 0, Max = 250, Default = 250, Increment = 1, Suffix = "st", InfAtMax = true })
+	control:AddDropdown({
+		Name = "parent",
+		Flag = "VisParent",
+		Items = { "gethui", "PlayerGui", "CoreGui", "RobloxGui" },
+		Default = "gethui",
+		Limit = 1,
+	})
 
 	local players = tab:AddSection("players", 2)
 	local box = players:AddToggle({ Name = "box", Flag = "Box", Default = false })
@@ -2163,16 +2197,41 @@ Window:Init()
 
 local U = Library:_U()
 local F = U.vflags
-local guiParent = U.guiParent()
+local camera = workspace.CurrentCamera
+
+local function resolveParent(name)
+	name = string.lower(tostring(name or "gethui"))
+	if name == "gethui" then
+		if typeof(gethui) == "function" then
+			local ok, g = pcall(gethui)
+			if ok and g then return g end
+		end
+		return lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui")
+	elseif name == "playergui" then
+		return lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui")
+	elseif name == "coregui" then
+		return CoreGui
+	elseif name == "robloxgui" then
+		return CoreGui:FindFirstChild("RobloxGui") or CoreGui
+	end
+	return lp:FindFirstChild("PlayerGui")
+end
+
 local espGui = Instance.new("ScreenGui")
 espGui.Name = "SM_ESP"
 espGui.IgnoreGuiInset = true
 espGui.ResetOnSpawn = false
 espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-espGui.Parent = guiParent
+espGui.Parent = resolveParent(F.VisParent or "gethui")
+
+U.onFlag("VisParent", function()
+	local p = resolveParent(F.VisParent)
+	if p and espGui.Parent ~= p then
+		pcall(function() espGui.Parent = p end)
+	end
+end)
 
 local objects, lastHP, dmgStart, highlights = {}, {}, {}, {}
-
 local BONES_R15 = {
 	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
 	{"UpperTorso","LeftUpperArm"},{"UpperTorso","RightUpperArm"},
@@ -2183,33 +2242,19 @@ local BONES_R15 = {
 	{"LeftLowerLeg","LeftFoot"},{"RightLowerLeg","RightFoot"},
 }
 local BONES_R6 = {
-	{"Head","Torso"},
-	{"Torso","Left Arm"},{"Torso","Right Arm"},
-	{"Torso","Left Leg"},{"Torso","Right Leg"},
+	{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"},
 }
 local BOX_R15 = { "Head", "LeftHand", "RightHand", "RightFoot", "LeftFoot", "UpperTorso" }
 local BOX_R6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
-local BODY_R15 = {
-	"Head","UpperTorso","LowerTorso",
-	"LeftUpperArm","RightUpperArm","LeftLowerArm","RightLowerArm","LeftHand","RightHand",
-	"LeftUpperLeg","RightUpperLeg","LeftLowerLeg","RightLowerLeg","LeftFoot","RightFoot",
-}
-local BODY_R6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
 
 local FONT, FONT_SZ, FONT_Y = U.font, 12, -1
 local rgb = Color3.fromRGB
 local dim2, dim_offset = UDim2.new, UDim2.fromOffset
 local vec2 = Vector2.new
 
-local function isR15(model)
-	return model:FindFirstChild("UpperTorso") ~= nil
-end
-local function boxParts(model)
-	return isR15(model) and BOX_R15 or BOX_R6
-end
-local function boneList(model)
-	return isR15(model) and BONES_R15 or BONES_R6
-end
+local function isR15(model) return model:FindFirstChild("UpperTorso") ~= nil end
+local function boxParts(model) return isR15(model) and BOX_R15 or BOX_R6 end
+local function boneList(model) return isR15(model) and BONES_R15 or BONES_R6 end
 
 local function C(key, fb)
 	local v = F[key]
@@ -2245,11 +2290,6 @@ local function maxHealthOf(char)
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then return hum.MaxHealth end
 	return 100
-end
-local function isTeammate(p)
-	if not F.IgnoreTeam then return false end
-	if not lp.Team or not p.Team then return false end
-	return lp.Team == p.Team
 end
 local function nameText(p)
 	local t = string.lower(tostring(F.NameType or "display"))
@@ -2364,10 +2404,10 @@ local function setHighlight(model, on, dt)
 	h.Enabled = true
 end
 
-local function ensure(model)
+local function ensure(model, parentGui)
 	local d = objects[model]
 	if d then return d end
-	d = { holder = create("Frame", { Parent = espGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
+	d = { holder = create("Frame", { Parent = parentGui or espGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
 	d.holder.Name = model.Name
 	d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
 	local function mkTxt()
@@ -2409,7 +2449,6 @@ end
 local function drawOK(p, char)
 	if not on() or not char then return false end
 	if F.IgnoreSelf and p == lp then return false end
-	if isTeammate(p) then return false end
 	if healthOf(char) <= 0 then return false end
 	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
 	if not hrp then return false end
@@ -2418,35 +2457,24 @@ local function drawOK(p, char)
 	return true
 end
 
-local function updateModel(p, model)
-	if not drawOK(p, model) then
-		local d = objects[model]
-		if d then
-			d.holder.Visible = false
-			for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
-		end
-		setHighlight(model, false)
-		return
-	end
-	local bx, by, bw, bh = boxSolve(model)
-	if not bx then
-		local d = objects[model]
-		if d then d.holder.Visible = false; for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
-		return
-	end
-	local d = ensure(model)
+local function paintESP(d, model, bx, by, bw, bh, opts)
+	opts = opts or {}
+	local frac = opts.frac or 1
+	local hpText = opts.hpText
+	local nameStr = opts.nameStr
+	local distStr = opts.distStr
+	local cam = opts.cam
+	local screenOffset = opts.screenOffset -- for Drawing lines if coords are local
+	local localCoords = opts.localCoords -- holder uses local offset
+
 	d.holder.Visible = true
-	d.holder.Position = dim_offset(bx, by)
-	d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
-	local hp = healthOf(model)
-	local maxH = maxHealthOf(model)
-	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
-	local prev = lastHP[model]
-	if prev ~= nil and hp < prev - 0.5 then
-		if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick() end
+	if localCoords then
+		d.holder.Position = dim_offset(bx, by)
+	else
+		d.holder.Position = dim_offset(bx, by)
 	end
-	lastHP[model] = hp
-	local dt = dmgT(model)
+	d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
+	local dt = opts.dt or 0
 
 	if F.Box then
 		local isCorner = F.BoxType == "corner"
@@ -2495,45 +2523,88 @@ local function updateModel(p, model)
 	if F.HealthText then
 		d.hpTxt.Visible = true
 		local col = (F.HealthTextDynamic ~= false) and lerpColor(C("HealthTextColor2", rgb(255,0,0)), C("HealthTextColor1", rgb(0,255,0)), frac) or C("HealthTextColor1")
-		d.hpTxt.TextColor3 = col; d.hpTxt.Text = tostring(math.floor(hp + 0.5)); d.hpTxt.TextSize = FONT_SZ
+		d.hpTxt.TextColor3 = col
+		d.hpTxt.Text = tostring(hpText or math.floor((opts.hp or 0) + 0.5))
+		d.hpTxt.TextSize = FONT_SZ
 		if F.HealthBar then d.hpTxt.Position = dim2(0, healthTextXOff(), 1 - frac, -1 + FONT_Y)
 		else d.hpTxt.Position = dim2(0, healthTextXOff(), 0, -1 + FONT_Y) end
 	else d.hpTxt.Visible = false end
 
-	if F.NameESP then
-		d.name.Visible = true; d.name.Text = nameText(p)
+	if F.NameESP and nameStr then
+		d.name.Visible = true; d.name.Text = nameStr
 		d.name.TextColor3 = C("NameColor"); d.name.TextTransparency = A("NameColor"); d.name.TextSize = FONT_SZ
 		d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1, 0, 0, 0); d.name.AnchorPoint = vec2(0.5, 1)
 	else d.name.Visible = false end
 
-	if F.DistanceESP then
-		local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
-		local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
-		local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
-		d.dist.Visible = true; d.dist.Text = math.floor(distv + 0.5) .. "st"
+	if F.DistanceESP and distStr then
+		d.dist.Visible = true; d.dist.Text = distStr
 		d.dist.TextColor3 = C("DistanceColor"); d.dist.TextTransparency = A("DistanceColor"); d.dist.TextSize = FONT_SZ
 		d.dist.Position = dim2(0, 0, 1, 1); d.dist.Size = dim2(1, 0, 0, 12)
 	else d.dist.Visible = false end
 
-	if F.Skeleton then
+	if F.Skeleton and cam then
 		local sk = C("SkeletonColor")
 		if dt > 0 and F.SkeletonVisDmg then sk = lerpColor(sk, C("SkeletonColor2", rgb(255,0,0)), dt) end
 		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
 		local alpha = 1 - A("SkeletonColor")
+		local off = screenOffset or vec2(0, 0)
 		local idx = 0
 		for _, pair in ipairs(boneList(model)) do
 			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
 			if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
-				local sa, oa = w2s(a.Position); local sb, ob = w2s(b.Position)
+				local sa, oa = w2s(a.Position, cam)
+				local sb, ob = w2s(b.Position, cam)
 				if oa and ob then
 					idx += 1; local ln = d.lines[idx]
-					if ln then ln.From, ln.To = sa, sb; ln.Color, ln.Thickness = sk, th; ln.Transparency = alpha; ln.Visible = true end
+					if ln then
+						ln.From = sa + off
+						ln.To = sb + off
+						ln.Color, ln.Thickness, ln.Transparency = sk, th, alpha
+						ln.Visible = true
+					end
 				end
 			end
 		end
 		for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
-	else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
+	else
+		for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
+	end
+end
 
+local function updateModel(p, model)
+	if not drawOK(p, model) then
+		local d = objects[model]
+		if d then
+			d.holder.Visible = false
+			for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
+		end
+		setHighlight(model, false)
+		return
+	end
+	local bx, by, bw, bh = boxSolve(model)
+	if not bx then
+		local d = objects[model]
+		if d then d.holder.Visible = false; for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
+		return
+	end
+	local d = ensure(model, espGui)
+	local hp = healthOf(model)
+	local maxH = maxHealthOf(model)
+	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
+	local prev = lastHP[model]
+	if prev ~= nil and hp < prev - 0.5 then
+		if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick() end
+	end
+	lastHP[model] = hp
+	local dt = dmgT(model)
+	local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
+	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
+	local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
+	paintESP(d, model, bx, by, bw, bh, {
+		frac = frac, hp = hp, hpText = tostring(math.floor(hp + 0.5)),
+		nameStr = nameText(p), distStr = math.floor(distv + 0.5) .. "st",
+		cam = camera, dt = dt, screenOffset = vec2(0, 0),
+	})
 	setHighlight(model, F.Highlight == true, dt)
 end
 
@@ -2565,6 +2636,7 @@ do
 	local world = Library:GetPreviewWorld()
 	local viewport = Library:GetPreviewViewport()
 	local vcam = Library:GetPreviewCamera()
+	local overlay = U.pvOverlay
 	if world and viewport and vcam then
 		local desc = Instance.new("HumanoidDescription")
 		local white = Color3.fromRGB(255, 255, 255)
@@ -2572,7 +2644,7 @@ do
 		desc.LeftArmColor, desc.RightArmColor = white, white
 		desc.LeftLegColor, desc.RightLegColor = white, white
 		desc.Shirt, desc.Pants, desc.GraphicTShirt = 0, 0, 0
-		desc.Face = 86487766
+		desc.Face = 0
 		local ok, model = pcall(function()
 			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
 		end)
@@ -2580,8 +2652,16 @@ do
 			for _, d in ipairs(model:GetDescendants()) do
 				if d:IsA("BasePart") then
 					d.Anchored = true; d.CanCollide = false; d.Color = white; d.Material = Enum.Material.SmoothPlastic
-				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") then
+				elseif d:IsA("Decal") or d:IsA("Texture") then
 					d:Destroy()
+				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") or d:IsA("ShirtGraphic") then
+					d:Destroy()
+				end
+			end
+			local head = model:FindFirstChild("Head")
+			if head then
+				for _, c in ipairs(head:GetChildren()) do
+					if c:IsA("Decal") or c:IsA("Texture") then c:Destroy() end
 				end
 			end
 			local hrp = model:FindFirstChild("HumanoidRootPart")
@@ -2594,9 +2674,9 @@ do
 			local ok2, cf, size = pcall(function() return model:GetBoundingBox() end)
 			if ok2 and cf then
 				U.pvFocus = cf.Position
-				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.55
+				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.05
 			end
-			U.pvYaw = math.pi; U.pvPitch = 0.12; U.pvDistScale = 1.35
+			U.pvYaw = math.pi; U.pvPitch = 0.08; U.pvDistScale = 1.0
 			U.pvUpdateCam()
 		end
 
@@ -2624,26 +2704,49 @@ do
 				local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
 				local m = UIS:GetMouseLocation()
 				if m.X < ap.X or m.X > ap.X + as.X or m.Y < ap.Y or m.Y > ap.Y + as.Y then return end
-				U.pvDistScale = math.clamp((U.pvDistScale or 1.35) - input.Position.Z * 0.1, 0.5, 3)
+				U.pvDistScale = math.clamp((U.pvDistScale or 1) - input.Position.Z * 0.08, 0.45, 2.5)
 				U.pvUpdateCam()
 			end
 		end)
 
-		local prevGui = Instance.new("ScreenGui")
-		prevGui.Name = "SM_PREVIEW_ESP"
-		prevGui.IgnoreGuiInset = true
-		prevGui.ResetOnSpawn = false
-		prevGui.Parent = guiParent
+		local prevDemo = { hp = 100, maxHp = 100, dist = 0, distDir = 1, nextHp = 0 }
+		task.spawn(function()
+			while U.running do
+				task.wait(2)
+				local maxH = 100
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p.Character then
+						local m = maxHealthOf(p.Character)
+						if m > maxH then maxH = m end
+					end
+				end
+				prevDemo.maxHp = maxH
+				prevDemo.hp = math.random() * maxH
+				prevDemo.nextHp = tick()
+			end
+		end)
+		task.spawn(function()
+			while U.running do
+				task.wait(0.03)
+				prevDemo.dist = prevDemo.dist + prevDemo.distDir
+				if prevDemo.dist >= 100 then prevDemo.dist = 100; prevDemo.distDir = -1
+				elseif prevDemo.dist <= 0 then prevDemo.dist = 0; prevDemo.distDir = 1 end
+			end
+		end)
+
 		local prevObj = {}
 		local function ensurePrev()
-			if prevObj.holder then return prevObj end
-			local d = { holder = create("Frame", { Parent = prevGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
+			if prevObj.holder and prevObj.holder.Parent then return prevObj end
+			local parent = overlay or viewport.Parent
+			prevObj = {}
+			local d = { holder = create("Frame", { Parent = parent, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
 			d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
 			local function mkTxt()
 				local t = create("TextLabel", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, FontFace = FONT, TextSize = FONT_SZ, TextStrokeTransparency = 1, Visible = false })
 				addOutline(t); return t
 			end
 			d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
+			d.dist = mkTxt(); d.dist.TextXAlignment = Enum.TextXAlignment.Center
 			d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
 			local w = healthbarWidth()
 			d.healthbar_holder = create("Frame", { Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false, Position = dim2(0,0,0,-1), Size = dim2(0, w+2, 1, 2) })
@@ -2653,101 +2756,40 @@ do
 			prevObj = d
 			return d
 		end
+
 		local function updatePreviewESP()
 			local model = U.pvModel
 			local panel = U.pvPanel
 			if not model or not panel or not panel.Visible then
 				if prevObj.holder then prevObj.holder.Visible = false end
 				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
-				if model then setHighlight(model, false) end
 				return
 			end
-			local ap = viewport.AbsolutePosition
 			local bx, by, bw, bh = boxSolve(model, vcam)
 			if not bx then
 				if prevObj.holder then prevObj.holder.Visible = false end
 				return
 			end
 			local d = ensurePrev()
-			d.holder.Visible = true
-			d.holder.Position = dim_offset(ap.X + bx, ap.Y + by)
-			d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
-			local frac = 0.75
-
-			if F.Box then
-				local isCorner = F.BoxType == "corner"
-				if (isCorner and d.box_handler) or (not isCorner and d.corners) then destroyBoxes(d) end
-				buildBoxes(d)
-				local boxColor, boxT = C("BoxColor"), A("BoxColor")
-				if isCorner and d.corners then
-					local w, h = bw, bh
-					local pct = math.clamp(tonumber(F.BoxCornerLength) or 50, 0, 100) / 100
-					local t, bt = 1, 1
-					local lenX = math.max(math.floor(w * pct * 0.5), 2)
-					local lenY = math.max(math.floor(h * pct * 0.5), 2)
-					local segs = d.corners
-					local function set_pair(bi, ci, x, y, sw, sh)
-						local b = segs[bi]; b.Visible = true; b.BackgroundColor3 = rgb(0,0,0); b.BackgroundTransparency = boxT
-						b.Position = dim_offset(x - bt, y - bt); b.Size = dim_offset(sw + bt * 2, sh + bt * 2)
-						local c = segs[ci]; c.Visible = true; c.BackgroundColor3 = boxColor; c.BackgroundTransparency = boxT
-						c.Position = dim_offset(x, y); c.Size = dim_offset(sw, sh)
-					end
-					set_pair(1,9, 0,0, lenX,t); set_pair(2,10, 0,t, t,lenY-t)
-					set_pair(3,11, w-lenX,0, lenX,t); set_pair(4,12, w-t,t, t,lenY-t)
-					set_pair(5,13, 0,h-t, lenX,t); set_pair(6,14, 0,h-lenY, t,lenY-t)
-					set_pair(7,15, w-lenX,h-t, lenX,t); set_pair(8,16, w-t,h-lenY, t,lenY-t)
-				elseif d.box_color then
-					d.box_color.Color = boxColor; d.box_color.Transparency = boxT
-					if d.box_outline then d.box_outline.Transparency = boxT end
-					if d.outline_stroke then d.outline_stroke.Transparency = boxT end
-				end
-			else destroyBoxes(d) end
-
-			if F.BoxFill then
-				d.fill.Visible = true; d.fill.Size = dim2(1,0,1,0)
-				d.fill.BackgroundColor3 = C("BoxFillColor"); d.fill.BackgroundTransparency = A("BoxFillColor")
-			else d.fill.Visible = false end
-
-			if F.HealthBar then
-				d.healthbar_holder.Visible = true
-				local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1")
-				d.healthbar_fill.BackgroundColor3 = col
-				d.healthbar_fill.Size = dim2(1,0,frac,0); d.healthbar_fill.Position = dim2(0,0,1-frac,0)
-			else d.healthbar_holder.Visible = false end
-
-			if F.HealthText then
-				d.hpTxt.Visible = true; d.hpTxt.Text = "75"; d.hpTxt.TextColor3 = C("HealthTextColor1"); d.hpTxt.TextSize = FONT_SZ
-				d.hpTxt.Position = dim2(0, healthTextXOff(), 1-frac, -1+FONT_Y)
-			else d.hpTxt.Visible = false end
-
-			if F.NameESP then
-				d.name.Visible = true; d.name.Text = "preview"; d.name.TextColor3 = C("NameColor"); d.name.TextSize = FONT_SZ
-				d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1,0,0,0)
-			else d.name.Visible = false end
-
-			if F.Skeleton then
-				local skc = C("SkeletonColor"); local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
-				local idx = 0
-				for _, pair in ipairs(boneList(model)) do
-					local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
-					if a and b then
-						local sa, oa = vcam:WorldToViewportPoint(a.Position)
-						local sb, ob = vcam:WorldToViewportPoint(b.Position)
-						if oa and sa.Z > 0 and ob and sb.Z > 0 then
-							idx += 1; local ln = d.lines[idx]
-							if ln then
-								ln.From = vec2(ap.X + sa.X, ap.Y + sa.Y)
-								ln.To = vec2(ap.X + sb.X, ap.Y + sb.Y)
-								ln.Color, ln.Thickness, ln.Visible = skc, th, true
-							end
-						end
-					end
-				end
-				for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
-			else for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
-
-			setHighlight(model, F.Highlight == true, 0)
+			local frac = math.clamp(prevDemo.hp / math.max(prevDemo.maxHp, 1), 0, 1)
+			local ap = viewport.AbsolutePosition
+			paintESP(d, model, bx, by, bw, bh, {
+				frac = frac,
+				hp = prevDemo.hp,
+				hpText = tostring(math.floor(prevDemo.hp + 0.5)),
+				nameStr = "preview",
+				distStr = math.floor(prevDemo.dist + 0.5) .. "st",
+				cam = vcam,
+				dt = 0,
+				screenOffset = vec2(ap.X, ap.Y),
+				localCoords = true,
+			})
+			-- try highlight on preview (WorldModel); may no-op on some clients
+			pcall(function()
+				setHighlight(model, F.Highlight == true, 0)
+			end)
 		end
+
 		RunService:BindToRenderStep("SM_PREVIEW_ESP", Enum.RenderPriority.Camera.Value + 2, function()
 			if not U.running then return end
 			updatePreviewESP()
