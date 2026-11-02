@@ -28,9 +28,10 @@ U.THEME_KEYS = {
 }
 
 function U.newReg()
-	return { accents = {}, borders = {}, sectionBorders = {}, elementBorders = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {} }
+	return { accents = {}, borders = {}, sectionBorders = {}, elementBorders = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {}, labels = {} }
 end
 U.themeReg = U.themeReg or U.newReg()
+U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
@@ -347,6 +348,10 @@ function U.applyTheme()
 	for _, f in ipairs(R.sectionBgs) do if f.Parent then f.BackgroundColor3 = T.SectionBg end end
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
 	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = T.Background end
+	if U.pvPanel and U.pvPanel.Parent then U.pvPanel.BackgroundColor3 = T.Background end
+	for _, l in ipairs(R.labels or {}) do
+		if l and l.Parent then l.TextColor3 = T.Text end
+	end
 	U.refreshMenuTextColors()
 	U.refreshKeybindList()
 end
@@ -1447,8 +1452,8 @@ function U.buildFloaters()
 	end)
 	local function ping()
 		local ok, v = pcall(function()
-			if lp and lp.GetNetworkPing then
-				return math.floor(lp:GetNetworkPing() * 1000 + 0.5)
+			if U.lp and U.lp.GetNetworkPing then
+				return math.floor(U.lp:GetNetworkPing() * 1000 + 0.5)
 			end
 			return math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
 		end)
@@ -1552,7 +1557,7 @@ function U.buildFloaters()
 		Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(secTop + U.SEC_GAP)),
 	}, pv)
 	U.stroke(pvSection, "SectionBorder")
-	table.insert(U.themeReg.sectionBgs or {}, pvSection)
+	table.insert(U.themeReg.sectionBgs, pvSection)
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "View"
 	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
