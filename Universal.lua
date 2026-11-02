@@ -1269,22 +1269,23 @@ function U.buildShell()
 	U.gui = U.new("ScreenGui", { Name = "wavelength", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, U.guiParent())
 
 	local shell = U.new("Frame", {
-		Name = "Shell", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, ClipsDescendants = true, Active = true,
+		Name = "Shell", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, ClipsDescendants = true, Active = true,
 		Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.BODY_H + U.LINE_H), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -(U.TITLE_H + U.BODY_H) / 2),
 	}, U.gui)
 	U.shell = shell
 	U.stroke(shell, "Border")
+	table.insert(U.themeReg.bodyBgs, shell)
 
 	U.accent = U.new("Frame", { Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 5 }, shell)
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, U.accent))
 
 	U.titleBar = U.new("Frame", {
-		BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TITLE_H), Position = UDim2.fromOffset(0, U.LINE_H),
+		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TITLE_H), Position = UDim2.fromOffset(0, U.LINE_H),
 	}, shell)
 	U.label(U.titleBar, "wavelength", { Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(8, 0) })
 
 	U.body = U.new("Frame", {
-		Name = "Body", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
+		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
 		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H), ClipsDescendants = true, Active = true,
 	}, shell)
 	table.insert(U.themeReg.bodyBgs, U.body)
@@ -1327,7 +1328,9 @@ end
 
 function U.dock(kind)
 	local f = panelOf(kind)
-	if not U[kind .. "Docked"] or not f or not f.Parent or not U.shell or U.vflags[flagOf(kind)] ~= true then return end
+	if not U[kind .. "Docked"] or not f or not f.Parent or not U.shell then return end
+	local fl = flagOf(kind)
+	if fl ~= "" and U.vflags[fl] == false then return end
 	f.AnchorPoint, f.Position = U.dockPos(kind, panelH(f))
 end
 function U.dockWatermark() U.dock("wm") end
@@ -1371,8 +1374,14 @@ function U.overlapsSnap(kind, frame)
 	local g = U[kind .. "SnapGhost"]
 	if not g or not g.Visible then return false end
 	local gp, gs, fp, fs = g.AbsolutePosition, g.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
-	local cx, cy = fp.X + fs.X * 0.5, fp.Y + fs.Y * 0.5
-	return cx >= gp.X and cx <= gp.X + gs.X and cy >= gp.Y and cy <= gp.Y + gs.Y
+	local cx = fp.X + fs.X * 0.5
+	local cy = fp.Y + fs.Y * 0.5
+	if kind == "pv" then
+		-- ghost is header-sized; test against header center so full panel can reattach
+		cy = fp.Y + math.min(fs.Y, (U.LINE_H + U.TITLE_H)) * 0.5
+	end
+	local pad = 12
+	return cx >= gp.X - pad and cx <= gp.X + gs.X + pad and cy >= gp.Y - pad and cy <= gp.Y + gs.Y + pad
 end
 
 function U.syncFloatingVisibility()
@@ -1519,25 +1528,19 @@ function U.buildFloaters()
 	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
 	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
 	pv.Size = UDim2.fromOffset(PRE_W, shellH)
-	pv.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+	pv.BackgroundColor3 = U.theme.Background
 	pv.Active = true
 	pv.Visible = false
 	pv.ClipsDescendants = true
 	U.pvPanel = pv
 	U.pvDocked = true
-	local pvTitleBar = U.new("Frame", {
-		Name = "TitleBar",
-		BackgroundColor3 = Color3.fromRGB(28, 28, 28),
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, U.TITLE_H),
-		Position = UDim2.fromOffset(0, U.LINE_H),
-		ZIndex = 2,
-	}, pv)
-	U.label(pvTitleBar, "preview", {
-		Position = UDim2.fromOffset(6, 0),
-		Size = UDim2.new(1, -12, 1, 0),
+	table.insert(U.themeReg.bodyBgs, pv)
+	local pvTitleLbl = U.label(pv, "preview", {
+		Position = UDim2.fromOffset(6, U.LINE_H),
+		Size = UDim2.new(1, -12, 0, U.TITLE_H),
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
+	table.insert(U.themeReg.labels, pvTitleLbl)
 	-- section top matches main UI: body starts at LINE_H+TITLE_H, sections at SEC_GAP
 	local secTop = U.LINE_H + U.TITLE_H + U.SEC_GAP
 	local pvSection = U.new("Frame", {
@@ -2181,15 +2184,19 @@ do
 	local sk = players:AddToggle({ Name = "skeleton", Flag = "Skeleton", Default = false })
 	sk:AddColorpicker({ Flag = "SkeletonColor", Default = Color3.fromRGB(255, 255, 255), Name = "skeleton" })
 	sk:AddColorpicker({ Flag = "SkeletonColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	sk:AddColorpicker({ Flag = "SkeletonHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
 	sk:AddToggle({ Name = "visualize damage", Flag = "SkeletonVisDmg", Default = false })
+	sk:AddToggle({ Name = "visualize healing", Flag = "SkeletonVisHeal", Default = false })
 
 	local hl = players:AddToggle({ Name = "highlight", Flag = "Highlight", Default = false })
 	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
 	hl:AddColorpicker({ Flag = "HighlightOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
 	hl:AddColorpicker({ Flag = "HighlightDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
+	hl:AddColorpicker({ Flag = "HighlightHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	hl:AddDropdown({ Name = "type", Flag = "HighlightType", Items = { "always", "occluded" }, Default = "always", Limit = 1 })
 	hl:AddToggle({ Name = "visualize damage", Flag = "HighlightVisDmg", Default = false })
+	hl:AddToggle({ Name = "visualize healing", Flag = "HighlightVisHeal", Default = false })
 end
 
 Window:AddTab("dex")
@@ -2232,7 +2239,7 @@ U.onFlag("VisParent", function()
 	end
 end)
 
-local objects, lastHP, dmgStart, highlights = {}, {}, {}, {}
+local objects, lastHP, dmgStart, healStart, highlights = {}, {}, {}, {}, {}
 local BONES_R15 = {
 	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
 	{"UpperTorso","LeftUpperArm"},{"UpperTorso","RightUpperArm"},
@@ -2413,10 +2420,16 @@ local function setHighlight(model, on, dt)
 		highlights[model] = h
 	end
 	local fill, outline = C("HighlightFill"), C("HighlightOutline")
-	if dt and dt > 0 and F.HighlightVisDmg then
+	local dtDmg = type(dt) == "table" and (dt.dmg or 0) or (dt or 0)
+	local dtHeal = type(dt) == "table" and (dt.heal or 0) or 0
+	if dtDmg > 0 and F.HighlightVisDmg then
 		local dmg = C("HighlightDamage", rgb(255,0,0))
-		fill = lerpColor(fill, dmg, dt)
-		outline = lerpColor(outline, dmg, dt)
+		fill = lerpColor(fill, dmg, dtDmg)
+		outline = lerpColor(outline, dmg, dtDmg)
+	elseif dtHeal > 0 and F.HighlightVisHeal then
+		local heal = C("HighlightHealColor", rgb(0,255,0))
+		fill = lerpColor(fill, heal, dtHeal)
+		outline = lerpColor(outline, heal, dtHeal)
 	end
 	h.FillColor = fill
 	h.OutlineColor = outline
@@ -2460,15 +2473,17 @@ local function destroy(model)
 	if d.holder then d.holder:Destroy() end
 	setHighlight(model, false)
 	for _, ln in pairs(d.lines) do pcall(function() ln.Visible=false; ln:Remove() end) end
-	objects[model] = nil; lastHP[model] = nil; dmgStart[model] = nil
+	objects[model] = nil; lastHP[model] = nil; dmgStart[model] = nil; healStart[model] = nil
 end
-local function dmgT(model)
-	local s = dmgStart[model]
+local function flashT(map, model)
+	local s = map[model]
 	if not s then return 0 end
 	local e = tick() - s
-	if e >= 2 then dmgStart[model] = nil; return 0 end
+	if e >= 2 then map[model] = nil; return 0 end
 	return 1 - (e / 2)
 end
+local function dmgT(model) return flashT(dmgStart, model) end
+local function healT(model) return flashT(healStart, model) end
 local function drawOK(p, char)
 	if not on() or not char then return false end
 	if F.IgnoreSelf and p == lp then return false end
@@ -2567,11 +2582,23 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 
 	if F.Skeleton and cam then
 		local sk = C("SkeletonColor")
-		if dt > 0 and F.SkeletonVisDmg then sk = lerpColor(sk, C("SkeletonColor2", rgb(255,0,0)), dt) end
+		local dtDmg = opts.dtDmg or dt or 0
+		local dtHeal = opts.dtHeal or 0
+		if dtDmg > 0 and F.SkeletonVisDmg then
+			sk = lerpColor(sk, C("SkeletonColor2", rgb(255,0,0)), dtDmg)
+		elseif dtHeal > 0 and F.SkeletonVisHeal then
+			sk = lerpColor(sk, C("SkeletonHealColor", rgb(0,255,0)), dtHeal)
+		end
 		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
 		local alpha = 1 - A("SkeletonColor")
 		local off = screenOffset or vec2(0, 0)
 		local vf = opts.viewportFrame
+		local insetY = 0
+		if vf then
+			-- Drawing API often uses inset space while AbsolutePosition is full-screen with IgnoreGuiInset
+			local ok, inset = pcall(function() return game:GetService("GuiService"):GetGuiInset() end)
+			if ok and inset then insetY = inset.Y end
+		end
 		local idx = 0
 		for _, pair in ipairs(boneList(model)) do
 			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
@@ -2581,8 +2608,8 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 				if oa and ob then
 					idx += 1; local ln = d.lines[idx]
 					if ln then
-						ln.From = sa + off
-						ln.To = sb + off
+						ln.From = Vector2.new(sa.X + off.X, sa.Y + off.Y + insetY)
+						ln.To = Vector2.new(sb.X + off.X, sb.Y + off.Y + insetY)
 						ln.Color, ln.Thickness, ln.Transparency = sk, th, alpha
 						ln.Visible = true
 					end
@@ -2616,20 +2643,25 @@ local function updateModel(p, model)
 	local maxH = maxHealthOf(model)
 	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
 	local prev = lastHP[model]
-	if prev ~= nil and hp < prev - 0.5 then
-		if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick() end
+	if prev ~= nil then
+		if hp < prev - 0.5 then
+			if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick(); healStart[model] = nil end
+		elseif hp > prev + 0.5 then
+			if F.SkeletonVisHeal or F.HighlightVisHeal then healStart[model] = tick(); dmgStart[model] = nil end
+		end
 	end
 	lastHP[model] = hp
 	local dt = dmgT(model)
+	local ht = healT(model)
 	local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
 	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
 	local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
 	paintESP(d, model, bx, by, bw, bh, {
 		frac = frac, hp = hp, hpText = tostring(math.floor(hp + 0.5)),
 		nameStr = nameText(p), distStr = math.floor(distv + 0.5) .. "st",
-		cam = camera, dt = dt, screenOffset = vec2(0, 0),
+		cam = camera, dt = dt, dtDmg = dt, dtHeal = ht, screenOffset = vec2(0, 0),
 	})
-	setHighlight(model, F.Highlight == true, dt)
+	setHighlight(model, F.Highlight == true, { dmg = dt, heal = ht })
 end
 
 local function clearAll()
@@ -2733,10 +2765,10 @@ do
 			end
 		end)
 
-		local prevDemo = { hp = 100, maxHp = 100, dist = 0, distDir = 1, nextHp = 0 }
+		local prevDemo = { hp = 100, maxHp = 100, dist = 0, distDir = 1, hpDir = -1, lastHp = 100 }
 		task.spawn(function()
 			while U.running do
-				task.wait(2)
+				task.wait(0.05)
 				local maxH = 100
 				for _, p in ipairs(Players:GetPlayers()) do
 					if p.Character then
@@ -2745,15 +2777,16 @@ do
 					end
 				end
 				prevDemo.maxHp = maxH
-				prevDemo.hp = math.random() * maxH
-				prevDemo.nextHp = tick()
+				prevDemo.hp = prevDemo.hp + prevDemo.hpDir * (maxH / 100)
+				if prevDemo.hp >= maxH then prevDemo.hp = maxH; prevDemo.hpDir = -1
+				elseif prevDemo.hp <= 0 then prevDemo.hp = 0; prevDemo.hpDir = 1 end
 			end
 		end)
 		task.spawn(function()
 			while U.running do
 				task.wait(0.03)
 				prevDemo.dist = prevDemo.dist + prevDemo.distDir
-				if prevDemo.dist >= 100 then prevDemo.dist = 100; prevDemo.distDir = -1
+				if prevDemo.dist >= 99 then prevDemo.dist = 99; prevDemo.distDir = -1
 				elseif prevDemo.dist <= 0 then prevDemo.dist = 0; prevDemo.distDir = 1 end
 			end
 		end)
@@ -2797,6 +2830,25 @@ do
 			local d = ensurePrev()
 			local frac = math.clamp(prevDemo.hp / math.max(prevDemo.maxHp, 1), 0, 1)
 			local ap = viewport.AbsolutePosition
+			local dtDmg, dtHeal = 0, 0
+			if prevDemo.lastHp ~= nil then
+				if prevDemo.hp < prevDemo.lastHp - 0.01 then
+					prevDemo.dmgAt = tick()
+					prevDemo.healAt = nil
+				elseif prevDemo.hp > prevDemo.lastHp + 0.01 then
+					prevDemo.healAt = tick()
+					prevDemo.dmgAt = nil
+				end
+			end
+			prevDemo.lastHp = prevDemo.hp
+			if prevDemo.dmgAt then
+				local e = tick() - prevDemo.dmgAt
+				if e < 2 then dtDmg = 1 - (e / 2) else prevDemo.dmgAt = nil end
+			end
+			if prevDemo.healAt then
+				local e = tick() - prevDemo.healAt
+				if e < 2 then dtHeal = 1 - (e / 2) else prevDemo.healAt = nil end
+			end
 			paintESP(d, model, bx, by, bw, bh, {
 				frac = frac,
 				hp = prevDemo.hp,
@@ -2804,14 +2856,15 @@ do
 				nameStr = "preview",
 				distStr = math.floor(prevDemo.dist + 0.5) .. "st",
 				cam = vcam,
-				dt = 0,
+				dt = dtDmg,
+				dtDmg = dtDmg,
+				dtHeal = dtHeal,
 				screenOffset = vec2(ap.X, ap.Y),
 				viewportFrame = viewport,
 				localCoords = true,
 			})
-			-- try highlight on preview (WorldModel); may no-op on some clients
 			pcall(function()
-				setHighlight(model, F.Highlight == true, 0)
+				setHighlight(model, F.Highlight == true, { dmg = dtDmg, heal = dtHeal })
 			end)
 		end
 
