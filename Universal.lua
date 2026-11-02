@@ -2982,30 +2982,66 @@ do
 		local expanded = { [game] = true }
 		local treeConns = {}
 		local rowOf = {}
-		local listOrder = 0
+		local rmdClasses = {} -- Name -> {Order=number, Icon=number}
+		local explorerOrders = {}
+		local rmdReady = false
 
-		local CLASS_ICON = {
-			Workspace=19, Folder=77, Part=1, MeshPart=8, UnionOperation=1, NegateOperation=1, Model=54,
-			Humanoid=9, Camera=5, Script=6, LocalScript=18, ModuleScript=56, RemoteEvent=75, RemoteFunction=74,
-			BindableEvent=67, BindableFunction=66, ScreenGui=47, Frame=48, TextLabel=50, TextButton=51, TextBox=51,
-			ImageLabel=49, ImageButton=49, ScrollingFrame=48, BillboardGui=47, SurfaceGui=47, Sound=31,
-			Attachment=34, Motor6D=34, Weld=34, WeldConstraint=34, ProximityPrompt=60, ClickDetector=41,
-			Decal=7, Texture=10, SpecialMesh=8, Shirt=43, Pants=44, ShirtGraphic=45, Accessory=32, Tool=17,
-			Player=12, Players=21, Lighting=13, ReplicatedStorage=70, ReplicatedFirst=70, ServerStorage=69,
-			ServerScriptService=14, StarterGui=46, StarterPack=20, StarterPlayer=79, Teams=80, Team=80,
-			SoundService=31, Chat=33, CoreGui=46, Configuration=58, BoolValue=4, IntValue=4, NumberValue=4,
-			StringValue=4, ObjectValue=4, CFrameValue=4, Vector3Value=4, Color3Value=4, Highlight=53,
-			ParticleEmitter=36, Fire=36, Smoke=36, Sparkles=36, Trail=36, Beam=36, PointLight=13, SpotLight=13,
-			SurfaceLight=13, Seat=35, VehicleSeat=35, SpawnLocation=25, UIListLayout=48, UIGridLayout=48,
-			UIPadding=48, UICorner=48, UIStroke=48, UIGradient=48, WorldModel=54, ViewportFrame=48,
-			VideoFrame=48, CanvasGroup=48, RunService=0, UserInputService=0, TweenService=0, HttpService=0,
-			Debris=0, InsertService=0, CollectionService=0, PathfindingService=0, MaterialService=13,
-			HopperBin=17, TouchTransmitter=37, Bone=34, RayValue=4,
-		}
+		local function parseRMD(xml)
+			if type(xml) ~= "string" or #xml < 100 then return end
+			local classes = {}
+			for block in xml:gmatch('<Item class="ReflectionMetadataClass">(.-)</Item>') do
+				local name = block:match('<string name="Name">([^<]+)</string>')
+				if name then
+					local order = tonumber(block:match('<string name="ExplorerOrder">([^<]+)</string>')) or 9999
+					local icon = tonumber(block:match('<string name="ExplorerImageIndex">([^<]+)</string>')) or 0
+					classes[name] = { Order = order, Icon = icon }
+				end
+			end
+			if next(classes) then
+				rmdClasses = classes
+				explorerOrders = {}
+				rmdReady = true
+			end
+		end
 
-		local function iconFor(className)
-			local idx = CLASS_ICON[className] or 0
-			return Vector2.new(idx * 16, 0)
+		task.spawn(function()
+			local ok, xml = pcall(function()
+				return game:HttpGet("https://raw.githubusercontent.com/CloneTrooper1019/Roblox-Client-Tracker/roblox/ReflectionMetadata.xml")
+			end)
+			if ok then
+				parseRMD(xml)
+				if dexOn then
+					rebuildVisible()
+					if selected then refreshProps() end
+				end
+			end
+		end)
+
+		local function classOrder(className)
+			local cached = explorerOrders[className]
+			if cached then return cached end
+			local entry = rmdClasses[className]
+			local order = entry and entry.Order or 9999
+			explorerOrders[className] = order
+			return order
+		end
+
+		local function classIcon(className)
+			local entry = rmdClasses[className]
+			return entry and entry.Icon or 0
+		end
+
+		local function nodeSorter(a, b)
+			local ao, bo = classOrder(a.ClassName), classOrder(b.ClassName)
+			if ao ~= bo then return ao < bo end
+			return a.Name:lower() < b.Name:lower()
+		end
+
+		local function childrenOf(inst)
+			local ok, ch = pcall(function() return inst:GetChildren() end)
+			if not ok then return {} end
+			table.sort(ch, nodeSorter)
+			return ch
 		end
 
 		local gap = U.SEC_GAP
@@ -3015,18 +3051,17 @@ do
 		local function pane(title, col)
 			local x = col == 1 and gap or (gap * 2 + colW)
 			local f = U.section(page, title, col, 1, 1)
-			-- force geometry
 			f.Size = UDim2.fromOffset(colW, colH)
 			f.Position = UDim2.fromOffset(x, gap)
-			-- find content area under header line
 			local scroll = Instance.new("ScrollingFrame")
 			scroll.Name = "Content"
 			scroll.BackgroundTransparency = 1
 			scroll.BorderSizePixel = 0
-			scroll.ScrollBarThickness = 3
-			scroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 70)
+			scroll.ScrollBarThickness = 0
+			scroll.ScrollBarImageTransparency = 1
 			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 			scroll.CanvasSize = UDim2.new()
+			scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 			scroll.Size = UDim2.new(1, -8, 1, -22)
 			scroll.Position = UDim2.fromOffset(4, 20)
 			scroll.Parent = f
@@ -3058,9 +3093,9 @@ do
 		explList.Size = UDim2.new(1, -8, 1, -40)
 
 		local function disconnectTree(inst)
-			local c = treeConns[inst]
-			if c then
-				for _, x in ipairs(c) do pcall(function() x:Disconnect() end) end
+			local cns = treeConns[inst]
+			if cns then
+				for _, x in ipairs(cns) do pcall(function() x:Disconnect() end) end
 				treeConns[inst] = nil
 			end
 		end
@@ -3068,59 +3103,90 @@ do
 		local function clearExplorer()
 			for inst, row in pairs(rowOf) do
 				disconnectTree(inst)
-				if row and row.Parent then row:Destroy() end
+				if row then pcall(function() row:Destroy() end) end
 			end
 			rowOf = {}
-			listOrder = 0
 		end
 
 		local function fmt(v)
 			local t = typeof(v)
-			if t == "Instance" then return v:GetFullName()
-			elseif t == "Color3" then return string.format("%d, %d, %d", v.R*255, v.G*255, v.B*255)
-			elseif t == "Vector3" then return string.format("%.2f, %.2f, %.2f", v.X, v.Y, v.Z)
-			elseif t == "Vector2" then return string.format("%.2f, %.2f", v.X, v.Y)
-			elseif t == "CFrame" then local p=v.Position return string.format("%.1f, %.1f, %.1f", p.X,p.Y,p.Z)
-			elseif t == "UDim2" then return string.format("{%.2f,%d},{%.2f,%d}", v.X.Scale,v.X.Offset,v.Y.Scale,v.Y.Offset)
-			elseif t == "EnumItem" then return v.Name
-			elseif t == "boolean" or t == "number" or t == "string" then return tostring(v)
+			if t == "Instance" then
+				local ok, n = pcall(function() return v:GetFullName() end)
+				return ok and n or tostring(v)
+			elseif t == "Color3" then
+				return string.format("%d, %d, %d", math.floor(v.R * 255 + 0.5), math.floor(v.G * 255 + 0.5), math.floor(v.B * 255 + 0.5))
+			elseif t == "Vector3" then
+				return string.format("%.3f, %.3f, %.3f", v.X, v.Y, v.Z)
+			elseif t == "Vector2" then
+				return string.format("%.3f, %.3f", v.X, v.Y)
+			elseif t == "CFrame" then
+				local p = v.Position
+				return string.format("%.3f, %.3f, %.3f", p.X, p.Y, p.Z)
+			elseif t == "UDim2" then
+				return string.format("{%.3f, %d}, {%.3f, %d}", v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
+			elseif t == "UDim" then
+				return string.format("%.3f, %d", v.Scale, v.Offset)
+			elseif t == "EnumItem" then
+				return v.Name
+			elseif t == "BrickColor" then
+				return v.Name
+			elseif t == "boolean" or t == "number" or t == "string" then
+				return tostring(v)
+			elseif t == "nil" then
+				return "nil"
 			end
-			return tostring(t)
+			return tostring(v)
 		end
 
-		local function refreshProps()
+		function refreshProps()
 			for _, ch in ipairs(propList:GetChildren()) do
-				if ch:IsA("Frame") then ch:Destroy() end
+				if not ch:IsA("UIListLayout") then ch:Destroy() end
 			end
-			if not selected or not selected.Parent and selected ~= game then
-				selected = nil
-				return
-			end
+			if not selected then return end
+			local okAlive = pcall(function() return selected.ClassName end)
+			if not okAlive then selected = nil return end
+
 			local entries = {}
-			local function add(k, v) entries[#entries+1] = {k, v} end
+			local seen = {}
+			local function add(k, v)
+				if seen[k] then return end
+				seen[k] = true
+				entries[#entries + 1] = { k, v }
+			end
+
 			add("Name", selected.Name)
 			add("ClassName", selected.ClassName)
-			pcall(function() add("Parent", selected.Parent and selected.Parent.Name or "nil") end)
-			if getproperties then
+			pcall(function()
+				add("Parent", selected.Parent and selected.Parent:GetFullName() or "nil")
+			end)
+
+			local got = false
+			if type(getproperties) == "function" then
 				local ok, list = pcall(getproperties, selected)
 				if ok and type(list) == "table" then
+					got = true
 					for k, v in pairs(list) do
-						if k ~= "Name" and k ~= "ClassName" and k ~= "Parent" then
-							add(tostring(k), v)
+						local key = tostring(k)
+						if key ~= "Name" and key ~= "ClassName" and key ~= "Parent" then
+							add(key, v)
 						end
 					end
 				end
-			else
-				for _, n in ipairs({
-					"Archivable","Anchored","CanCollide","CanQuery","CanTouch","CastShadow","Transparency",
-					"Reflectance","Material","Color","BrickColor","Size","Position","Orientation","CFrame",
-					"Velocity","Enabled","Value","Text","TextColor3","TextSize","Image","ImageColor3","Visible",
-					"ZIndex","BackgroundColor3","BackgroundTransparency","BorderSizePixel","LayoutOrder",
-					"Health","MaxHealth","WalkSpeed","JumpPower","JumpHeight","HipHeight","DisplayName","UserId",
-					"Brightness","ClockTime","Ambient","OutdoorAmbient","FogEnd","FogStart","Volume","PlaybackSpeed",
-					"FillColor","OutlineColor","FillTransparency","OutlineTransparency","DepthMode","Adornee",
-					"AlwaysOnTop","PrimaryPart","Massless","WorldPivot"
-				}) do
+			end
+			if not got then
+				local names = {
+					"Archivable", "Anchored", "CanCollide", "CanQuery", "CanTouch", "CastShadow", "Transparency",
+					"Reflectance", "Material", "Color", "BrickColor", "Size", "Position", "Orientation", "CFrame",
+					"Velocity", "RotVelocity", "Enabled", "Value", "Text", "TextColor3", "TextSize", "TextStrokeColor3",
+					"Image", "ImageColor3", "Visible", "ZIndex", "BackgroundColor3", "BackgroundTransparency",
+					"BorderSizePixel", "LayoutOrder", "AutomaticSize", "Health", "MaxHealth", "WalkSpeed", "JumpPower",
+					"JumpHeight", "HipHeight", "DisplayName", "UserId", "AccountAge", "Team", "TeamColor", "Brightness",
+					"ClockTime", "Ambient", "OutdoorAmbient", "FogColor", "FogEnd", "FogStart", "GlobalShadows",
+					"Volume", "PlaybackSpeed", "Playing", "Looped", "FillColor", "OutlineColor", "FillTransparency",
+					"OutlineTransparency", "DepthMode", "Adornee", "AlwaysOnTop", "PrimaryPart", "Massless",
+					"WorldPivot", "MeshId", "TextureId", "AnimationId", "SoundId", "Source",
+				}
+				for _, n in ipairs(names) do
 					pcall(function()
 						local v = selected[n]
 						if v ~= nil then add(n, v) end
@@ -3129,19 +3195,22 @@ do
 			end
 			pcall(function()
 				for a, v in pairs(selected:GetAttributes()) do
-					add("@" .. a, v)
+					add("@" .. tostring(a), v)
 				end
 			end)
-			table.sort(entries, function(a,b) return a[1] < b[1] end)
+
+			table.sort(entries, function(a, b) return a[1]:lower() < b[1]:lower() end)
+
 			for i, e in ipairs(entries) do
 				local row = Instance.new("Frame")
 				row.BackgroundTransparency = 1
+				row.BorderSizePixel = 0
 				row.Size = UDim2.new(1, 0, 0, 15)
 				row.LayoutOrder = i
 				row.Parent = propList
 				local k = Instance.new("TextLabel")
 				k.BackgroundTransparency = 1
-				k.Size = UDim2.new(0.4, -2, 1, 0)
+				k.Size = UDim2.new(0.42, -2, 1, 0)
 				k.Position = UDim2.fromOffset(2, 0)
 				k.FontFace = U.font
 				k.TextSize = U.TEXT_SZ
@@ -3152,8 +3221,8 @@ do
 				k.Parent = row
 				local v = Instance.new("TextLabel")
 				v.BackgroundTransparency = 1
-				v.Size = UDim2.new(0.6, -4, 1, 0)
-				v.Position = UDim2.new(0.4, 0, 0, 0)
+				v.Size = UDim2.new(0.58, -4, 1, 0)
+				v.Position = UDim2.new(0.42, 0, 0, 0)
 				v.FontFace = U.font
 				v.TextSize = U.TEXT_SZ
 				v.TextColor3 = U.theme.Text
@@ -3164,24 +3233,19 @@ do
 			end
 		end
 
-		local function childrenOf(inst)
-			local ok, ch = pcall(function() return inst:GetChildren() end)
-			if not ok then return {} end
-			table.sort(ch, function(a,b) return a.Name:lower() < b.Name:lower() end)
-			return ch
-		end
-
 		local function matchesFilter(inst, filter)
 			if filter == "" then return true end
-			return inst.Name:lower():find(filter, 1, true) or inst.ClassName:lower():find(filter, 1, true)
+			return inst.Name:lower():find(filter, 1, true) ~= nil
+				or inst.ClassName:lower():find(filter, 1, true) ~= nil
 		end
 
+		local listOrder = 0
 		local function buildRow(inst, depth)
 			listOrder += 1
 			local btn = Instance.new("TextButton")
 			btn.AutoButtonColor = false
 			btn.BackgroundColor3 = Color3.fromRGB(55, 55, 80)
-			btn.BackgroundTransparency = selected == inst and 0.45 or 1
+			btn.BackgroundTransparency = (selected == inst) and 0.45 or 1
 			btn.BorderSizePixel = 0
 			btn.Size = UDim2.new(1, 0, 0, 16)
 			btn.Text = ""
@@ -3208,9 +3272,9 @@ do
 			icon.BackgroundTransparency = 1
 			icon.Size = UDim2.fromOffset(14, 14)
 			icon.Position = UDim2.fromOffset(pad + 11, 1)
-			icon.Image = "rbxasset://textures/ClassImages.png"
+			icon.Image = "rbxasset://textures/ClassImages.PNG"
 			icon.ImageRectSize = Vector2.new(16, 16)
-			icon.ImageRectOffset = iconFor(inst.ClassName)
+			icon.ImageRectOffset = Vector2.new(classIcon(inst.ClassName) * 16, 0)
 			icon.Parent = btn
 
 			local lab = Instance.new("TextLabel")
@@ -3236,10 +3300,10 @@ do
 
 			if open and hasKids then
 				local conns = {}
-				conns[#conns+1] = inst.ChildAdded:Connect(function()
+				conns[#conns + 1] = inst.ChildAdded:Connect(function()
 					if dexOn and expanded[inst] then rebuildVisible() end
 				end)
-				conns[#conns+1] = inst.ChildRemoved:Connect(function()
+				conns[#conns + 1] = inst.ChildRemoved:Connect(function()
 					if dexOn and expanded[inst] then rebuildVisible() end
 				end)
 				treeConns[inst] = conns
@@ -3255,8 +3319,7 @@ do
 		function rebuildVisible()
 			if not dexOn then return end
 			clearExplorer()
-			local filter = search.Text:lower()
-			-- services under game
+			listOrder = 0
 			buildRow(game, 0)
 		end
 
@@ -3271,7 +3334,6 @@ do
 				rebuildVisible()
 				if selected then refreshProps() end
 			else
-				-- disconnect tree listeners while hidden
 				for inst in pairs(treeConns) do disconnectTree(inst) end
 			end
 		end)
