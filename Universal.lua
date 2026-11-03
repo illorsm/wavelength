@@ -1602,7 +1602,7 @@ function U.buildFloaters()
 	vcam.Parent = viewport
 	viewport.CurrentCamera = vcam
 	U.pvCamera = vcam
-	U.pvYaw, U.pvPitch, U.pvDistScale = math.pi, 0.12, 1.35
+	U.pvYaw, U.pvPitch, U.pvDistScale = 0, 0.05, 1.0
 	U.pvFocus = Vector3.new(0, 3, 0)
 	U.pvBaseDist = 7
 	function U.pvUpdateCam()
@@ -2220,8 +2220,6 @@ do
 	sk:AddColorpicker({ Flag = "SkeletonColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
 	sk:AddColorpicker({ Flag = "SkeletonHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
-	sk:AddToggle({ Name = "visualize damage", Flag = "SkeletonVisDmg", Default = false })
-	sk:AddToggle({ Name = "visualize healing", Flag = "SkeletonVisHeal", Default = false })
 
 	local hl = players:AddToggle({ Name = "highlight", Flag = "Highlight", Default = false })
 	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
@@ -2229,8 +2227,6 @@ do
 	hl:AddColorpicker({ Flag = "HighlightDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
 	hl:AddColorpicker({ Flag = "HighlightHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	hl:AddDropdown({ Name = "type", Flag = "HighlightType", Items = { "always", "occluded" }, Default = "always", Limit = 1 })
-	hl:AddToggle({ Name = "visualize damage", Flag = "HighlightVisDmg", Default = false })
-	hl:AddToggle({ Name = "visualize healing", Flag = "HighlightVisHeal", Default = false })
 end
 
 Window:AddTab("dex")
@@ -2436,7 +2432,7 @@ local function buildBoxes(d)
 		end
 	else
 		d.box_outline = create("UIStroke", { Parent = d.holder, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
-		d.box_handler = create("Frame", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 2 })
+		d.box_handler = create("Frame", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 3 })
 		d.box_color = create("UIStroke", { Parent = d.box_handler, Color = C("BoxColor"), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
 		d.outline = create("Frame", { Parent = d.box_handler, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 2 })
 		d.outline_stroke = create("UIStroke", { Parent = d.outline, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
@@ -2589,13 +2585,13 @@ local function paintESP(d, model, bx, by, bw, bh, opts)
 	else destroyBoxes(d) end
 
 	if F.BoxFill then
-		-- same outer size as box (holder includes border); drawn behind box strokes
+		-- outer size matches box including border; drawn behind strokes
 		d.fill.Visible = true
-		d.fill.Size = dim2(1, 0, 1, 0)
-		d.fill.Position = dim2(0, 0, 0, 0)
+		d.fill.ZIndex = 0
+		d.fill.Size = dim2(1, 2, 1, 2)
+		d.fill.Position = dim2(0, -1, 0, -1)
 		d.fill.BackgroundColor3 = C("BoxFillColor")
 		d.fill.BackgroundTransparency = A("BoxFillColor")
-		d.fill.ZIndex = 0
 	else d.fill.Visible = false end
 
 	if F.HealthBar then
@@ -2769,25 +2765,56 @@ do
 					d:Destroy()
 				end
 			end
-			local head = model:FindFirstChild("Head")
-			if head then
-				for _, ch in ipairs(head:GetDescendants()) do
-					if ch:IsA("Decal") or ch:IsA("Texture") then ch:Destroy() end
+			-- strip face / textures / clothing leftovers and smooth materials
+			for _, d in ipairs(model:GetDescendants()) do
+				if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") or d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") then
+					d:Destroy()
+				elseif d:IsA("BasePart") then
+					d.Material = Enum.Material.SmoothPlastic
+					d.Color = Color3.fromRGB(245, 245, 245)
+					d.Reflectance = 0
+					d.CastShadow = false
+					if d:IsA("MeshPart") then
+						pcall(function() d.TextureID = "" end)
+					end
 				end
+			end
+			local head = model:FindFirstChild("Head")
+			if head and head:IsA("BasePart") then
+				-- replace sharp mesh head with a clean sphere when possible
+				for _, ch in ipairs(head:GetChildren()) do
+					if ch:IsA("SpecialMesh") or ch:IsA("BlockMesh") or ch:IsA("CylinderMesh") then
+						ch:Destroy()
+					end
+				end
+				if not head:FindFirstChildOfClass("SpecialMesh") and not head:IsA("MeshPart") then
+					local sm = Instance.new("SpecialMesh")
+					sm.MeshType = Enum.MeshType.Head
+					sm.Scale = Vector3.new(1.25, 1.25, 1.25)
+					sm.Parent = head
+				end
+				head.Material = Enum.Material.SmoothPlastic
+				head.Color = Color3.fromRGB(245, 245, 245)
 			end
 			local hrp = model:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				model.PrimaryPart = hrp; hrp.Transparency = 1
-				model:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.pi, 0))
+				model.PrimaryPart = hrp
+				hrp.Transparency = 1
+				-- face the camera (front)
+				model:PivotTo(CFrame.new(0, 3, 0))
 			end
-			model.Name = "PreviewCharacter"; model.Parent = world
+			model.Name = "PreviewCharacter"
+			model.Parent = world
 			U.pvModel = model
 			local ok2, cf, size = pcall(function() return model:GetBoundingBox() end)
 			if ok2 and cf then
 				U.pvFocus = cf.Position
-				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.05
+				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.15
 			end
-			U.pvYaw = math.pi; U.pvPitch = 0.08; U.pvDistScale = 1.0
+			-- start in front of the model
+			U.pvYaw = 0
+			U.pvPitch = 0.05
+			U.pvDistScale = 1.0
 			U.pvUpdateCam()
 		end
 
@@ -2981,164 +3008,8 @@ do
 
 		local dexOn = false
 		local selected = nil
-		local dexClipboard = {}
 		local expanded = { [game] = true }
 
-		local function formatLuaString(s)
-			return tostring(s):gsub("\\", "\\\\"):gsub('"', '\\"')
-		end
-
-		local function getInstancePath(obj)
-			local path = ""
-			local cur = obj
-			while cur do
-				if cur == game then
-					path = "game" .. path
-					break
-				end
-				local curName = cur.Name
-				local indexName
-				if curName:match("^[%a_][%w_]*$") then
-					indexName = "." .. curName
-				else
-					indexName = '["' .. formatLuaString(curName) .. '"]'
-				end
-				local par = cur.Parent
-				if par == game then
-					local ok, svc = pcall(function() return game:GetService(cur.ClassName) end)
-					if ok and svc == cur then
-						indexName = ':GetService("' .. cur.ClassName .. '")'
-					end
-				elseif par == nil then
-					path = string.format('getNil("%s","%s")', formatLuaString(curName), cur.ClassName) .. path
-					break
-				end
-				path = indexName .. path
-				cur = par
-			end
-			return path
-		end
-
-		local function cleanPath(str)
-			str = tostring(str or "")
-			str = str:gsub('^game:GetService%("Workspace"%)', "workspace")
-			local lp = game:GetService("Players").LocalPlayer
-			if lp then
-				local pat = '^game:GetService%("Players"%)%.' .. lp.Name
-				str = str:gsub(pat, 'game:GetService("Players").LocalPlayer')
-			end
-			return str
-		end
-
-		local function setClip(text)
-			local fn = setclipboard or toclipboard or set_clipboard
-			if type(fn) == "function" then
-				pcall(fn, text)
-				return true
-			end
-			return false
-		end
-
-		local ctxMenu = nil
-		local function hideContextMenu()
-			if ctxMenu then
-				pcall(function() ctxMenu:Destroy() end)
-				ctxMenu = nil
-			end
-		end
-
-		local function showContextMenu(inst, x, y)
-			hideContextMenu()
-			if not inst then return end
-			selected = inst
-
-			local menu = Instance.new("Frame")
-			menu.Name = "DexContext"
-			menu.BackgroundColor3 = U.theme.SectionBg or Color3.fromRGB(30, 30, 30)
-			menu.BorderSizePixel = 0
-			menu.ZIndex = 200
-			menu.Size = UDim2.fromOffset(120, 40)
-			menu.Parent = U.gui
-			U.stroke(menu, "Border")
-			table.insert(U.themeReg.sectionBgs, menu)
-
-			local function addItem(label, order, onClick)
-				local b = Instance.new("TextButton")
-				b.AutoButtonColor = false
-				b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-				b.BackgroundTransparency = 1
-				b.BorderSizePixel = 0
-				b.Size = UDim2.new(1, -4, 0, 18)
-				b.Position = UDim2.fromOffset(2, 2 + (order - 1) * 18)
-				b.ZIndex = 201
-				b.FontFace = U.font
-				b.TextSize = U.TEXT_SZ
-				b.TextColor3 = U.theme.Text
-				b.TextXAlignment = Enum.TextXAlignment.Left
-				b.Text = "  " .. label
-				b.Parent = menu
-				b.MouseEnter:Connect(function()
-					b.BackgroundTransparency = 0.3
-				end)
-				b.MouseLeave:Connect(function()
-					b.BackgroundTransparency = 1
-				end)
-				b.MouseButton1Click:Connect(function()
-					hideContextMenu()
-					onClick()
-				end)
-			end
-
-			addItem("Cut", 1, function()
-				local ok, cloned = pcall(function() return inst:Clone() end)
-				if ok and cloned then
-					dexClipboard = { cloned }
-				else
-					dexClipboard = {}
-				end
-				pcall(function() inst:Destroy() end)
-				if selected == inst then selected = nil end
-				if expanded[inst] then expanded[inst] = nil end
-				if dexOn then
-					rebuildVisible()
-					refreshProps()
-				end
-			end)
-
-			addItem("Copy Path", 2, function()
-				local path = cleanPath(getInstancePath(inst))
-				if setClip(path) then
-					if Library.Notify then
-						Library:Notify({ text = "copied path", time = 2 })
-					end
-				end
-			end)
-
-			-- position near cursor, clamp to gui
-			local gw = U.gui.AbsoluteSize.X
-			local gh = U.gui.AbsoluteSize.Y
-			local mx = math.clamp(x, 4, math.max(4, gw - 124))
-			local my = math.clamp(y, 4, math.max(4, gh - 44))
-			menu.Position = UDim2.fromOffset(mx, my)
-			ctxMenu = menu
-		end
-
-		-- close menu on outside click
-		U.UIS.InputBegan:Connect(function(input, gp)
-			if not ctxMenu then return end
-			if input.UserInputType == Enum.UserInputType.MouseButton1
-				or input.UserInputType == Enum.UserInputType.MouseButton2
-				or input.UserInputType == Enum.UserInputType.Touch then
-				task.defer(function()
-					if not ctxMenu then return end
-					local p = U.UIS:GetMouseLocation()
-					local abs = ctxMenu.AbsolutePosition
-					local size = ctxMenu.AbsoluteSize
-					local inside = p.X >= abs.X and p.X <= abs.X + size.X and p.Y >= abs.Y and p.Y <= abs.Y + size.Y
-					if not inside then hideContextMenu() end
-				end)
-			end
-		end)
 		local treeConns = {}
 		local rowOf = {}
 
@@ -3431,7 +3302,6 @@ do
 			lab.Parent = btn
 
 			btn.MouseButton1Click:Connect(function()
-				hideContextMenu()
 				if hasKids then
 					expanded[inst] = not open
 				end
@@ -3440,21 +3310,7 @@ do
 				refreshProps()
 			end)
 
-			btn.MouseButton2Click:Connect(function()
-				selected = inst
-				-- refresh highlight without full rebuild when possible
-				for inst2, row in pairs(rowOf) do
-					if row then
-						row.BackgroundTransparency = (inst2 == inst) and 0.45 or 1
-					end
-				end
-				refreshProps()
-				local pos = U.UIS:GetMouseLocation()
-				-- Account for GuiInset if needed; U.gui IgnoreGuiInset typically true
-				local inset = game:GetService("GuiService"):GetGuiInset()
-				showContextMenu(inst, pos.X - inset.X, pos.Y - inset.Y)
-			end)
-
+			
 			if open and hasKids then
 				local conns = {}
 				conns[#conns + 1] = inst.ChildAdded:Connect(function()
@@ -3487,8 +3343,7 @@ do
 		U._tabListeners = U._tabListeners or {}
 		table.insert(U._tabListeners, function(name)
 			dexOn = name == "dex"
-			hideContextMenu()
-			if dexOn then
+						if dexOn then
 				rebuildVisible()
 				if selected then refreshProps() end
 			else
