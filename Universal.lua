@@ -2217,15 +2217,11 @@ do
 
 	local sk = players:AddToggle({ Name = "skeleton", Flag = "Skeleton", Default = false })
 	sk:AddColorpicker({ Flag = "SkeletonColor", Default = Color3.fromRGB(255, 255, 255), Name = "skeleton" })
-	sk:AddColorpicker({ Flag = "SkeletonColor2", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
-	sk:AddColorpicker({ Flag = "SkeletonHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
 
 	local hl = players:AddToggle({ Name = "highlight", Flag = "Highlight", Default = false })
 	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
 	hl:AddColorpicker({ Flag = "HighlightOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
-	hl:AddColorpicker({ Flag = "HighlightDamage", Default = Color3.fromRGB(255, 0, 0), NoAlpha = true, Name = "damage" })
-	hl:AddColorpicker({ Flag = "HighlightHealColor", Default = Color3.fromRGB(0, 255, 0), NoAlpha = true, Name = "heal" })
 	hl:AddDropdown({ Name = "type", Flag = "HighlightType", Items = { "always", "occluded" }, Default = "always", Limit = 1 })
 end
 
