@@ -27,9 +27,10 @@ U.THEME_KEYS = {
 }
 
 function U.newReg()
-	return { accents = {}, borders = {}, sectionBorders = {}, elementBorders = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {} }
+	return { accents = {}, borders = {}, sectionBorders = {}, elementBorders = {}, sectionBgs = {}, bodyBgs = {}, tabAccents = {}, labels = {} }
 end
 U.themeReg = U.themeReg or U.newReg()
+U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
@@ -40,7 +41,7 @@ U.activeNotifs = U.activeNotifs or {}
 U.keybindListEntries = U.keybindListEntries or {}
 U.keybindTargets = U.keybindTargets or {}
 U._kbListen = U._kbListen or {}
-U.wmDocked, U.kbDocked = true, true
+U.wmDocked, U.kbDocked, U.pvDocked = true, true, true
 U.running = true
 
 U.ELEMENT_BORDER = 1
@@ -346,6 +347,10 @@ function U.applyTheme()
 	for _, f in ipairs(R.sectionBgs) do if f.Parent then f.BackgroundColor3 = T.SectionBg end end
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
 	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = T.Background end
+	if U.pvPanel and U.pvPanel.Parent then U.pvPanel.BackgroundColor3 = T.Background end
+	for _, l in ipairs(R.labels or {}) do
+		if l and l.Parent then l.TextColor3 = T.Text end
+	end
 	U.refreshMenuTextColors()
 	U.refreshKeybindList()
 end
@@ -1296,12 +1301,25 @@ function U.buildShell()
 	U.currentTab = U.TAB_NAMES[1]
 end
 
-local function panelOf(kind) return kind == "wm" and U.wm or U.kbPanel end
-local function flagOf(kind) return kind == "wm" and "Watermark" or "KeybindsList" end
+local function panelOf(kind)
+	if kind == "wm" then return U.wm end
+	if kind == "kb" then return U.kbPanel end
+	if kind == "pv" then return U.pvPanel end
+	return nil
+end
+local function flagOf(kind)
+	if kind == "wm" then return "Watermark" end
+	if kind == "kb" then return "KeybindsList" end
+	if kind == "pv" then return "Preview" end
+	return ""
+end
 
 function U.dockPos(kind, h)
 	local sp, sw = U.shell.Position, U.shell.Size.X.Offset
 	if sw < 2 then sw = U.BODY_W end
+	if kind == "pv" then
+		return Vector2.new(0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + sw + U.dockGap, sp.Y.Scale, sp.Y.Offset)
+	end
 	local right = kind == "kb"
 	return Vector2.new(right and 1 or 0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + (right and sw or 0), sp.Y.Scale, sp.Y.Offset - h - U.dockGap)
 end
@@ -1313,7 +1331,9 @@ end
 
 function U.dock(kind)
 	local f = panelOf(kind)
-	if not U[kind .. "Docked"] or not f or not f.Parent or not U.shell or U.vflags[flagOf(kind)] ~= true then return end
+	if not U[kind .. "Docked"] or not f or not f.Parent or not U.shell then return end
+	local fl = flagOf(kind)
+	if fl ~= "" and U.vflags[fl] == false then return end
 	f.AnchorPoint, f.Position = U.dockPos(kind, panelH(f))
 end
 function U.dockWatermark() U.dock("wm") end
@@ -1321,7 +1341,7 @@ function U.dockKeybinds() U.dock("kb") end
 
 function U.ensureSnapGhosts()
 	if not U.gui then return end
-	for _, kind in ipairs({ "wm", "kb" }) do
+	for _, kind in ipairs({ "wm", "kb", "pv" }) do
 		local key = kind .. "SnapGhost"
 		if not U[key] or not U[key].Parent then
 			local g = U.new("Frame", { Name = (kind == "wm" and "Wm" or "Kb") .. "SnapGhost", BorderSizePixel = 0, Visible = false, ZIndex = 40 }, U.gui)
@@ -1334,12 +1354,17 @@ function U.ensureSnapGhosts()
 end
 
 function U.showSnapGhost(kind)
-	if U.menuOpen == false then return U.hideSnapGhost("wm"), U.hideSnapGhost("kb") end
+	if U.menuOpen == false then
+		U.hideSnapGhost("wm"); U.hideSnapGhost("kb"); U.hideSnapGhost("pv")
+		return
+	end
 	U.ensureSnapGhosts()
 	local f, g = panelOf(kind), U[kind .. "SnapGhost"]
 	if not U.shell or not f then return end
-	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), panelH(f))
-	g.AnchorPoint, g.Position = U.dockPos(kind, panelH(f))
+	local h = panelH(f)
+	if kind == "pv" then h = U.LINE_H + U.TITLE_H end
+	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), h)
+	g.AnchorPoint, g.Position = U.dockPos(kind, h)
 	g.Visible = true
 end
 
@@ -1352,16 +1377,25 @@ function U.overlapsSnap(kind, frame)
 	local g = U[kind .. "SnapGhost"]
 	if not g or not g.Visible then return false end
 	local gp, gs, fp, fs = g.AbsolutePosition, g.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
-	local cx, cy = fp.X + fs.X * 0.5, fp.Y + fs.Y * 0.5
-	return cx >= gp.X and cx <= gp.X + gs.X and cy >= gp.Y and cy <= gp.Y + gs.Y
+	local cx = fp.X + fs.X * 0.5
+	local cy = fp.Y + fs.Y * 0.5
+	if kind == "pv" then
+		-- ghost is header-sized; test against header center so full panel can reattach
+		cy = fp.Y + math.min(fs.Y, (U.LINE_H + U.TITLE_H)) * 0.5
+	end
+	local pad = 12
+	return cx >= gp.X - pad and cx <= gp.X + gs.X + pad and cy >= gp.Y - pad and cy <= gp.Y + gs.Y + pad
 end
 
 function U.syncFloatingVisibility()
 	local menuOn = U.menuOpen ~= false
 	if U.shell then U.shell.Visible = menuOn end
-	for _, kind in ipairs({ "wm", "kb" }) do
+	for _, kind in ipairs({ "wm", "kb", "pv" }) do
 		local f = panelOf(kind)
-		if f then f.Visible = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"]) end
+		if not f then continue end
+		local on = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"])
+		if kind == "pv" then on = on and U.currentTab == "visuals" end
+		f.Visible = on == true
 	end
 end
 
@@ -1369,6 +1403,10 @@ function U.dragPanel(f, kind)
 	local dragging, ds, sp
 	f.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if kind == "pv" then
+			local relY = input.Position.Y - f.AbsolutePosition.Y
+			if relY > (U.LINE_H + U.TITLE_H + 2) then return end
+		end
 		dragging, ds, sp = true, input.Position, f.Position
 		U[kind .. "Docked"] = false
 		U.showSnapGhost(kind)
@@ -1411,7 +1449,12 @@ function U.buildFloaters()
 		end
 	end)
 	local function ping()
-		local ok, v = pcall(function() return math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+		local ok, v = pcall(function()
+			if U.lp and U.lp.GetNetworkPing then
+				return math.floor(U.lp:GetNetworkPing() * 1000 + 0.5)
+			end
+			return math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
+		end)
 		return ok and v or 0
 	end
 	local function refreshWm()
@@ -1481,10 +1524,92 @@ function U.buildFloaters()
 		U._kbRefreshing = false
 	end
 	U.onFlag("KeybindsList", function() U.refreshKeybindList() end)
+	
 	U.dragPanel(kb, "kb")
+
+	local PRE_W = math.floor(U.BODY_W / 2)
+	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
+	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
+	pv.Size = UDim2.fromOffset(PRE_W, shellH)
+	pv.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+	pv.Active = true
+	pv.Visible = false
+	pv.ClipsDescendants = true
+	U.pvPanel = pv
+	U.pvDocked = true
+	local pvTitleBar = U.new("Frame", {
+		Name = "TitleBar",
+		BackgroundColor3 = Color3.fromRGB(28, 28, 28),
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, U.TITLE_H),
+		Position = UDim2.fromOffset(0, U.LINE_H),
+		ZIndex = 2,
+	}, pv)
+	U.label(pvTitleBar, "preview", {
+		Position = UDim2.fromOffset(6, 0),
+		Size = UDim2.new(1, -12, 1, 0),
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
+	-- section top matches main UI body section inset (LINE_H + TITLE_H + PAD)
+	local secTop = U.LINE_H + U.TITLE_H + U.SEC_GAP
+	local pvSection = U.new("Frame", {
+		Name = "Section",
+		BackgroundColor3 = U.theme.SectionBg,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Position = UDim2.fromOffset(U.SEC_GAP, secTop),
+		Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(secTop + U.SEC_GAP)),
+	}, pv)
+	U.stroke(pvSection, "SectionBorder")
+	table.insert(U.themeReg.sectionBgs or {}, pvSection)
+	local viewport = Instance.new("ViewportFrame")
+	viewport.Name = "View"
+	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	viewport.BorderSizePixel = 0
+	viewport.Size = UDim2.fromScale(1, 1)
+	viewport.Ambient = Color3.fromRGB(200, 200, 200)
+	viewport.LightColor = Color3.fromRGB(255, 255, 255)
+	viewport.LightDirection = Vector3.new(-1, -1, -1)
+	viewport.Parent = pvSection
+	U.pvViewport = viewport
+	local pvOverlay = U.new("Frame", {
+		Name = "ESPOverlay",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 10,
+		ClipsDescendants = true,
+	}, pvSection)
+	U.pvOverlay = pvOverlay
+	local world = Instance.new("WorldModel")
+	world.Parent = viewport
+	U.pvWorld = world
+	local vcam = Instance.new("Camera")
+	vcam.Parent = viewport
+	viewport.CurrentCamera = vcam
+	U.pvCamera = vcam
+	U.pvYaw, U.pvPitch, U.pvDistScale = math.pi, 0.12, 1.35
+	U.pvFocus = Vector3.new(0, 3, 0)
+	U.pvBaseDist = 7
+	function U.pvUpdateCam()
+		local d = (U.pvBaseDist or 7) * (U.pvDistScale or 1.35)
+		local focus = U.pvFocus or Vector3.new(0, 3, 0)
+		local cf = CFrame.new(focus)
+			* CFrame.Angles(0, U.pvYaw or math.pi, 0)
+			* CFrame.Angles(-(U.pvPitch or 0.12), 0, 0)
+			* CFrame.new(0, 0, d)
+		vcam.CFrame = CFrame.lookAt(cf.Position, focus)
+	end
+	U.pvUpdateCam()
+	U.onFlag("Preview", function()
+		U.dock("pv")
+		U.syncFloatingVisibility()
+	end)
+	U.dragPanel(pv, "pv")
 end
 
 function U.buildConfig()
+
 	local FOLDER, selected, listFrame = "zwavelength", nil, nil
 	local function ensureFolder() if isfolder and not isfolder(FOLDER) then makefolder(FOLDER) end end
 	local function listConfigs()
@@ -1657,6 +1782,7 @@ function U.buildConfig()
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 	U.mkToggle(settingsSec, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
+	U.mkToggle(settingsSec, "preview", "Preview", nextOrder(), true)
 
 	U.buildFloaters()
 
@@ -1687,6 +1813,9 @@ function U.buildTabs()
 		local dir = (tabIndex[name] or 0) > (tabIndex[from] or 0) and 1 or -1
 		local oldPage, newPage = U.pageFrames[from], U.pageFrames[name]
 		U.currentTab = name
+		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
+		U.syncFloatingVisibility()
+		if U.pvDocked then U.dock("pv") end
 		for n, b in pairs(U.tabButtons) do
 			b.BackgroundColor3, b.TextColor3 = (n == name) and ON or OFF, U.theme.Text
 			local acc = b:FindFirstChild("TabAccent")
@@ -1753,14 +1882,17 @@ function U.bindInput()
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		U.hideSnapGhost("wm")
 		U.hideSnapGhost("kb")
+		U.hideSnapGhost("pv")
 		if U.wmDocked then U.dock("wm") end
 		if U.kbDocked then U.dock("kb") end
+		if U.pvDocked then U.dock("pv") end
 	end))
 
 	U.menuOpen = true
 	task.defer(function()
 		U.dock("wm")
 		U.dock("kb")
+		U.dock("pv")
 	end)
 
 	U.track(U.UIS.InputBegan:Connect(function(input, gp)
@@ -1804,6 +1936,19 @@ function Library:Notify(opts)
 	if type(opts) == "string" then opts = { text = opts } end
 	U.pushNotification({ text = opts.text or opts.Text or "", time = opts.time or opts.Time or opts.duration or opts.Duration or 3 })
 end
+function Library:GetShell() return U.shell end
+function Library:GetGui() return U.gui end
+function Library:GetTheme() return U.theme end
+function Library:IsMenuOpen() return U.menuOpen ~= false end
+function Library:GetCurrentTab() return U.currentTab end
+function Library:GetPreviewViewport() return U.pvViewport end
+function Library:GetPreviewWorld() return U.pvWorld end
+function Library:GetPreviewCamera() return U.pvCamera end
+function Library:OnTabChanged(fn)
+	U._tabListeners = U._tabListeners or {}
+	table.insert(U._tabListeners, fn)
+end
+function Library:_U() return U end
 
 local function lname(o, default) return string.lower(tostring(o.Name or default)) end
 local function tip(o) return o.Tooltip or o.tooltip end
@@ -1811,6 +1956,363 @@ local function tip(o) return o.Tooltip or o.tooltip end
 local function keybindOf(o, name)
 	if o.Keybind ~= true then return nil end
 	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
+end
+
+
+function U.buildExplorer()
+	local page = U.pageFrames and U.pageFrames.explorer
+	if not page then return end
+		for _, ch in ipairs(page:GetChildren()) do
+			ch:Destroy()
+		end
+
+		local RMD={["Accessory"]={o=30,i=32},["AccessoryDescription"]={o=22,i=104},["Accoutrement"]={o=20,i=32},["Actor"]={o=10,i=113},["AdGui"]={o=200,i=145},["AdPlacement"]={o=200,i=0},["AdPortal"]={o=200,i=146},["AirController"]={o=20,i=0},["AlignOrientation"]={o=30,i=100},["AlignPosition"]={o=30,i=99},["AnalyticsService"]={o=9999,i=0},["AngularVelocity"]={o=30,i=103},["Animation"]={o=220,i=60},["AnimationConstraint"]={o=30,i=0},["AnimationController"]={o=220,i=60},["AnimationTrack"]={o=220,i=60},["Animator"]={o=220,i=60},["ArcHandles"]={o=200,i=56},["AssetService"]={o=9999,i=0},["Atmosphere"]={o=5,i=28},["AtmosphereSensor"]={o=20,i=0},["Attachment"]={o=30,i=81},["AudioAnalyzer"]={o=10,i=11},["AudioChannelMixer"]={o=10,i=11},["AudioChannelSplitter"]={o=10,i=11},["AudioChorus"]={o=10,i=11},["AudioCompressor"]={o=10,i=11},["AudioDeviceInput"]={o=10,i=11},["AudioDeviceOutput"]={o=10,i=11},["AudioDistortion"]={o=10,i=11},["AudioEcho"]={o=10,i=11},["AudioEmitter"]={o=10,i=11},["AudioEqualizer"]={o=10,i=11},["AudioFDNReverb"]={o=10,i=11},["AudioFader"]={o=10,i=11},["AudioFilter"]={o=10,i=11},["AudioFlanger"]={o=10,i=11},["AudioGate"]={o=10,i=11},["AudioLimiter"]={o=10,i=11},["AudioListener"]={o=10,i=11},["AudioPitchShifter"]={o=10,i=11},["AudioPlayer"]={o=10,i=11},["AudioRecorder"]={o=10,i=11},["AudioReverb"]={o=10,i=11},["AudioSpeechToText"]={o=10,i=11},["AudioStreamReader"]={o=10,i=11},["AudioStreamWriter"]={o=10,i=11},["AudioTextToSpeech"]={o=10,i=11},["AudioTremolo"]={o=10,i=11},["AudioWindSynthesizer"]={o=10,i=11},["AuroraScript"]={o=50,i=76},["AvatarAccessoryRules"]={o=20,i=0},["AvatarAnimationRules"]={o=20,i=0},["AvatarBodyRules"]={o=20,i=0},["AvatarClothingRules"]={o=20,i=0},["AvatarCollisionRules"]={o=20,i=0},["AvatarRules"]={o=20,i=0},["Backpack"]={o=30,i=20},["BackpackItem"]={o=20,i=0},["BadgeService"]={o=9999,i=0},["BallSocketConstraint"]={o=30,i=86},["BasePart"]={o=3,i=0},["Beam"]={o=30,i=96},["BevelMesh"]={o=9999,i=0},["BillboardGui"]={o=140,i=64},["BindableEvent"]={o=50,i=67},["BindableFunction"]={o=40,i=66},["BlockMesh"]={o=30,i=8},["BloomEffect"]={o=20,i=83},["BlurEffect"]={o=20,i=83},["BodyAngularVelocity"]={o=140,i=14},["BodyColors"]={o=20,i=0},["BodyForce"]={o=140,i=14},["BodyGyro"]={o=140,i=14},["BodyPartDescription"]={o=22,i=104},["BodyPosition"]={o=140,i=14},["BodyThrust"]={o=140,i=14},["BodyVelocity"]={o=140,i=14},["Bone"]={o=30,i=114},["BoolValue"]={o=30,i=4},["BoxHandleAdornment"]={o=205,i=111},["BrickColorValue"]={o=30,i=4},["BubbleChatConfiguration"]={o=13,i=0},["BuoyancySensor"]={o=20,i=0},["CFrameValue"]={o=30,i=4},["Camera"]={o=5,i=5},["CanvasGroup"]={o=200,i=48},["ChangeHistoryService"]={o=9999,i=0},["ChannelTabsConfiguration"]={o=12,i=141},["CharacterMesh"]={o=220,i=60},["Chat"]={o=510,i=33},["ChatInputBarConfiguration"]={o=11,i=142},["ChatService"]={o=510,i=33},["ChatWindowConfiguration"]={o=10,i=141},["ChorusSoundEffect"]={o=20,i=84},["ClickDetector"]={o=30,i=41},["ClimbController"]={o=20,i=0},["Clothing"]={o=20,i=0},["Clouds"]={o=5,i=28},["CollectionService"]={o=9999,i=0},["Color3Value"]={o=30,i=4},["ColorCorrectionEffect"]={o=20,i=83},["ColorGradingEffect"]={o=20,i=83},["CompressorSoundEffect"]={o=20,i=84},["ConeHandleAdornment"]={o=205,i=110},["Configuration"]={o=220,i=58},["Constraint"]={o=30,i=86},["ContextActionService"]={o=9999,i=0},["ControlState"]={o=31,i=0},["ControllerManager"]={o=20,i=0},["ControllerPartSensor"]={o=20,i=0},["CoreGui"]={o=30,i=46},["CorePackages"]={o=30,i=20},["CornerWedgePart"]={o=120,i=1},["CustomEvent"]={o=30,i=4},["CustomEventReceiver"]={o=30,i=4},["CylinderHandleAdornment"]={o=205,i=109},["CylinderMesh"]={o=30,i=8},["CylindricalConstraint"]={o=30,i=95},["DataModel"]={o=9999,i=0},["DataModelMesh"]={o=9999,i=0},["DataStoreService"]={o=9999,i=0},["Debris"]={o=9999,i=30},["DebugSettings"]={o=20,i=0},["DebuggerBreakpoint"]={o=9999,i=0},["DebuggerManager"]={o=9999,i=0},["DebuggerWatch"]={o=9999,i=0},["Decal"]={o=40,i=7},["DepthOfFieldEffect"]={o=20,i=83},["Dialog"]={o=220,i=62},["DialogChoice"]={o=220,i=63},["DistortionSoundEffect"]={o=20,i=84},["DoubleConstrainedValue"]={o=30,i=4},["DragDetector"]={o=30,i=41},["EchoSoundEffect"]={o=20,i=84},["EditableMesh"]={o=9999,i=0},["EqualizerSoundEffect"]={o=20,i=84},["Explosion"]={o=30,i=36},["FaceControls"]={o=105,i=129},["FaceInstance"]={o=9999,i=0},["Feature"]={o=20,i=0},["FileMesh"]={o=9999,i=0},["Fire"]={o=30,i=61},["Flag"]={o=30,i=38},["FlagStand"]={o=30,i=39},["FlangeSoundEffect"]={o=20,i=84},["FloorWire"]={o=30,i=4},["FluidForceSensor"]={o=20,i=0},["Folder"]={o=10,i=77},["ForceField"]={o=30,i=37},["Frame"]={o=150,i=48},["FunctionalTest"]={o=10,i=0},["GameSettings"]={o=20,i=0},["GeneratedFolder"]={o=10,i=77},["GlobalDataStore"]={o=-1,i=0},["GlobalSettings"]={o=20,i=0},["Glue"]={o=9999,i=0},["GroundController"]={o=20,i=0},["GuiBase2d"]={o=9999,i=0},["GuiButton"]={o=160,i=52},["GuiMain"]={o=140,i=47},["GuiObject"]={o=9999,i=0},["GuiService"]={o=9999,i=0},["HandRigDescription"]={o=222,i=53},["Handles"]={o=190,i=53},["HapticEffect"]={o=100,i=0},["Hat"]={o=30,i=45},["Highlight"]={o=20,i=133},["HingeConstraint"]={o=30,i=87},["Hint"]={o=110,i=33},["Hole"]={o=20,i=0},["Hopper"]={o=20,i=0},["HopperBin"]={o=240,i=22},["HttpService"]={o=9999,i=0},["Humanoid"]={o=30,i=9},["HumanoidDescription"]={o=22,i=104},["HumanoidRigDescription"]={o=220,i=53},["IKControl"]={o=220,i=53},["ImageButton"]={o=160,i=52},["ImageHandleAdornment"]={o=205,i=108},["ImageLabel"]={o=180,i=49},["InputAction"]={o=31,i=0},["InputActionLabel"]={o=185,i=0},["InputBinding"]={o=31,i=0},["InputContext"]={o=31,i=0},["InputObject"]={o=9999,i=0},["InsertService"]={o=9999,i=0},["Instance"]={o=9999,i=0},["IntConstrainedValue"]={o=30,i=4},["IntValue"]={o=30,i=4},["Item"]={o=20,i=0},["JointInstance"]={o=200,i=34},["JointsService"]={o=9999,i=0},["Keyframe"]={o=220,i=60},["KeyframeMarker"]={o=220,i=60},["LayerCollector"]={o=9999,i=0},["Light"]={o=30,i=13},["Lighting"]={o=30,i=13},["LineForce"]={o=30,i=101},["LineHandleAdornment"]={o=205,i=107},["LinearVelocity"]={o=30,i=132},["LocalBackpack"]={o=9999,i=0},["LocalBackpackItem"]={o=9999,i=0},["LocalScript"]={o=40,i=18},["LocalizationService"]={o=530,i=92},["LocalizationTable"]={o=30,i=97},["LogService"]={o=9999,i=0},["LuaSourceContainer"]={o=9999,i=0},["MakeupDescription"]={o=22,i=104},["MarketplaceService"]={o=9999,i=46},["MaterialService"]={o=30,i=131},["MaterialVariant"]={o=41,i=130},["MeshPart"]={o=105,i=73},["Message"]={o=110,i=33},["Model"]={o=100,i=2},["ModuleScript"]={o=50,i=76},["Motor"]={o=20,i=0},["Motor6D"]={o=200,i=106},["MotorFeature"]={o=9999,i=0},["Mouse"]={o=9999,i=0},["NegateOperation"]={o=104,i=72},["NetworkClient"]={o=30,i=16},["NetworkMarker"]={o=9999,i=0},["NetworkPeer"]={o=9999,i=0},["NetworkReplicator"]={o=30,i=29},["NetworkServer"]={o=30,i=15},["NetworkSettings"]={o=20,i=0},["NoCollisionConstraint"]={o=30,i=105},["NumberPose"]={o=220,i=60},["NumberValue"]={o=30,i=4},["ObjectValue"]={o=30,i=4},["OrderedDataStore"]={o=-1,i=0},["PVInstance"]={o=9999,i=0},["PackageLink"]={o=1,i=98},["Packages"]={o=9999,i=0},["Pants"]={o=20,i=44},["ParallelRampPart"]={o=120,i=1},["Part"]={o=110,i=1},["PartPairLasso"]={o=220,i=57},["ParticleEmitter"]={o=30,i=80},["ParticleEmitter2D"]={o=30,i=80},["Path2D"]={o=31,i=0},["PathfindingLink"]={o=210,i=137},["PathfindingModifier"]={o=210,i=128},["PhysicsActivitySensor"]={o=20,i=0},["PitchShiftSoundEffect"]={o=20,i=84},["Plane"]={o=30,i=134},["PlaneConstraint"]={o=30,i=134},["Platform"]={o=30,i=35},["PlatformLibraries"]={o=30,i=46},["Player"]={o=10,i=12},["PlayerGui"]={o=130,i=46},["PlayerScripts"]={o=130,i=78},["Players"]={o=20,i=21},["Plugin"]={o=30,i=86},["PluginCapabilities"]={o=30,i=0},["PluginDebugService"]={o=30,i=46},["PluginGuiService"]={o=30,i=46},["PluginManager"]={o=9999,i=0},["PluginManagerInterface"]={o=9999,i=0},["PluginMouse"]={o=9999,i=0},["PointLight"]={o=30,i=13},["PointsService"]={o=9999,i=0},["Pose"]={o=220,i=60},["PoseBase"]={o=220,i=60},["Preloaded"]={o=30,i=70},["PrismPart"]={o=120,i=1},["PrismaticConstraint"]={o=30,i=88},["ProceduralModel"]={o=100,i=0},["ProfilingItem"]={o=9999,i=0},["ProximityPrompt"]={o=30,i=124},["ProximityPromptService"]={o=9999,i=0},["PyramidHandleAdornment"]={o=205,i=0},["PyramidPart"]={o=120,i=1},["RayValue"]={o=30,i=4},["RemoteEvent"]={o=50,i=75},["RemoteFunction"]={o=40,i=74},["RenderSettings"]={o=20,i=0},["RenderingTest"]={o=40,i=5},["ReplicatedFirst"]={o=30,i=70},["ReplicatedStorage"]={o=30,i=70},["ReverbSoundEffect"]={o=20,i=84},["RightAngleRampPart"]={o=120,i=1},["RigidConstraint"]={o=30,i=135},["RobloxPluginGuiService"]={o=30,i=46},["RobloxReplicatedStorage"]={o=9999,i=0},["RocketPropulsion"]={o=140,i=14},["RodConstraint"]={o=30,i=90},["RootInstance"]={o=9999,i=0},["RopeConstraint"]={o=30,i=89},["RotateP"]={o=9999,i=0},["RotateV"]={o=9999,i=0},["RunService"]={o=9999,i=0},["ScreenGui"]={o=140,i=47},["Script"]={o=30,i=6},["ScriptContext"]={o=9999,i=0},["ScriptDebugger"]={o=9999,i=0},["ScrollingFrame"]={o=150,i=48},["Seat"]={o=30,i=35},["Selection"]={o=9999,i=0},["SelectionBox"]={o=210,i=54},["SelectionPartLasso"]={o=220,i=57},["SelectionPointLasso"]={o=220,i=57},["SelectionSphere"]={o=210,i=54},["ServerScriptService"]={o=30,i=71},["ServerStorage"]={o=30,i=69},["ServiceProvider"]={o=9999,i=0},["Shirt"]={o=20,i=43},["ShirtGraphic"]={o=20,i=40},["SkateboardPlatform"]={o=30,i=35},["Skin"]={o=20,i=0},["Sky"]={o=5,i=28},["SlidingBallConstraint"]={o=30,i=88},["Smoke"]={o=30,i=59},["Snap"]={o=200,i=34},["Sound"]={o=10,i=11},["SoundGroup"]={o=20,i=85},["SoundService"]={o=500,i=31},["Sparkles"]={o=30,i=42},["SpawnLocation"]={o=30,i=25},["SpecialMesh"]={o=30,i=8},["SphereHandleAdornment"]={o=205,i=112},["SpotLight"]={o=30,i=13},["SpringConstraint"]={o=30,i=91},["StandalonePluginScripts"]={o=130,i=78},["StarterCharacterScripts"]={o=130,i=78},["StarterGear"]={o=30,i=20},["StarterGui"]={o=30,i=46},["StarterPack"]={o=30,i=20},["StarterPlayer"]={o=30,i=79},["StarterPlayerScripts"]={o=130,i=78},["StatsItem"]={o=9999,i=0},["Status"]={o=100,i=2},["StockSound"]={o=-1,i=0},["StringValue"]={o=30,i=4},["Studio"]={o=9999,i=0},["StudioService"]={o=9999,i=0},["StyleBase"]={o=200,i=0},["StyleDerive"]={o=200,i=0},["StyleLink"]={o=200,i=0},["StyleQuery"]={o=200,i=0},["StyleRule"]={o=200,i=0},["StyleSheet"]={o=200,i=0},["SunRaysEffect"]={o=20,i=83},["SurfaceAppearance"]={o=40,i=10},["SurfaceGui"]={o=140,i=64},["SurfaceGuiBase"]={o=140,i=64},["SurfaceLight"]={o=30,i=13},["SurfaceSelection"]={o=210,i=55},["SwimController"]={o=20,i=0},["TaskScheduler"]={o=9999,i=0},["Team"]={o=10,i=24},["Teams"]={o=140,i=23},["TeleportService"]={o=9999,i=0},["Terrain"]={o=5,i=65},["TerrainDetail"]={o=42,i=144},["TerrainRegion"]={o=20,i=65},["TestService"]={o=1000,i=68},["TextBox"]={o=170,i=51},["TextButton"]={o=170,i=51},["TextChannel"]={o=14,i=140},["TextChannelWindow"]={o=16,i=0},["TextChatCommand"]={o=15,i=138},["TextChatService"]={o=511,i=143},["TextDocument"]={o=55,i=6},["TextLabel"]={o=190,i=50},["TextSource"]={o=10,i=139},["Texture"]={o=40,i=10},["Tool"]={o=30,i=17},["Torque"]={o=30,i=103},["TorsionSpringConstraint"]={o=30,i=125},["TouchTransmitter"]={o=30,i=37},["Trail"]={o=30,i=93},["TremoloSoundEffect"]={o=20,i=84},["TriangleMeshPart"]={o=9999,i=0},["TrussPart"]={o=120,i=1},["Tween"]={o=9999,i=0},["TweenBase"]={o=9999,i=0},["TweenService"]={o=9999,i=0},["UIAspectRatioConstraint"]={o=30,i=26},["UICorner"]={o=30,i=26},["UIDragDetector"]={o=30,i=41},["UIFlexItem"]={o=130,i=26},["UIGradient"]={o=30,i=26},["UIGridLayout"]={o=30,i=26},["UIGridStyleLayout"]={o=9999,i=0},["UIListLayout"]={o=30,i=26},["UIPadding"]={o=30,i=26},["UIPageLayout"]={o=30,i=26},["UIScale"]={o=30,i=26},["UIShadow"]={o=30,i=26},["UISizeConstraint"]={o=30,i=26},["UIStroke"]={o=30,i=26},["UITableLayout"]={o=30,i=26},["UITextSizeConstraint"]={o=30,i=26},["UnionOperation"]={o=105,i=73},["UniversalConstraint"]={o=30,i=123},["UnreliableRemoteEvent"]={o=51,i=75},["UserInputService"]={o=9999,i=0},["VRService"]={o=1000,i=0},["ValueBase"]={o=30,i=4},["Vector3Value"]={o=30,i=4},["VectorForce"]={o=30,i=102},["VehicleSeat"]={o=30,i=35},["VelocityMotor"]={o=9999,i=0},["VideoDisplay"]={o=10,i=11},["VideoFrame"]={o=18,i=120},["VideoPlayer"]={o=10,i=11},["ViewportCamera"]={o=5,i=0},["ViewportFrame"]={o=30,i=52},["VoiceChatInternal"]={o=9999,i=0},["VoiceChatService"]={o=520,i=136},["WedgePart"]={o=120,i=1},["Weld"]={o=200,i=34},["WeldConstraint"]={o=30,i=94},["Wire"]={o=10,i=11},["WireframeHandleAdornment"]={o=205,i=113},["Workspace"]={o=5,i=19},["WorldModel"]={o=22,i=19},["WrapDeformer"]={o=32,i=127},["WrapLayer"]={o=32,i=126},["WrapTarget"]={o=32,i=127},["WrapTextureTransfer"]={o=33,i=0},}
+
+		local explorerOn = false
+		local selected = nil
+		local expanded = { [game] = true }
+
+		local treeConns = {}
+		local rowOf = {}
+
+		local function classOrder(className)
+			local e = RMD[className]
+			return e and e.o or 9999
+		end
+
+		-- Dex Vanilla3 class icons (rbxassetid://114851699900089)
+		-- 32x32 tiles, 25 columns. Icons dict is 1-based; Display uses 0-based index.
+		local ICON_MAP_ID = "rbxassetid://114851699900089"
+		local ICON_SIZE = 32
+		local ICON_COLS = 25
+		local CLASS_ICONS = {["Accessory"]=1,["Accoutrement"]=2,["Actor"]=3,["AdGui"]=4,["AdPortal"]=5,["AdService"]=6,["AdvancedDragger"]=7,["AirController"]=8,["AlignOrientation"]=9,["AlignPosition"]=10,["AnalysticsService"]=11,["AnalysticsSettings"]=12,["AnalyticsService"]=13,["AngularVelocity"]=14,["Animation"]=15,["AnimationClip"]=16,["AnimationClipProvider"]=17,["AnimationController"]=18,["AnimationFromVideoCreatorService"]=19,["AnimationFromVideoCreatorStudioService"]=20,["AnimationRigData"]=21,["AnimationStreamTrack"]=22,["AnimationTrack"]=23,["Animator"]=24,["AppStorageService"]=25,["AppUpdateService"]=26,["ArcHandles"]=27,["AssetCounterService"]=28,["AssetDeliveryProxy"]=29,["AssetImportService"]=30,["AssetImportSession"]=31,["AssetManagerService"]=32,["AssetService"]=33,["AssetSoundEffect"]=34,["Atmosphere"]=35,["Attachment"]=36,["AvatarEditorService"]=37,["AvatarImportService"]=38,["Backpack"]=39,["BackpackItem"]=40,["BadgeService"]=41,["BallSocketConstraint"]=42,["BasePart"]=43,["BasePlayerGui"]=44,["BaseScript"]=45,["BaseWrap"]=46,["Beam"]=47,["BevelMesh"]=48,["BillboardGui"]=49,["BinaryStringValue"]=50,["BindableEvent"]=51,["BindableFunction"]=52,["BlockMesh"]=53,["BloomEffect"]=54,["BlurEffect"]=55,["BodyAngularVelocity"]=56,["BodyColors"]=57,["BodyForce"]=58,["BodyGyro"]=59,["BodyMover"]=60,["BodyPosition"]=61,["BodyThrust"]=62,["BodyVelocity"]=63,["Bone"]=64,["BoolValue"]=65,["BoxHandleAdornment"]=66,["Breakpoint"]=67,["BreakpointManager"]=68,["BrickColorValue"]=69,["BrowserService"]=70,["BubbleChatConfiguration"]=71,["BulkImportService"]=72,["CFrameValue"]=78,["CSGDictionaryService"]=116,["CacheableContentProvider"]=73,["CalloutService"]=74,["Camera"]=75,["CanvasGroup"]=76,["CatalogPages"]=77,["ChangeHistoryService"]=79,["ChannelSelectorSoundEffect"]=80,["CharacterAppearance"]=81,["CharacterMesh"]=82,["Chat"]=83,["ChatInputBarConfiguration"]=84,["ChatWindowConfiguration"]=85,["ChorusSoundEffect"]=86,["ClickDetector"]=87,["ClientReplicator"]=88,["ClimbController"]=89,["Clothing"]=90,["Clouds"]=91,["ClusterPacketCache"]=92,["CollectionService"]=93,["Color3Value"]=94,["ColorCorrectionEffect"]=95,["CommandInstance"]=96,["CommandService"]=97,["CompressorSoundEffect"]=98,["ConeHandleAdornment"]=99,["Configuration"]=100,["ConfigureServerService"]=101,["Constraint"]=102,["ContentProvider"]=103,["ContextActionService"]=104,["Controller"]=105,["ControllerBase"]=106,["ControllerManager"]=107,["ControllerService"]=108,["CookiesService"]=109,["CoreGui"]=110,["CorePackages"]=111,["CoreScript"]=112,["CoreScriptSyncService"]=113,["CornerWedgePart"]=114,["CrossDMScriptChangeListener"]=115,["CurveAnimation"]=117,["CustomEvent"]=118,["CustomEventReceiver"]=119,["CustomSoundEffect"]=120,["CylinderHandleAdornment"]=121,["CylinderMesh"]=122,["CylindricalConstraint"]=123,["DataModel"]=124,["DataModelMesh"]=125,["DataModelPatchService"]=126,["DataModelSession"]=127,["DataStore"]=128,["DataStoreIncrementOptions"]=129,["DataStoreInfo"]=130,["DataStoreKey"]=131,["DataStoreKeyInfo"]=132,["DataStoreKeyPages"]=133,["DataStoreListingPages"]=134,["DataStoreObjectVersionInfo"]=135,["DataStoreOptions"]=136,["DataStorePages"]=137,["DataStoreService"]=138,["DataStoreSetOptions"]=139,["DataStoreVersionPages"]=140,["Debris"]=141,["DebugSettings"]=151,["DebuggablePluginWatcher"]=142,["DebuggerBreakpoint"]=143,["DebuggerConnection"]=144,["DebuggerConnectionManager"]=145,["DebuggerLuaResponse"]=146,["DebuggerManager"]=147,["DebuggerUIService"]=148,["DebuggerVariable"]=149,["DebuggerWatch"]=150,["Decal"]=152,["DepthOfFieldEffect"]=153,["DeviceIdService"]=154,["Dialog"]=155,["DialogChoice"]=156,["DistortionSoundEffect"]=157,["DockWidgetPluginGui"]=158,["DoubleConstrainedValue"]=159,["DraftsService"]=160,["Dragger"]=161,["DraggerService"]=162,["DynamicRotate"]=163,["EchoSoundEffect"]=164,["EmotesPages"]=165,["EqualizerSoundEffect"]=166,["EulerRotationCurve"]=167,["EventIngestService"]=168,["Explosion"]=169,["FaceAnimatorService"]=170,["FaceControls"]=171,["FaceInstance"]=172,["FacialAnimationRecordingService"]=173,["FacialAnimationStreamingService"]=174,["Feature"]=175,["File"]=176,["FileMesh"]=177,["Fire"]=178,["Flag"]=179,["FlagStand"]=180,["FlagStandService"]=181,["FlangeSoundEffect"]=182,["FloatCurve"]=183,["FloorWire"]=184,["FlyweightService"]=185,["Folder"]=186,["ForceField"]=187,["FormFactorPart"]=188,["Frame"]=189,["FriendPages"]=190,["FriendService"]=191,["FunctionalTest"]=192,["GamePassService"]=194,["GameSettings"]=195,["GamepadService"]=193,["GenericSettings"]=196,["Geometry"]=197,["GetTextBoundsParams"]=198,["GlobalDataStore"]=199,["GlobalSettings"]=200,["Glue"]=201,["GoogleAnalyticsConfiguration"]=202,["GroundController"]=203,["GroupService"]=204,["GuiBase"]=205,["GuiBase2d"]=206,["GuiBase3d"]=207,["GuiButton"]=208,["GuiLabel"]=210,["GuiMain"]=211,["GuiObject"]=212,["GuiService"]=213,["GuidRegistryService"]=209,["HSRDataContentProvider"]=227,["HandleAdornment"]=214,["Handles"]=215,["HandlesBase"]=216,["HapticService"]=217,["Hat"]=218,["HeightmapImporterService"]=219,["HiddenSurfaceRemovalAsset"]=220,["Highlight"]=221,["HingeConstraint"]=222,["Hint"]=223,["Hole"]=224,["Hopper"]=225,["HopperBin"]=226,["HttpRbxApiService"]=228,["HttpRequest"]=229,["HttpService"]=230,["Humanoid"]=231,["HumanoidController"]=232,["HumanoidDescription"]=233,["IKControl"]=234,["ILegacyStudioBridge"]=235,["IXPService"]=255,["ImageButton"]=236,["ImageHandleAdornment"]=237,["ImageLabel"]=238,["ImporterAnimationSettings"]=239,["ImporterBaseSettings"]=240,["ImporterFacsSettings"]=241,["ImporterGroupSettings"]=242,["ImporterJointSettings"]=243,["ImporterMaterialSettings"]=244,["ImporterMeshSettings"]=245,["ImporterRootSettings"]=246,["IncrementalPatchBuilder"]=247,["InputObject"]=248,["InsertService"]=249,["Instance"]=250,["InstanceAdornment"]=251,["IntConstrainedValue"]=252,["IntValue"]=253,["InventoryPages"]=254,["JointInstance"]=256,["JointsService"]=257,["KeyboardService"]=258,["Keyframe"]=259,["KeyframeMarker"]=260,["KeyframeSequence"]=261,["KeyframeSequenceProvider"]=262,["LSPFileSyncService"]=280,["LanguageService"]=263,["LayerCollector"]=264,["LegacyStudioBridge"]=265,["Light"]=266,["Lighting"]=267,["LineForce"]=269,["LineHandleAdornment"]=270,["LinearVelocity"]=268,["LocalDebuggerConnection"]=271,["LocalScript"]=274,["LocalStorageService"]=275,["LocalizationService"]=272,["LocalizationTable"]=273,["LodDataEntity"]=276,["LodDataService"]=277,["LogService"]=279,["LoginService"]=278,["LuaSettings"]=281,["LuaSourceContainer"]=282,["LuaWebService"]=284,["LuauScriptAnalyzerService"]=283,["ManualGlue"]=285,["ManualSurfaceJointInstance"]=286,["ManualWeld"]=287,["MarkerCurve"]=288,["MarketplaceService"]=289,["MaterialService"]=290,["MaterialVariant"]=291,["MemStorageConnection"]=295,["MemStorageService"]=296,["MemoryStoreQueue"]=292,["MemoryStoreService"]=293,["MemoryStoreSortedMap"]=294,["MeshContentProvider"]=297,["MeshPart"]=298,["Message"]=299,["MessageBusConnection"]=300,["MessageBusService"]=301,["MessagingService"]=302,["MetaBreakpoint"]=303,["MetaBreakpointContext"]=304,["MetaBreakpointManager"]=305,["Model"]=306,["ModuleScript"]=307,["Motor"]=308,["Motor6D"]=309,["MotorFeature"]=310,["Mouse"]=311,["MouseService"]=312,["MultipleDocumentInterfaceInstance"]=313,["NegateOperation"]=314,["NetworkClient"]=315,["NetworkMarker"]=316,["NetworkPeer"]=317,["NetworkReplicator"]=318,["NetworkServer"]=319,["NetworkSettings"]=320,["NoCollisionConstraint"]=321,["NonReplicatedCSGDictionaryService"]=322,["NotificationService"]=323,["NumberPose"]=324,["NumberValue"]=325,["ObjectValue"]=326,["OrderedDataStore"]=327,["OutfitPages"]=328,["PVAdornment"]=386,["PVInstance"]=387,["PackageLink"]=329,["PackageService"]=330,["PackageUIService"]=331,["Pages"]=332,["Pants"]=333,["ParabolaAdornment"]=334,["Part"]=335,["PartAdornment"]=336,["PartOperation"]=338,["PartOperationAsset"]=339,["ParticleEmitter"]=337,["PatchMapping"]=340,["Path"]=341,["PathfindingLink"]=342,["PathfindingModifier"]=343,["PathfindingService"]=344,["PausedState"]=345,["PausedStateBreakpoint"]=346,["PausedStateException"]=347,["PermissionsService"]=348,["PhysicsService"]=349,["PhysicsSettings"]=350,["PitchShiftSoundEffect"]=351,["Plane"]=352,["PlaneConstraint"]=353,["Platform"]=354,["Player"]=355,["PlayerEmulatorService"]=356,["PlayerGui"]=357,["PlayerMouse"]=358,["PlayerScripts"]=360,["Players"]=359,["Plugin"]=361,["PluginAction"]=362,["PluginDebugService"]=363,["PluginDragEvent"]=364,["PluginGui"]=365,["PluginGuiService"]=366,["PluginManagementService"]=367,["PluginManager"]=368,["PluginManagerInterface"]=369,["PluginMenu"]=370,["PluginMouse"]=371,["PluginPolicyService"]=372,["PluginToolbar"]=373,["PluginToolbarButton"]=374,["PointLight"]=375,["PointsService"]=376,["PolicyService"]=377,["Pose"]=378,["PoseBase"]=379,["PostEffect"]=380,["PrismaticConstraint"]=381,["ProcessInstancePhysicsService"]=382,["ProximityPrompt"]=383,["ProximityPromptService"]=384,["PublishService"]=385,["QWidgetPluginGui"]=388,["RayValue"]=389,["RbxAnalyticsService"]=390,["ReflectionMetadata"]=391,["ReflectionMetadataCallbacks"]=392,["ReflectionMetadataClass"]=393,["ReflectionMetadataClasses"]=394,["ReflectionMetadataEnum"]=395,["ReflectionMetadataEnumItem"]=396,["ReflectionMetadataEnums"]=397,["ReflectionMetadataEvents"]=398,["ReflectionMetadataFunctions"]=399,["ReflectionMetadataItem"]=400,["ReflectionMetadataMember"]=401,["ReflectionMetadataProperties"]=402,["ReflectionMetadataYieldFunctions"]=403,["RemoteDebuggerServer"]=404,["RemoteEvent"]=405,["RemoteFunction"]=406,["RenderSettings"]=408,["RenderingTest"]=407,["ReplicatedFirst"]=409,["ReplicatedStorage"]=410,["ReverbSoundEffect"]=411,["RigidConstraint"]=412,["RobloxPluginGuiService"]=413,["RobloxReplicatedStorage"]=414,["RocketPropulsion"]=415,["RodConstraint"]=416,["RopeConstraint"]=417,["Rotate"]=418,["RotateP"]=419,["RotateV"]=420,["RotationCurve"]=421,["RtMessagingService"]=422,["RunService"]=426,["RunningAverageItemDouble"]=423,["RunningAverageItemInt"]=424,["RunningAverageTimeIntervalItem"]=425,["RuntimeScriptService"]=427,["ScreenGui"]=428,["ScreenshotHud"]=429,["Script"]=430,["ScriptChangeService"]=431,["ScriptCloneWatcher"]=432,["ScriptCloneWatcherHelper"]=433,["ScriptContext"]=434,["ScriptDebugger"]=435,["ScriptDocument"]=436,["ScriptEditorService"]=437,["ScriptRegistrationService"]=438,["ScriptService"]=439,["ScrollingFrame"]=440,["Seat"]=441,["Selection"]=442,["SelectionBox"]=443,["SelectionLasso"]=444,["SelectionPartLasso"]=445,["SelectionPointLasso"]=446,["SelectionSphere"]=447,["ServerReplicator"]=448,["ServerScriptService"]=449,["ServerStorage"]=450,["ServiceProvider"]=451,["SessionService"]=452,["Shirt"]=453,["ShirtGraphic"]=454,["SkateboardController"]=455,["SkateboardPlatform"]=456,["Skin"]=457,["Sky"]=458,["SlidingBallConstraint"]=459,["Smoke"]=460,["Snap"]=461,["SnippetService"]=462,["SocialService"]=463,["SolidModelContentProvider"]=464,["Sound"]=465,["SoundEffect"]=466,["SoundGroup"]=467,["SoundService"]=468,["Sparkles"]=469,["SpawnLocation"]=471,["SpawnerService"]=470,["Speaker"]=472,["SpecialMesh"]=473,["SphereHandleAdornment"]=474,["SpotLight"]=475,["SpringConstraint"]=476,["StackFrame"]=477,["StandalonePluginScripts"]=478,["StandardPages"]=479,["StarterCharacterScripts"]=480,["StarterGear"]=481,["StarterGui"]=482,["StarterPack"]=483,["StarterPlayer"]=484,["StarterPlayerScripts"]=485,["Stats"]=486,["StatsItem"]=487,["Status"]=488,["StopWatchReporter"]=489,["StringValue"]=490,["Studio"]=491,["StudioAssetService"]=492,["StudioData"]=493,["StudioDeviceEmulatorService"]=494,["StudioHighDpiService"]=495,["StudioPublishService"]=496,["StudioScriptDebugEventListener"]=497,["StudioService"]=498,["StudioTheme"]=499,["SunRaysEffect"]=500,["SurfaceAppearance"]=501,["SurfaceGui"]=502,["SurfaceGuiBase"]=503,["SurfaceLight"]=504,["SurfaceSelection"]=505,["SwimController"]=506,["TaskScheduler"]=507,["Team"]=508,["TeamCreateService"]=509,["Teams"]=510,["TeleportAsyncResult"]=511,["TeleportOptions"]=512,["TeleportService"]=513,["TemporaryCageMeshProvider"]=514,["TemporaryScriptService"]=515,["Terrain"]=516,["TerrainDetail"]=517,["TerrainRegion"]=518,["TestService"]=519,["TextBox"]=520,["TextBoxService"]=521,["TextButton"]=522,["TextChannel"]=523,["TextChatCommand"]=524,["TextChatConfigurations"]=525,["TextChatMessage"]=526,["TextChatMessageProperties"]=527,["TextChatService"]=528,["TextFilterResult"]=529,["TextLabel"]=530,["TextService"]=531,["TextSource"]=532,["Texture"]=533,["ThirdPartyUserService"]=534,["ThreadState"]=535,["TimerService"]=536,["ToastNotificationService"]=537,["Tool"]=538,["ToolboxService"]=539,["Torque"]=540,["TorsionSpringConstraint"]=541,["TotalCountTimeIntervalItem"]=542,["TouchInputService"]=543,["TouchTransmitter"]=544,["TracerService"]=545,["TrackerStreamAnimation"]=546,["Trail"]=547,["Translator"]=548,["TremoloSoundEffect"]=549,["TriangleMeshPart"]=550,["TrussPart"]=551,["Tween"]=552,["TweenBase"]=553,["TweenService"]=554,["UGCValidationService"]=555,["UIAspectRatioConstraint"]=556,["UIBase"]=557,["UIComponent"]=558,["UIConstraint"]=559,["UICorner"]=560,["UIGradient"]=561,["UIGridLayout"]=562,["UIGridStyleLayout"]=563,["UILayout"]=564,["UIListLayout"]=565,["UIPadding"]=566,["UIPageLayout"]=567,["UIScale"]=568,["UISizeConstraint"]=569,["UIStroke"]=570,["UITableLayout"]=571,["UITextSizeConstraint"]=572,["UnionOperation"]=573,["UniversalConstraint"]=574,["UnvalidatedAssetService"]=575,["UserGameSettings"]=576,["U.UIS"]=577,["UserService"]=578,["UserSettings"]=579,["UserStorageService"]=580,["VRService"]=600,["ValueBase"]=581,["Vector3Curve"]=582,["Vector3Value"]=583,["VectorForce"]=584,["VehicleController"]=585,["VehicleSeat"]=586,["VelocityMotor"]=587,["VersionControlService"]=588,["VideoCaptureService"]=589,["VideoFrame"]=590,["ViewportFrame"]=591,["VirtualInputManager"]=592,["VirtualUser"]=593,["VisibilityService"]=594,["Visit"]=595,["VoiceChannel"]=596,["VoiceChatInternal"]=597,["VoiceChatService"]=598,["VoiceSource"]=599,["WedgePart"]=601,["Weld"]=602,["WeldConstraint"]=603,["WireframeHandleAdornment"]=604,["Workspace"]=605,["WorldModel"]=606,["WorldRoot"]=607,["WrapLayer"]=608,["WrapTarget"]=609}
+		local function applyClassIcon(imageLabel, className)
+			local raw = CLASS_ICONS[className]
+			if not raw then
+				-- try RMD explorer image index as linear fallback on ClassImages
+				local e = RMD[className]
+				if e and e.i then
+					imageLabel.Image = "rbxasset://textures/ClassImages.PNG"
+					imageLabel.ImageRectSize = Vector2.new(16, 16)
+					imageLabel.ImageRectOffset = Vector2.new(16 * e.i, 0)
+					return
+				end
+				raw = CLASS_ICONS.Folder or 1
+			end
+			local index = math.max(0, (tonumber(raw) or 1) - 1)
+			local col = index % ICON_COLS
+			local row = math.floor(index / ICON_COLS)
+			-- set rect before and after image to avoid full-sheet flash
+			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
+			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
+			imageLabel.Image = ICON_MAP_ID
+			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
+			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
+		end
+
+		local function nodeSorter(a, b)
+			local ao, bo = classOrder(a.ClassName), classOrder(b.ClassName)
+			if ao ~= bo then return ao < bo end
+			return a.Name:lower() < b.Name:lower()
+		end
+
+		local function childrenOf(inst)
+			local ok, ch = pcall(function() return inst:GetChildren() end)
+			if not ok then return {} end
+			table.sort(ch, nodeSorter)
+			return ch
+		end
+
+		-- U.section returns the inner ScrollingFrame content
+		local explList = U.section(page, "explorer", 1, 1, 1)
+		local propList = U.section(page, "properties", 2, 1, 1)
+		explList.ScrollBarThickness = 0
+		explList.ScrollBarImageTransparency = 1
+		propList.ScrollBarThickness = 0
+		propList.ScrollBarImageTransparency = 1
+
+		-- clear default padding gap a bit
+		for _, list in ipairs({ explList, propList }) do
+			for _, ch in ipairs(list:GetChildren()) do
+				if ch:IsA("UIPadding") then
+					ch.PaddingTop = UDim.new(0, 0)
+					ch.PaddingBottom = UDim.new(0, 0)
+				elseif ch:IsA("UIListLayout") then
+					ch.Padding = UDim.new(0, 0)
+				end
+			end
+		end
+
+		local search = Instance.new("TextBox")
+		search.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+		search.BorderSizePixel = 0
+		search.ClearTextOnFocus = false
+		search.FontFace = U.font
+		search.TextSize = U.TEXT_SZ
+		search.TextColor3 = U.theme.Text
+		search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+		search.PlaceholderText = "filter..."
+		search.Text = ""
+		search.Size = UDim2.new(1, 0, 0, 16)
+		search.LayoutOrder = -1000000
+		search.Parent = explList
+		U.edges(search, U.ELEMENT_BORDER, false, 3)
+
+		local function disconnectTree(inst)
+			local cns = treeConns[inst]
+			if cns then
+				for _, x in ipairs(cns) do pcall(function() x:Disconnect() end) end
+				treeConns[inst] = nil
+			end
+		end
+
+		local function clearExplorer()
+			for inst, row in pairs(rowOf) do
+				disconnectTree(inst)
+				if row then pcall(function() row:Destroy() end) end
+			end
+			rowOf = {}
+		end
+
+		local function fmt(v)
+			local t = typeof(v)
+			if t == "Instance" then
+				local ok, n = pcall(function() return v:GetFullName() end)
+				return ok and n or tostring(v)
+			elseif t == "Color3" then
+				return string.format("%d, %d, %d", math.floor(v.R * 255 + 0.5), math.floor(v.G * 255 + 0.5), math.floor(v.B * 255 + 0.5))
+			elseif t == "Vector3" then
+				return string.format("%.3f, %.3f, %.3f", v.X, v.Y, v.Z)
+			elseif t == "Vector2" then
+				return string.format("%.3f, %.3f", v.X, v.Y)
+			elseif t == "CFrame" then
+				local p = v.Position
+				return string.format("%.3f, %.3f, %.3f", p.X, p.Y, p.Z)
+			elseif t == "UDim2" then
+				return string.format("{%.3f, %d}, {%.3f, %d}", v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
+			elseif t == "UDim" then
+				return string.format("%.3f, %d", v.Scale, v.Offset)
+			elseif t == "EnumItem" then
+				return v.Name
+			elseif t == "BrickColor" then
+				return v.Name
+			elseif t == "boolean" or t == "number" or t == "string" then
+				return tostring(v)
+			elseif t == "nil" then
+				return "nil"
+			end
+			local ok, s = pcall(tostring, v)
+			return ok and s or t
+		end
+
+		local function refreshProps()
+			for _, ch in ipairs(propList:GetChildren()) do
+				if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") then
+					ch:Destroy()
+				end
+			end
+			if not selected then return end
+			local okAlive, className = pcall(function() return selected.ClassName end)
+			if not okAlive then selected = nil return end
+
+			local entries = {}
+			local seen = {}
+			local function add(k, v)
+				if seen[k] then return end
+				seen[k] = true
+				entries[#entries + 1] = { k, v }
+			end
+
+			add("Name", selected.Name)
+			add("ClassName", className)
+			pcall(function()
+				add("Parent", selected.Parent and selected.Parent:GetFullName() or "nil")
+			end)
+
+			local got = false
+			if type(getproperties) == "function" then
+				local ok, list = pcall(getproperties, selected)
+				if ok and type(list) == "table" then
+					got = true
+					local n = 0
+					for k, v in pairs(list) do
+						local key = tostring(k)
+						if key ~= "Name" and key ~= "ClassName" and key ~= "Parent" then
+							add(key, v)
+							n += 1
+							if n > 300 then break end
+						end
+					end
+				end
+			end
+			if not got then
+				for _, n in ipairs({
+					"Archivable", "Anchored", "CanCollide", "CanQuery", "CanTouch", "CastShadow", "Transparency",
+					"Reflectance", "Material", "Color", "BrickColor", "Size", "Position", "Orientation", "CFrame",
+					"Velocity", "RotVelocity", "Enabled", "Value", "Text", "TextColor3", "TextSize",
+					"Image", "ImageColor3", "Visible", "ZIndex", "BackgroundColor3", "BackgroundTransparency",
+					"BorderSizePixel", "LayoutOrder", "Health", "MaxHealth", "WalkSpeed", "JumpPower",
+					"JumpHeight", "HipHeight", "DisplayName", "UserId", "Brightness", "ClockTime", "Ambient",
+					"OutdoorAmbient", "FogEnd", "FogStart", "Volume", "PlaybackSpeed", "Playing",
+					"FillColor", "OutlineColor", "FillTransparency", "OutlineTransparency", "DepthMode",
+					"Adornee", "AlwaysOnTop", "PrimaryPart", "Massless", "WorldPivot", "MeshId", "TextureId",
+					"SoundId", "Source", "Locked", "Shape", "TopSurface", "BottomSurface",
+				}) do
+					pcall(function()
+						local v = selected[n]
+						if v ~= nil then add(n, v) end
+					end)
+				end
+			end
+			pcall(function()
+				for a, v in pairs(selected:GetAttributes()) do
+					add("@" .. tostring(a), v)
+				end
+			end)
+
+			table.sort(entries, function(a, b) return a[1]:lower() < b[1]:lower() end)
+
+			for i, e in ipairs(entries) do
+				local row = Instance.new("Frame")
+				row.Name = "Prop"
+				row.BackgroundTransparency = 1
+				row.BorderSizePixel = 0
+				row.Size = UDim2.new(1, 0, 0, 15)
+				row.LayoutOrder = i
+				row.Parent = propList
+				local k = Instance.new("TextLabel")
+				k.BackgroundTransparency = 1
+				k.Size = UDim2.new(0.42, -2, 1, 0)
+				k.Position = UDim2.fromOffset(2, 0)
+				k.FontFace = U.font
+				k.TextSize = U.TEXT_SZ
+				k.TextColor3 = Color3.fromRGB(150, 150, 150)
+				k.TextXAlignment = Enum.TextXAlignment.Left
+				k.TextTruncate = Enum.TextTruncate.AtEnd
+				k.Text = e[1]
+				k.Parent = row
+				local v = Instance.new("TextLabel")
+				v.BackgroundTransparency = 1
+				v.Size = UDim2.new(0.58, -4, 1, 0)
+				v.Position = UDim2.new(0.42, 0, 0, 0)
+				v.FontFace = U.font
+				v.TextSize = U.TEXT_SZ
+				v.TextColor3 = U.theme.Text
+				v.TextXAlignment = Enum.TextXAlignment.Left
+				v.TextTruncate = Enum.TextTruncate.AtEnd
+				v.Text = fmt(e[2])
+				v.Parent = row
+			end
+		end
+
+		local function matchesFilter(inst, filter)
+			if filter == "" then return true end
+			return inst.Name:lower():find(filter, 1, true) ~= nil
+				or inst.ClassName:lower():find(filter, 1, true) ~= nil
+		end
+
+		local listOrder = 0
+		local function buildRow(inst, depth)
+			listOrder += 1
+			local btn = Instance.new("TextButton")
+			btn.AutoButtonColor = false
+			btn.BackgroundColor3 = Color3.fromRGB(55, 55, 80)
+			btn.BackgroundTransparency = (selected == inst) and 0.45 or 1
+			btn.BorderSizePixel = 0
+			btn.Size = UDim2.new(1, 0, 0, 16)
+			btn.Text = ""
+			btn.LayoutOrder = listOrder
+			btn.Parent = explList
+			rowOf[inst] = btn
+
+			local pad = 2 + depth * 10
+			local kids = childrenOf(inst)
+			local hasKids = #kids > 0
+			local open = expanded[inst] == true
+
+			local arrow = Instance.new("TextLabel")
+			arrow.BackgroundTransparency = 1
+			arrow.Size = UDim2.fromOffset(10, 16)
+			arrow.Position = UDim2.fromOffset(pad, 0)
+			arrow.FontFace = U.font
+			arrow.TextSize = 10
+			arrow.TextColor3 = U.theme.Text
+			arrow.Text = hasKids and (open and "-" or "+") or " "
+			arrow.Parent = btn
+
+			local icon = Instance.new("ImageLabel")
+			icon.BackgroundColor3 = Color3.new(1, 1, 1)
+			icon.BackgroundTransparency = 1
+			icon.BorderSizePixel = 0
+			icon.Size = UDim2.fromOffset(16, 16)
+			icon.Position = UDim2.fromOffset(pad + 10, 0)
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.ResampleMode = Enum.ResamplerMode.Pixelated
+			icon.Parent = btn
+			applyClassIcon(icon, inst.ClassName)
+
+			local lab = Instance.new("TextLabel")
+			lab.BackgroundTransparency = 1
+			lab.Size = UDim2.new(1, -(pad + 28), 1, 0)
+			lab.Position = UDim2.fromOffset(pad + 28, 0)
+			lab.FontFace = U.font
+			lab.TextSize = U.TEXT_SZ
+			lab.TextColor3 = U.theme.Text
+			lab.TextXAlignment = Enum.TextXAlignment.Left
+			lab.TextTruncate = Enum.TextTruncate.AtEnd
+			lab.Text = inst.Name
+			lab.Parent = btn
+
+			btn.MouseButton1Click:Connect(function()
+				if hasKids then
+					expanded[inst] = not open
+				end
+				selected = inst
+				rebuildVisible()
+				refreshProps()
+			end)
+
+			
+			if open and hasKids then
+				local conns = {}
+				conns[#conns + 1] = inst.ChildAdded:Connect(function()
+					if explorerOn and expanded[inst] then rebuildVisible() end
+				end)
+				conns[#conns + 1] = inst.ChildRemoved:Connect(function()
+					if explorerOn and expanded[inst] then rebuildVisible() end
+				end)
+				treeConns[inst] = conns
+				local filter = search.Text:lower()
+				for _, ch in ipairs(kids) do
+					if filter == "" or matchesFilter(ch, filter) or expanded[ch] then
+						buildRow(ch, depth + 1)
+					end
+				end
+			end
+		end
+
+		function rebuildVisible()
+			if not explorerOn then return end
+			clearExplorer()
+			listOrder = 0
+			buildRow(game, 0)
+		end
+
+		search:GetPropertyChangedSignal("Text"):Connect(function()
+			if explorerOn then rebuildVisible() end
+		end)
+
+		U._tabListeners = U._tabListeners or {}
+		table.insert(U._tabListeners, function(name)
+			explorerOn = name == "explorer"
+			if explorerOn then
+				rebuildVisible()
+				if selected then refreshProps() end
+			else
+				for inst in pairs(treeConns) do disconnectTree(inst) end
+				clearExplorer()
+			end
+		end)
 end
 
 function Library:CreateWindow(opts)
@@ -1979,6 +2481,11 @@ function Library:CreateWindow(opts)
 	function win:AddSettingsTab()
 		if not U.pageFrames.config then self:AddTab("config") end
 		U.buildConfig()
+		return self
+	end
+	function win:AddExplorerTab()
+		if not U.pageFrames.explorer then self:AddTab("explorer") end
+		U.buildExplorer()
 		return self
 	end
 	function win:Init()
