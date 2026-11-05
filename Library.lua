@@ -1273,25 +1273,35 @@ function U.buildShell()
 	U.gui = U.new("ScreenGui", { Name = "wavelength", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, U.guiParent())
 
 	local shell = U.new("Frame", {
-		Name = "Shell", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, ClipsDescendants = true, Active = true,
+		Name = "Shell", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, ClipsDescendants = true, Active = true,
 		Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.BODY_H + U.LINE_H), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -(U.TITLE_H + U.BODY_H) / 2),
 	}, U.gui)
 	U.shell = shell
 	U.stroke(shell, "Border")
+	table.insert(U.themeReg.bodyBgs, shell)
 
 	U.accent = U.new("Frame", { Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 5 }, shell)
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, U.accent))
 
 	U.titleBar = U.new("Frame", {
-		BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TITLE_H), Position = UDim2.fromOffset(0, U.LINE_H),
+		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
+		Position = UDim2.fromOffset(0, U.LINE_H),
 	}, shell)
-	U.label(U.titleBar, "wavelength", { Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(8, 0) })
+	do
+		local titleLeft = U.label(U.titleBar, "wavelength", {
+			Size = UDim2.new(1, -16, 1, 0),
+			Position = UDim2.fromOffset(8, -1),
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		table.insert(U.themeReg.labels, titleLeft)
+	end
 
 	U.body = U.new("Frame", {
-		Name = "Body", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
+		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
 		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H), ClipsDescendants = true, Active = true,
 	}, shell)
-	table.insert(U.themeReg.bodyBgs, U.body)
 	U.pages = U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true }, U.body)
 
 	U.pageFrames = {}
@@ -1797,9 +1807,10 @@ end
 
 function U.buildTabs()
 	local rail = U.new("Frame", {
-		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
+		Name = "TabRail", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
 		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H + U.BODY_H),
 	}, U.shell)
+	table.insert(U.themeReg.bodyBgs, rail)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
 	local tabIndex, swiping = {}, false
