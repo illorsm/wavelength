@@ -569,8 +569,10 @@ end
 function U.secGeom(col, row, rows)
 	local w = math.floor((U.BODY_W - U.SEC_GAP * 3) / 2)
 	local x = (col == 1) and U.SEC_GAP or (U.SEC_GAP * 2 + w)
-	local h = math.floor((U.BODY_H - U.SEC_GAP * 2 - U.SEC_GAP * (rows - 1)) / rows)
-	return x, U.SEC_GAP + (row - 1) * (h + U.SEC_GAP), w, h
+	-- title sits on the top border; keep the same visual gap above the title as below the section
+	local topPad = U.SEC_GAP + 7
+	local h = math.floor((U.BODY_H - topPad - U.SEC_GAP - U.SEC_GAP * (rows - 1)) / rows)
+	return x, topPad + (row - 1) * (h + U.SEC_GAP), w, h
 end
 
 function U.section(parent, col, row, rows)
@@ -621,20 +623,20 @@ function U.section(parent, col, row, rows)
 		local btnW = math.floor((w - totalGap) / n)
 		for i, t in ipairs(sec._tabs) do
 			local bx = gap + (i - 1) * (btnW + gap)
+			local selected = sec._current == t.name
 			local btn = U.new("TextButton", {
 				Name = t.name,
 				AutoButtonColor = false,
-				BackgroundColor3 = U.theme.SectionBg,
+				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				Size = UDim2.fromOffset(btnW, 14),
 				Position = UDim2.fromOffset(bx, 0),
 				FontFace = U.font,
 				TextSize = U.TEXT_SZ,
-				TextColor3 = U.theme.Text,
+				TextColor3 = selected and U.theme.Text or U.GRAY_TEXT,
 				Text = t.name,
 				ZIndex = 6,
 			}, header)
-			U.stroke(btn, "SectionBorder")
 			sec._buttons[t.name] = btn
 			if n > 1 then
 				local tabName = t.name
@@ -2454,7 +2456,7 @@ function Library:CreateWindow(opts)
 					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 and ch.Position.X.Offset == x then
 						sidx += 1
 						ch.Size = UDim2.fromOffset(w, h)
-						ch.Position = UDim2.fromOffset(x, U.SEC_GAP + (sidx - 1) * (h + U.SEC_GAP))
+						ch.Position = UDim2.fromOffset(x, (U.SEC_GAP + 7) + (sidx - 1) * (h + U.SEC_GAP))
 					end
 				end
 			end
