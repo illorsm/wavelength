@@ -537,7 +537,7 @@ function U.clickHitsNamed(...)
 end
 
 function U.row(parent, order)
-	return U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order or 0 }, parent)
+	return U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order or 0 }, parent)
 end
 
 function U.indentRow(r, px)
@@ -568,12 +568,41 @@ function U.subOf(control, parentFlag)
 end
 
 function U.secGeom(col, row, rows)
-	local w = math.floor((U.BODY_W - U.SEC_GAP * 3) / 2)
-	local x = (col == 1) and U.SEC_GAP or (U.SEC_GAP * 2 + w)
-	-- title sits on the top border; keep the same visual gap above the title as below the section
-	local topPad = U.SEC_GAP + 7
-	local h = math.floor((U.BODY_H - topPad - U.SEC_GAP - U.SEC_GAP * (rows - 1)) / rows)
-	return x, topPad + (row - 1) * (h + U.SEC_GAP), w, h
+	local gap = U.SEC_GAP
+	local topPad = gap + 7
+	local bottomPad = gap + 7
+	local w = math.floor((U.BODY_W - gap * 3) / 2)
+	local x = (col == 1) and gap or (gap * 2 + w)
+	rows = math.max(1, math.floor(tonumber(rows) or 1))
+	row = math.clamp(math.floor(tonumber(row) or 1), 1, rows)
+	local usable = U.BODY_H - topPad - bottomPad - gap * (rows - 1)
+	local h = math.floor(usable / rows)
+	local y = topPad + (row - 1) * (h + gap)
+	if row == rows then
+		h = math.max(1, U.BODY_H - bottomPad - y)
+	end
+	return x, y, w, h
+end
+
+function U.relayoutColumn(page, side)
+	if not page then return end
+	side = side or 1
+	local frames = {}
+	for _, ch in ipairs(page:GetChildren()) do
+		if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+			frames[#frames + 1] = ch
+		end
+	end
+	table.sort(frames, function(a, b)
+		return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
+	end)
+	local n = #frames
+	for i, ch in ipairs(frames) do
+		local x, y, w, h = U.secGeom(side, i, n)
+		ch.Size = UDim2.fromOffset(w, h)
+		ch.Position = UDim2.fromOffset(x, y)
+		ch:SetAttribute("SectionRow", i)
+	end
 end
 
 function U.section(parent, col, row, rows)
@@ -591,6 +620,8 @@ function U.section(parent, col, row, rows)
 
 	local x, y, w, h = U.secGeom(col, row or 1, rows or 1)
 	local f = U.new("Frame", { BackgroundColor3 = U.theme.SectionBg, BorderSizePixel = 0, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, y) }, parent)
+	f:SetAttribute("SectionCol", col or 1)
+	f:SetAttribute("SectionRow", row or 1)
 	table.insert(U.themeReg.sectionBgs, f)
 	U.stroke(f, "SectionBorder")
 
@@ -887,7 +918,7 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	if flag then U.vflags[flag] = on end
 	local function col() return on and U.pulseColor() or U.OFF end
 
-	local box = U.new("Frame", { Size = UDim2.fromOffset(12, 12), Position = UDim2.fromOffset(0, 3), BackgroundColor3 = col(), BorderSizePixel = 0 }, r)
+	local box = U.new("Frame", { Size = UDim2.fromOffset(12, 12), Position = UDim2.fromOffset(0, 2), BackgroundColor3 = col(), BorderSizePixel = 0 }, r)
 	U.controlStroke(box)
 	U.registerPulse(box, function() return on end)
 	U.label(r, text, { Size = UDim2.new(1, -(20 + reserve), 1, 0), Position = UDim2.fromOffset(18, 0) })
@@ -923,10 +954,10 @@ end
 function U.sliderFrame(parent, text, order, tooltip, vw)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 28)
+	r.Size = UDim2.new(1, 0, 0, 20)
 	U.label(r, text, { Size = UDim2.new(1, -(vw + 4), 0, 12) })
 	local val = U.label(r, "", { Size = UDim2.fromOffset(vw, 12), Position = UDim2.new(1, -vw, 0, 0), TextXAlignment = Enum.TextXAlignment.Right })
-	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 13) }, r)
+	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 14) }, r)
 	U.controlStroke(track)
 	local fill = U.new("Frame", { BackgroundColor3 = U.pulseColor(), BorderSizePixel = 0, ZIndex = 3 }, track)
 	U.registerPulse(fill, function() return true end)
@@ -2465,17 +2496,7 @@ function Library:CreateWindow(opts)
 
 			local parent = U.pageFrames[tabName]
 			local sec = U.section(parent, side, row, rows)
-			if rows > 1 then
-				local x, _, w, h = U.secGeom(side, 1, rows)
-				local sidx = 0
-				for _, ch in ipairs(parent:GetChildren()) do
-					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 and ch.Position.X.Offset == x then
-						sidx += 1
-						ch.Size = UDim2.fromOffset(w, h)
-						ch.Position = UDim2.fromOffset(x, (U.SEC_GAP + 7) + (sidx - 1) * (h + U.SEC_GAP))
-					end
-				end
-			end
+			U.relayoutColumn(parent, side)
 
 			if sectionName then
 				return sec:AddTab(string.lower(tostring(sectionName)))
