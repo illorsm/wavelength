@@ -363,7 +363,8 @@ function U.refreshMenuTextColors()
 	end
 	if U.gui then
 		for _, i in ipairs(U.gui:GetDescendants()) do
-			if i.Name == "WavelengthCredit" then i.TextColor3 = gray
+			if i.Name == "WavelengthCredit" or i:GetAttribute("FixedGray") == true then
+				i.TextColor3 = gray
 			elseif not (U.kbPanel and i:IsDescendantOf(U.kbPanel)) and (i:IsA("TextLabel") or i:IsA("TextButton") or i:IsA("TextBox")) then
 				i.TextColor3 = c
 			end
@@ -613,6 +614,14 @@ function U.section(parent, col, row, rows)
 		_w = w,
 	}
 
+	local function paintTabs()
+		for name, btn in pairs(sec._buttons) do
+			local selected = sec._current == name
+			btn.TextColor3 = selected and U.theme.Text or U.GRAY_TEXT
+			btn:SetAttribute("FixedGray", not selected)
+		end
+	end
+
 	local function layoutTabs()
 		local n = #sec._tabs
 		if n == 0 then return end
@@ -625,7 +634,7 @@ function U.section(parent, col, row, rows)
 			local bx = gap + (i - 1) * (btnW + gap)
 			local selected = sec._current == t.name
 			local btn = U.new("TextButton", {
-				Name = t.name,
+				Name = "SectionTab",
 				AutoButtonColor = false,
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
@@ -637,6 +646,7 @@ function U.section(parent, col, row, rows)
 				Text = t.name,
 				ZIndex = 6,
 			}, header)
+			btn:SetAttribute("FixedGray", not selected)
 			sec._buttons[t.name] = btn
 			if n > 1 then
 				local tabName = t.name
@@ -653,7 +663,7 @@ function U.section(parent, col, row, rows)
 		for _, t in ipairs(sec._tabs) do
 			t.content.Visible = t.name == name
 		end
-		layoutTabs()
+		paintTabs()
 		if U.closeDropdown then U.closeDropdown() end
 		if U.closeColorPicker then U.closeColorPicker() end
 	end
@@ -678,7 +688,7 @@ function U.section(parent, col, row, rows)
 			ClipsDescendants = true,
 			Visible = #sec._tabs == 0,
 		}, pages)
-		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, content)
+		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
 		U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 2) }, content)
 		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			if U.closeDropdown then U.closeDropdown() end
@@ -1028,7 +1038,7 @@ local DD_BG, DD_SEL, DD_HOV = Color3.fromRGB(32, 32, 32), Color3.fromRGB(40, 40,
 function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 32)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	options = options or {}
 	limit = math.max(1, math.floor(tonumber(limit or (multi and 999 or 1)) or 1))
 	multi = limit > 1
@@ -1145,7 +1155,7 @@ end
 function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 36)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	U.vflags[flag] = U.vflags[flag] or ""
 	U.label(r, text, { Size = UDim2.new(1, 0, 0, 12) })
 	local box = U.new("TextBox", {
@@ -1846,7 +1856,7 @@ function U.buildConfig()
 	end)
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 210), LayoutOrder = 6 }, configsContent)
+	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 170), LayoutOrder = 6 }, configsContent)
 	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
@@ -1890,10 +1900,16 @@ function U.buildConfig()
 	local unload = U.mkButton(settingsContent, "unload", nextOrder(), true)
 	U.bindButton(unload, U.shutdown, 2)
 
-	local credit = U.label(configsContent.Parent.Parent, "wavelength ui by @illorsm", {
-		Name = "WavelengthCredit", Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 1, -16), TextColor3 = U.GRAY_TEXT,
+	local credit = U.label(configsContent.Parent.Parent, "wavelength ui by illorsm", {
+		Name = "WavelengthCredit", Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 1, -18), TextColor3 = U.GRAY_TEXT,
 		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
 	})
+	credit:SetAttribute("FixedGray", true)
+	-- match gap above credit to gap below it (4px)
+	do
+		local pad = configsContent:FindFirstChildOfClass("UIPadding")
+		if pad then pad.PaddingBottom = UDim.new(0, 18) end
+	end
 end
 
 function U.buildTabs()
