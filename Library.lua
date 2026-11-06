@@ -49,7 +49,7 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 22, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 0, 8
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -484,7 +484,6 @@ function U.closePopups()
 	U.closeColorPicker()
 	U.closeDropdown()
 	U.closeSettings()
-	if U.closeKeybindMode then U.closeKeybindMode() end
 end
 
 function U.shutdown()
@@ -574,27 +573,222 @@ function U.secGeom(col, row, rows)
 	return x, U.SEC_GAP + (row - 1) * (h + U.SEC_GAP), w, h
 end
 
-function U.section(parent, title, col, row, rows)
+function U.section(parent, col, row, rows)
+	local function lname(o, default)
+		if type(o) == "table" then return string.lower(tostring(o.Name or default)) end
+		return string.lower(tostring(default))
+	end
+	local function tip(o)
+		return o and (o.Tooltip or o.tooltip) or nil
+	end
+	local function keybindOf(o, name)
+		if not o or o.Keybind ~= true then return nil end
+		return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
+	end
+
 	local x, y, w, h = U.secGeom(col, row or 1, rows or 1)
 	local f = U.new("Frame", { BackgroundColor3 = U.theme.SectionBg, BorderSizePixel = 0, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, y) }, parent)
 	table.insert(U.themeReg.sectionBgs, f)
 	U.stroke(f, "SectionBorder")
-	title = tostring(title)
-	U.label(f, title, {
-		TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(math.max(40, #title * 7 + 12), 14), ZIndex = 5,
-	})
-	local content = U.new("ScrollingFrame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -10, 1, -16), Position = UDim2.fromOffset(5, 12), ScrollBarThickness = 0,
-		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
+
+	local header = U.new("Frame", {
+		Name = "SectionTabs", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, -7), ZIndex = 5,
 	}, f)
-	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, content)
-	U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 2) }, content)
-	content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+
+	local pages = U.new("Frame", {
+		Name = "Pages", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, -10, 1, -12), Position = UDim2.fromOffset(5, 8), ClipsDescendants = true,
+	}, f)
+
+	local sec = {
+		_frame = f,
+		_header = header,
+		_pages = pages,
+		_tabs = {},
+		_buttons = {},
+		_current = nil,
+		_w = w,
+	}
+
+	local function layoutTabs()
+		local n = #sec._tabs
+		if n == 0 then return end
+		for _, ch in ipairs(header:GetChildren()) do ch:Destroy() end
+		sec._buttons = {}
+		local gap = 6
+		local totalGap = gap * (n + 1)
+		local btnW = math.floor((w - totalGap) / n)
+		for i, t in ipairs(sec._tabs) do
+			local bx = gap + (i - 1) * (btnW + gap)
+			local btn = U.new("TextButton", {
+				Name = t.name,
+				AutoButtonColor = false,
+				BackgroundColor3 = U.theme.SectionBg,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(btnW, 14),
+				Position = UDim2.fromOffset(bx, 0),
+				FontFace = U.font,
+				TextSize = U.TEXT_SZ,
+				TextColor3 = U.theme.Text,
+				Text = t.name,
+				ZIndex = 6,
+			}, header)
+			U.stroke(btn, "SectionBorder")
+			sec._buttons[t.name] = btn
+			if n > 1 then
+				local tabName = t.name
+				btn.MouseButton1Click:Connect(function()
+					sec:SelectTab(tabName)
+				end)
+			end
+		end
+	end
+
+	function sec:SelectTab(name)
+		if sec._current == name then return end
+		sec._current = name
+		for _, t in ipairs(sec._tabs) do
+			t.content.Visible = t.name == name
+		end
+		layoutTabs()
 		if U.closeDropdown then U.closeDropdown() end
 		if U.closeColorPicker then U.closeColorPicker() end
-	end)
-	return content
+	end
+
+	function sec:AddTab(name)
+		name = string.lower(tostring(name or ("tab" .. (#sec._tabs + 1))))
+		if #sec._tabs >= 3 then
+			return sec._tabs[#sec._tabs].api
+		end
+		for _, t in ipairs(sec._tabs) do
+			if t.name == name then return t.api end
+		end
+
+		local content = U.new("ScrollingFrame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			ScrollBarThickness = 0,
+			CanvasSize = UDim2.new(),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ClipsDescendants = true,
+			Visible = #sec._tabs == 0,
+		}, pages)
+		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, content)
+		U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 2) }, content)
+		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+			if U.closeDropdown then U.closeDropdown() end
+			if U.closeColorPicker then U.closeColorPicker() end
+		end)
+
+		local api = { _content = content, _n = 0, Section = sec }
+		local function nextOrder()
+			api._n += 1
+			return api._n
+		end
+		local function slider(o, parentFlag)
+			o = o or {}
+			local c = U.mkSlider(content, lname(o, "slider"), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAtMax == true or o.InfAt == true, tip(o))
+			return parentFlag and U.subOf(c, parentFlag) or c
+		end
+		local function dropdown(o, parentFlag)
+			o = o or {}
+			local limit = o.Limit or o.Amount
+			if limit == nil then limit = (o.Multi == true) and 999 or 1 end
+			local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, tip(o))
+			return parentFlag and U.subOf(c, parentFlag) or c
+		end
+		local function toggle(o)
+			o = o or {}
+			local flag = o.Flag or o.Name
+			local row = U.mkToggle(content, lname(o, "toggle"), flag, nextOrder(), o.Default == true, keybindOf(o, lname(o, "toggle")), tip(o))
+			if o.Callback then U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end) end
+			return row, flag
+		end
+
+		function api:AddToggle(o)
+			o = o or {}
+			local t, flag = toggle(o)
+			local obj = { Flag = flag, Row = t, _parent = content }
+			function obj:AddColorpicker(co)
+				co = co or {}
+				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
+				return obj
+			end
+			function obj:AddToggle(so)
+				local child = toggle(so or {})
+				U.subOf(child, flag)
+				return api
+			end
+			function obj:AddSlider(so) slider(so or {}, flag) return obj end
+			function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
+			return obj
+		end
+		function api:AddSlider(o)
+			o = o or {}
+			return { Row = slider(o), Flag = o.Flag or o.Name }
+		end
+		function api:AddDoubleSlider(o)
+			o = o or {}
+			local r = U.mkDoubleSlider(content, lname(o, "range"), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", tip(o), o.InfAtMax == true or o.InfAt == true)
+			return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
+		end
+		function api:AddDropdown(o)
+			o = o or {}
+			return { Row = dropdown(o), Flag = o.Flag or o.Name }
+		end
+		function api:AddButton(o)
+			o = o or {}
+			local btn = U.mkButton(content, lname(o, "button"), nextOrder(), o.Confirm == true)
+			if o.Callback then U.bindButton(btn, o.Callback) end
+			U.bindTooltip(btn, tip(o))
+			return { Button = btn }
+		end
+		function api:AddColorpicker(o)
+			o = o or {}
+			local r = U.row(content, nextOrder())
+			U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
+			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color")
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+		function api:AddLabel(o)
+			o = o or {}
+			local r = U.row(content, nextOrder())
+			local lab = U.label(r, lname(o, "label"), { Size = UDim2.fromScale(1, 1) })
+			local obj = { Row = r, Label = lab }
+			function obj:AddColorpicker(co)
+				co = co or {}
+				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
+				return obj
+			end
+			return obj
+		end
+		function api:AddTextbox(o)
+			o = o or {}
+			local r = U.mkTextbox(content, lname(o, "textbox"), o.Flag or o.Name, o.Placeholder or "", nextOrder())
+			U.bindTooltip(r, tip(o))
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+		function api:AddKeybind(o)
+			o = o or {}
+			local r = U.mkKeybind(content, lname(o, "keybind"), o.Flag or o.Name, o.Default or Enum.KeyCode.Unknown, nextOrder())
+			U.bindTooltip(r, tip(o))
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+
+		sec._tabs[#sec._tabs + 1] = { name = name, content = content, api = api }
+		if not sec._current then
+			sec._current = name
+		else
+			content.Visible = false
+		end
+		layoutTabs()
+		return api
+	end
+
+	return sec
 end
 
 function U.parseKeyCode(v)
@@ -634,21 +828,10 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	U.refreshKeybindList()
 end
 
-function U.closeKeybindMode()
-	if U._kbModePopup then
-		pcall(function() U._kbModePopup:Destroy() end)
-		U._kbModePopup = nil
-	end
-end
-
-function U.attachKeybind(row, toggleFlag, key, listText, mode)
+function U.attachKeybind(row, toggleFlag, key, listText)
 	local kFlag = toggleFlag .. "Key"
-	local mFlag = toggleFlag .. "KeyMode"
 	U.keybindTargets[kFlag] = toggleFlag
 	U.vflags[kFlag] = U.vflags[kFlag] or U.parseKeyCode(key)
-	local m = tostring(mode or U.vflags[mFlag] or "Toggle"):lower()
-	if m ~= "hold" then m = "Toggle" else m = "Hold" end
-	U.vflags[mFlag] = m
 
 	local kb = U.new("TextButton", {
 		Name = "KeybindBox", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0.5),
@@ -668,43 +851,8 @@ function U.attachKeybind(row, toggleFlag, key, listText, mode)
 		if not listening then show() end
 		U.fireFlag(kFlag)
 	end
-	U.setters[mFlag] = function(v)
-		local s = tostring(v or "Toggle")
-		U.vflags[mFlag] = (s:lower() == "hold") and "Hold" or "Toggle"
-		U.fireFlag(mFlag)
-	end
-
-	local function openModeMenu()
-		U.closeKeybindMode()
-		U.closePopups()
-		local pos = kb.AbsolutePosition
-		local size = kb.AbsoluteSize
-		local popup = U.new("Frame", {
-			Name = "KeybindMode", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0,
-			Size = UDim2.fromOffset(72, 40),
-			Position = UDim2.fromOffset(pos.X + size.X - 72, pos.Y + size.Y + 2),
-			ZIndex = 200,
-		}, U.gui)
-		U.edges(popup, U.ELEMENT_BORDER, false, 3)
-		U._kbModePopup = popup
-		local function opt(label, y)
-			local b = U.new("TextButton", {
-				AutoButtonColor = false, BackgroundColor3 = (U.vflags[mFlag] == label) and Color3.fromRGB(50, 50, 70) or Color3.fromRGB(28, 28, 28),
-				BorderSizePixel = 0, Size = UDim2.new(1, -4, 0, 16), Position = UDim2.fromOffset(2, y),
-				FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = label, ZIndex = 201,
-			}, popup)
-			b.MouseButton1Click:Connect(function()
-				U.setters[mFlag](label)
-				U.closeKeybindMode()
-			end)
-		end
-		opt("Toggle", 2)
-		opt("Hold", 20)
-	end
-
 	kb.MouseButton1Click:Connect(function()
 		if listening then return end
-		U.closeKeybindMode()
 		listening, U.kbBinding = true, true
 		fit("...")
 		local conn
@@ -715,9 +863,6 @@ function U.attachKeybind(row, toggleFlag, key, listText, mode)
 			if input.KeyCode == Enum.KeyCode.Escape then show() else U.setters[kFlag](input.KeyCode) end
 			task.defer(function() U.kbBinding = false end)
 		end)
-	end)
-	kb.MouseButton2Click:Connect(function()
-		openModeMenu()
 	end)
 	U.registerKeybindList(listText, kFlag, toggleFlag)
 	return kb
@@ -743,7 +888,7 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function() set(not on) end)
 	if flag then
 		U.setters[flag] = set
-		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text, kb.mode) end
+		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text) end
 	end
 	return r
 end
@@ -1330,22 +1475,14 @@ function U.buildShell()
 
 	U.titleBar = U.new("Frame", {
 		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
+		Size = UDim2.new(1, 0, 0, 10),
 		Position = UDim2.fromOffset(0, U.LINE_H),
+		ZIndex = 6,
 	}, shell)
-	do
-		local titleLeft = U.label(U.titleBar, "wavelength", {
-			Size = UDim2.new(1, -16, 1, 0),
-			Position = UDim2.fromOffset(8, -1),
-			TextYAlignment = Enum.TextYAlignment.Center,
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		table.insert(U.themeReg.labels, titleLeft)
-	end
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
-		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H), ClipsDescendants = true, Active = true,
+		Position = UDim2.fromOffset(0, U.LINE_H), ClipsDescendants = true, Active = true,
 	}, shell)
 	table.insert(U.themeReg.bodyBgs, U.body)
 	U.pages = U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true }, U.body)
@@ -1667,12 +1804,14 @@ function U.buildConfig()
 	end
 
 	local p = U.pageFrames.config
-	local configsSec, settingsSec = U.section(p, "configs", 1), U.section(p, "settings", 2)
+	local configsSec = U.section(p, 1):AddTab("configs")
+	local settingsSec = U.section(p, 2):AddTab("settings")
+	local configsContent, settingsContent = configsSec._content, settingsSec._content
 	local function note(t) U.pushNotification({ text = t, time = 2 }) end
 	local path = function(n) return FOLDER .. "/" .. n .. ".json" end
 
-	U.mkTextbox(configsSec, "name", "ConfigName", "config name", 1)
-	U.mkButton(configsSec, "create / save", 2).MouseButton1Click:Connect(function()
+	U.mkTextbox(configsContent, "name", "ConfigName", "config name", 1)
+	U.mkButton(configsContent, "create / save", 2).MouseButton1Click:Connect(function()
 		local name = tostring(U.vflags.ConfigName or ""):gsub("[^%w%-%_ ]", "")
 		if name == "" then return note("enter a config name") end
 		ensureFolder()
@@ -1685,7 +1824,7 @@ function U.buildConfig()
 			U.pushNotification({ text = "save failed: " .. tostring(err), time = 3 })
 		end
 	end)
-	U.mkButton(configsSec, "load", 3).MouseButton1Click:Connect(function()
+	U.mkButton(configsContent, "load", 3).MouseButton1Click:Connect(function()
 		if not selected then return note("select a config first") end
 		local ok, data = pcall(function() return U.Http:JSONDecode(readfile(path(selected))) end)
 		if ok and type(data) == "table" then
@@ -1695,7 +1834,7 @@ function U.buildConfig()
 			note("load failed")
 		end
 	end)
-	U.mkButton(configsSec, "delete", 4).MouseButton1Click:Connect(function()
+	U.mkButton(configsContent, "delete", 4).MouseButton1Click:Connect(function()
 		if not selected then return note("select a config first") end
 		local name = selected
 		pcall(function() delfile(path(name)) end)
@@ -1704,8 +1843,8 @@ function U.buildConfig()
 		note('deleted "' .. name .. '" config')
 	end)
 
-	U.label(configsSec, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsSec)
+	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
+	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 210), LayoutOrder = 6 }, configsContent)
 	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
@@ -1717,7 +1856,7 @@ function U.buildConfig()
 	local o = 0
 	local function nextOrder() o += 1 return o end
 	local function themeRow(label, flag, key, title)
-		return U.attachPicker(U.mkColorRow(settingsSec, label, nextOrder()), flag, U.theme[key], true, title or label)
+		return U.attachPicker(U.mkColorRow(settingsContent, label, nextOrder()), flag, U.theme[key], true, title or label)
 	end
 	themeRow("text", "ThemeText", "Text", "text color")
 	themeRow("border", "ThemeBorder", "Border", "border color")
@@ -1725,15 +1864,15 @@ function U.buildConfig()
 	themeRow("element border", "ThemeElementBorder", "ElementBorder")
 	themeRow("section background", "ThemeSectionBg", "SectionBg")
 	themeRow("background", "ThemeBackground", "Background")
-	local accentRow = U.mkColorRow(settingsSec, "accent", nextOrder())
+	local accentRow = U.mkColorRow(settingsContent, "accent", nextOrder())
 	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
 	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, true, "accent b")
-	U.mkKeybind(settingsSec, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
-	U.mkDropdown(settingsSec, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
+	U.mkKeybind(settingsContent, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
+	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
-	U.mkToggle(settingsSec, "watermark", "Watermark", nextOrder(), false)
-	U.subOf(U.mkDropdown(settingsSec, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
-	local msgBox = U.mkTextbox(settingsSec, "message", "WatermarkMessage", "message", nextOrder())
+	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
+	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
+	local msgBox = U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder())
 	U.indentRow(msgBox, 12)
 	local function syncMsg()
 		msgBox.Visible = U.vflags.Watermark == true and table.find(U.vflags.WatermarkItems or {}, "message") ~= nil
@@ -1741,15 +1880,15 @@ function U.buildConfig()
 	U.onFlag("Watermark", syncMsg)
 	U.onFlag("WatermarkItems", syncMsg)
 	syncMsg()
-	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
-	U.mkToggle(settingsSec, "tooltips", "Tooltips", nextOrder(), true)
+	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
+	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
 	U.buildFloaters()
 
-	local unload = U.mkButton(settingsSec, "unload", nextOrder(), true)
+	local unload = U.mkButton(settingsContent, "unload", nextOrder(), true)
 	U.bindButton(unload, U.shutdown, 2)
 
-	local credit = U.label(configsSec.Parent, "wavelength ui by @illorsm", {
+	local credit = U.label(configsContent.Parent.Parent, "wavelength ui by @illorsm", {
 		Name = "WavelengthCredit", Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 1, -16), TextColor3 = U.GRAY_TEXT,
 		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
 	})
@@ -1758,7 +1897,7 @@ end
 function U.buildTabs()
 	local rail = U.new("Frame", {
 		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
-		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H + U.BODY_H),
+		Position = UDim2.fromOffset(0, U.LINE_H + U.BODY_H),
 	}, U.shell)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
@@ -1809,7 +1948,7 @@ function U.buildTabs()
 		U.tabButtons[name] = b
 		b.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
-	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.LINE_H + U.BODY_H + U.TAB_H)
+	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.LINE_H + U.BODY_H + U.TAB_H)
 end
 
 function U.bindInput()
@@ -1862,7 +2001,6 @@ function U.bindInput()
 			U.menuOpen = not U.menuOpen
 			if not U.menuOpen then
 				U.closePopups()
-				U.closeKeybindMode()
 				U.hideSnapGhost("wm")
 				U.hideSnapGhost("kb")
 				U.hideTooltip()
@@ -1877,23 +2015,8 @@ function U.bindInput()
 		for kFlag, tFlag in pairs(U.keybindTargets) do
 			local k = U.vflags[kFlag]
 			if typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
-				local mode = tostring(U.vflags[tFlag .. "KeyMode"] or "Toggle")
-				if mode:lower() == "hold" then
-					if U.setters[tFlag] then U.setters[tFlag](true) else U.setFlag(tFlag, true) end
-				else
-					local on = U.vflags[tFlag] ~= true
-					if U.setters[tFlag] then U.setters[tFlag](on) else U.setFlag(tFlag, on) end
-				end
-			end
-		end
-	end))
-	U.track(U.UIS.InputEnded:Connect(function(input)
-		if U.kbBinding then return end
-		for kFlag, tFlag in pairs(U.keybindTargets) do
-			local k = U.vflags[kFlag]
-			local mode = tostring(U.vflags[tFlag .. "KeyMode"] or "Toggle")
-			if mode:lower() == "hold" and typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
-				if U.setters[tFlag] then U.setters[tFlag](false) else U.setFlag(tFlag, false) end
+				local on = U.vflags[tFlag] ~= true
+				if U.setters[tFlag] then U.setters[tFlag](on) else U.setFlag(tFlag, on) end
 			end
 		end
 	end))
@@ -1929,8 +2052,7 @@ local function tip(o) return o.Tooltip or o.tooltip end
 
 local function keybindOf(o, name)
 	if o.Keybind ~= true then return nil end
-	local mode = o.KeybindMode or o.Mode or o.DefaultMode or "Toggle"
-	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name, mode = mode }
+	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
 end
 
 
@@ -1999,9 +2121,8 @@ function U.buildExplorer()
 			return ch
 		end
 
-		-- U.section returns the inner ScrollingFrame content
-		local explList = U.section(page, "explorer", 1, 1, 1)
-		local propList = U.section(page, "properties", 2, 1, 1)
+		local explList = U.section(page, 1, 1, 1):AddTab("explorer")._content
+		local propList = U.section(page, 2, 1, 1):AddTab("properties")._content
 		explList.ScrollBarThickness = 0
 		explList.ScrollBarImageTransparency = 1
 		propList.ScrollBarThickness = 0
@@ -2290,10 +2411,6 @@ function Library:CreateWindow(opts)
 
 	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
 	U.buildShell()
-	for _, ch in ipairs(U.titleBar:GetChildren()) do
-		if ch:IsA("TextLabel") then ch.Text = string.lower(name) end
-	end
-
 	local win = setmetatable({ _pages = {}, _sections = {}, _order = {} }, { __index = Library })
 	for _, n in ipairs(U.TAB_NAMES) do
 		win._pages[n] = U.pageFrames[n]
@@ -2311,7 +2428,13 @@ function Library:CreateWindow(opts)
 		self._order[tabName] = self._order[tabName] or 0
 
 		local tab = { Name = tabName, Window = self }
-		function tab:AddSection(sectionName, side, row, rows)
+		function tab:AddSection(a, b, c, d)
+			local sectionName, side, row, rows
+			if type(a) == "number" then
+				side, row, rows = a, b, c
+			else
+				sectionName, side, row, rows = a, b, c, d
+			end
 			side = side or 1
 			self._colCount = self._colCount or { [1] = 0, [2] = 0 }
 			if not row then
@@ -2323,103 +2446,21 @@ function Library:CreateWindow(opts)
 			rows = rows or self._colCount[side]
 
 			local parent = U.pageFrames[tabName]
-			local content = U.section(parent, string.lower(tostring(sectionName)), side, row, rows)
-			if rows > 1 then 
+			local sec = U.section(parent, side, row, rows)
+			if rows > 1 then
 				local x, _, w, h = U.secGeom(side, 1, rows)
-				local idx = 0
+				local sidx = 0
 				for _, ch in ipairs(parent:GetChildren()) do
 					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 and ch.Position.X.Offset == x then
-						idx += 1
+						sidx += 1
 						ch.Size = UDim2.fromOffset(w, h)
-						ch.Position = UDim2.fromOffset(x, U.SEC_GAP + (idx - 1) * (h + U.SEC_GAP))
+						ch.Position = UDim2.fromOffset(x, U.SEC_GAP + (sidx - 1) * (h + U.SEC_GAP))
 					end
 				end
 			end
 
-			local sec = { _content = content, _n = 0, Tab = tab }
-			local function nextOrder()
-				sec._n += 1
-				return sec._n
-			end
-			local function slider(o, parentFlag)
-				local c = U.mkSlider(content, lname(o, "slider"), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAtMax == true or o.InfAt == true, tip(o))
-				return parentFlag and U.subOf(c, parentFlag) or c
-			end
-			local function dropdown(o, parentFlag)
-				local limit = o.Limit or o.Amount
-				if limit == nil then limit = (o.Multi == true) and 999 or 1 end
-				local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, tip(o))
-				return parentFlag and U.subOf(c, parentFlag) or c
-			end
-			local function toggle(o)
-				local flag = o.Flag or o.Name
-				local row = U.mkToggle(content, lname(o, "toggle"), flag, nextOrder(), o.Default == true, keybindOf(o, lname(o, "toggle")), tip(o))
-				if o.Callback then U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end) end
-				return row, flag
-			end
-
-			function sec:AddToggle(o)
-				o = o or {}
-				local t, flag = toggle(o)
-				local obj = { Flag = flag, Row = t, _parent = content }
-				function obj:AddColorpicker(co)
-					co = co or {}
-					U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
-					return obj
-				end
-				function obj:AddToggle(so)
-					local child = toggle(so or {})
-					U.subOf(child, flag)
-					return sec
-				end
-				function obj:AddSlider(so) slider(so or {}, flag) return obj end
-				function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
-				return obj
-			end
-			function sec:AddSlider(o)
-				o = o or {}
-				return { Row = slider(o), Flag = o.Flag or o.Name }
-			end
-			function sec:AddDoubleSlider(o)
-				o = o or {}
-				local r = U.mkDoubleSlider(content, lname(o, "range"), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", tip(o), o.InfAtMax == true or o.InfAt == true)
-				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
-			end
-			function sec:AddDropdown(o)
-				o = o or {}
-				return { Row = dropdown(o), Flag = o.Flag or o.Name }
-			end
-			function sec:AddButton(o)
-				o = o or {}
-				local btn = U.mkButton(content, lname(o, "button"), nextOrder(), o.Confirm == true)
-				if o.Callback then U.bindButton(btn, o.Callback) end
-				U.bindTooltip(btn, tip(o))
-				return { Button = btn }
-			end
-			function sec:AddColorpicker(o)
-				o = o or {}
-				local r = U.row(content, nextOrder())
-				U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
-				U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color")
-				U.bindTooltip(r, tip(o))
-				return { Row = r }
-			end
-			function sec:AddLabel(o)
-				o = o or {}
-				local r = U.row(content, nextOrder())
-				U.label(r, string.lower(tostring(o.Name or "")), { Size = UDim2.new(1, -36, 1, 0) })
-				U.bindTooltip(r, tip(o))
-				local obj = { Row = r }
-				function obj:AddColorpicker(co)
-					co = co or {}
-					U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
-					return obj
-				end
-				return obj
-			end
-			function sec:AddTextbox(o)
-				o = o or {}
-				return { Row = U.mkTextbox(content, lname(o, "text"), o.Flag or o.Name, o.Placeholder or "", nextOrder(), tip(o)), Flag = o.Flag or o.Name }
+			if sectionName then
+				return sec:AddTab(string.lower(tostring(sectionName)))
 			end
 			return sec
 		end
