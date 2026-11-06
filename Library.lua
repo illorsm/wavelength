@@ -251,7 +251,7 @@ function U.bindTooltipFollow()
 end
 U.bindTooltipFollow()
 
-U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01, alphaBreak = nil, alphaBreakMarkers = {} }
+U.cycle = U.cycle or { hue = 0, colorFlags = {}, step = 0.01 }
 
 function U.setCycleColor(flagKey, on)
 	if on then
@@ -272,36 +272,10 @@ function U.setCycleColor(flagKey, on)
 	U.vflags[flagKey .. "CycleColor"] = on and true or false
 end
 
-function U.setAlphaBreak(rel)
-	local c = U.cycle
-	c.alphaBreak = rel ~= nil and math.clamp(tonumber(rel) or 0, 0, 1) or nil
-	for i = #c.alphaBreakMarkers, 1, -1 do
-		local m = c.alphaBreakMarkers[i]
-		if not m.Parent then
-			table.remove(c.alphaBreakMarkers, i)
-		else
-			m.Visible = c.alphaBreak ~= nil
-			if m.Visible then m.Position = UDim2.new(c.alphaBreak, 0, 0.5, 0) end
-		end
-	end
-end
-
-function U.registerAlphaBreakMarker(marker)
-	table.insert(U.cycle.alphaBreakMarkers, marker)
-	U.setAlphaBreak(U.cycle.alphaBreak)
-end
-
-function U.setCycleAlpha(flagKey, on)
-	U.cycle.alphaFlags[flagKey] = on or nil
-	if on then U.vflags[flagKey .. "Transparency"] = U.cycle.alpha end
-	U.vflags[flagKey .. "CycleAlpha"] = on and true or false
-end
-
 task.spawn(function()
 	local c = U.cycle
 	while alive() do
-		local anyC, anyA = next(c.colorFlags) ~= nil, next(c.alphaFlags) ~= nil
-		if anyC then
+		if next(c.colorFlags) ~= nil then
 			c.hue = (c.hue + c.step) % 1
 			local needTheme = false
 			for flagKey in pairs(c.colorFlags) do
@@ -319,19 +293,6 @@ task.spawn(function()
 				if tk then U.theme[tk] = nc needTheme = true end
 			end
 			if needTheme then U.applyTheme() end
-		end
-		if anyA then
-			c.alphaDir = c.alphaDir or 1
-			local maxA = math.clamp(typeof(c.alphaBreak) == "number" and c.alphaBreak or 1, 0.05, 1)
-			c.alpha += c.step * c.alphaDir
-			if c.alpha >= maxA then c.alpha, c.alphaDir = maxA, -1
-			elseif c.alpha <= 0 then c.alpha, c.alphaDir = 0, 1 end
-			for flagKey in pairs(c.alphaFlags) do
-				local k = flagKey .. "Transparency"
-				U.vflags[k] = c.alpha
-				if U.setters[k] then U.setters[k](c.alpha) end
-				if U.openPickerRefresh and U.openColorPicker and U.openColorPicker:GetAttribute("Flag") == flagKey then U.openPickerRefresh() end
-			end
 		end
 		task.wait(0.03)
 	end
@@ -546,16 +507,108 @@ function U.indentRow(r, px)
 	return r
 end
 
+U.subGroups = U.subGroups or {}
+U.toggleRows = U.toggleRows or {}
+
+function U.updateSubLine(flag)
+	local g = U.subGroups[flag]
+	if not g or not g.line or not g.parentRow or not g.parentRow.Parent then return end
+	local line = g.line
+	local host = g.host or g.line.Parent
+	if not host then return end
+	local kids = {}
+	for _, c in ipairs(g.children) do
+		if c.Parent and c.Visible then kids[#kids + 1] = c end
+	end
+	if #kids == 0 then
+		line.Visible = false
+		return
+	end
+	local last = kids[#kids]
+	local origin = host.AbsolutePosition
+	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
+	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y * 0.5 - origin.Y
+	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
+	line.Position = UDim2.fromOffset(x, y0)
+	line.Size = UDim2.fromOffset(1, math.max(0, y1 - y0))
+	line.Visible = true
+	line.BackgroundColor3 = U.pulseColor()
+end
+
+function U.ensureSubGroup(flag, parentRow)
+	local g = U.subGroups[flag]
+	if g then
+		if parentRow then g.parentRow = parentRow end
+		return g
+	end
+	g = { parentRow = parentRow, children = {}, line = nil }
+	U.subGroups[flag] = g
+	if parentRow and parentRow.Parent then
+		local host = parentRow.Parent.Parent or parentRow.Parent
+		local line = U.new("Frame", {
+			Name = "SubLine", BorderSizePixel = 0, BackgroundColor3 = U.pulseColor(),
+			Size = UDim2.fromOffset(1, 0), Position = UDim2.fromOffset(6, 0), ZIndex = 8, Visible = false,
+		}, host)
+		U.registerPulse(line, function()
+			local gg = U.subGroups[flag]
+			return gg and gg.line and gg.line.Visible
+		end)
+		g.line = line
+		g.host = host
+	end
+	return g
+end
+
+function U.animateSub(control, show)
+	if show then
+		control.Visible = true
+		for _, d in ipairs(control:GetDescendants()) do
+			if d:IsA("TextLabel") or d:IsA("TextButton") then
+				local goal = d.TextTransparency
+				d.TextTransparency = 1
+				U.Tween:Create(d, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = goal }):Play()
+			elseif d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextBox") then
+				if d.BackgroundTransparency < 1 then
+					local goal = d.BackgroundTransparency
+					d.BackgroundTransparency = 1
+					U.Tween:Create(d, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = goal }):Play()
+				end
+			end
+		end
+		if control:IsA("Frame") or control:IsA("TextButton") then
+			local goal = control.BackgroundTransparency
+			if goal < 1 then
+				control.BackgroundTransparency = 1
+				U.Tween:Create(control, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = goal }):Play()
+			end
+		end
+	else
+		control.Visible = false
+	end
+end
+
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
+	local parentFlag = keys and keys[1]
+	if parentFlag then
+		local g = U.ensureSubGroup(parentFlag, U.toggleRows[parentFlag])
+		g.children[#g.children + 1] = control
+	end
 	local function sync()
 		local vis = pred() and true or false
 		if control.Visible ~= vis then
-			control.Visible = vis
+			if vis then
+				U.animateSub(control, true)
+			else
+				control.Visible = false
+			end
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
 		else
 			control.Visible = vis
+		end
+		if parentFlag then
+			task.defer(function() U.updateSubLine(parentFlag) end)
 		end
 	end
 	for _, k in ipairs(keys) do U.onFlag(k, sync) end
@@ -570,7 +623,7 @@ end
 function U.secGeom(col, row, rows)
 	local gap = U.SEC_GAP
 	local topPad = gap + 7
-	local bottomPad = gap + 7
+	local bottomPad = gap
 	local w = math.floor((U.BODY_W - gap * 3) / 2)
 	local x = (col == 1) and gap or (gap * 2 + w)
 	rows = math.max(1, math.floor(tonumber(rows) or 1))
@@ -603,6 +656,11 @@ function U.relayoutColumn(page, side)
 		ch.Position = UDim2.fromOffset(x, y)
 		ch:SetAttribute("SectionRow", i)
 	end
+	task.defer(function()
+		for flag in pairs(U.subGroups or {}) do
+			U.updateSubLine(flag)
+		end
+	end)
 end
 
 function U.section(parent, col, row, rows)
@@ -933,6 +991,8 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 		U.setters[flag] = set
 		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text) end
 	end
+	U.toggleRows[flag] = r
+	U.ensureSubGroup(flag, r)
 	return r
 end
 
@@ -1333,11 +1393,13 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 
 		local MAP, BAR_H, PAD, TITLE, TOG, GAP = 120, 12, 8, 16, 14, 6
 		local mapY = PAD + TITLE
-		local hueY = mapY + MAP + 6
-		local alphaY = hueY + BAR_H + 6
-		local POP_W = PAD + MAP + GAP + TOG + PAD
+		local alphaW = noAlpha and 0 or BAR_H
+		local alphaGap = noAlpha and 0 or GAP
+		local hueY = mapY + MAP + GAP
+		local botY = hueY + BAR_H + GAP
+		local POP_W = PAD + MAP + alphaGap + alphaW + PAD
 		local RGB_H = 16
-		local POP_H = PAD + TITLE + MAP + 6 + BAR_H + (noAlpha and 0 or (6 + BAR_H)) + 6 + RGB_H + PAD
+		local POP_H = botY + math.max(TOG, RGB_H) + PAD
 
 		local pop = U.new("Frame", {
 			Name = "ColorPop", BackgroundColor3 = Color3.fromRGB(24, 24, 24), BorderSizePixel = 0, Size = UDim2.fromOffset(POP_W, POP_H), ZIndex = 220, Active = true,
@@ -1366,6 +1428,20 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		overlay(map, Color3.new(0, 0, 0), 223, 90, 1, 0)
 		local mapDot = marker(map, UDim2.fromOffset(8, 8), 224, UDim2.new())
 
+		local alphaBar, alphaDot
+		if not noAlpha then
+			alphaBar = btn("ImageButton", {
+				Size = UDim2.fromOffset(BAR_H, MAP), Position = UDim2.fromOffset(PAD + MAP + GAP, mapY),
+				BackgroundColor3 = Color3.fromHSV(h, sat, val),
+			})
+			U.controlStroke(alphaBar)
+			U.new("UIGradient", {
+				Rotation = 90,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
+			}, alphaBar)
+			alphaDot = marker(alphaBar, UDim2.fromOffset(BAR_H + 4, 2), 223, UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0))
+		end
+
 		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
 		U.controlStroke(hueBar)
 		local hueKeys = {}
@@ -1376,52 +1452,26 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(h, 0, 0.5, 0))
 
 		local refreshUI
-		local function cycleBtn(name, key, y, onToggle)
-			local b = btn("TextButton", {
-				Name = name, Text = "", Size = UDim2.fromOffset(TOG, TOG), Position = UDim2.fromOffset(PAD + MAP + GAP, y + (BAR_H - TOG) / 2),
-				BackgroundColor3 = U.vflags[flagKey .. key] and U.pulseColor() or U.OFF,
-			})
-			U.controlStroke(b)
-			U.registerPulse(b, function() return U.vflags[flagKey .. key] == true end)
-			b.MouseButton1Click:Connect(function()
-				local on = U.vflags[flagKey .. key] ~= true
-				onToggle(on)
-				b.BackgroundColor3 = on and U.pulseColor() or U.OFF
-				refreshUI()
-			end)
-		end
-		cycleBtn("CycleColor", "CycleColor", hueY, function(on)
+		local cycleB = btn("TextButton", {
+			Name = "CycleColor", Text = "", Size = UDim2.fromOffset(TOG, TOG),
+			Position = UDim2.fromOffset(PAD, botY + (RGB_H - TOG) / 2),
+			BackgroundColor3 = U.vflags[flagKey .. "CycleColor"] and U.pulseColor() or U.OFF,
+		})
+		U.controlStroke(cycleB)
+		U.registerPulse(cycleB, function() return U.vflags[flagKey .. "CycleColor"] == true end)
+		cycleB.MouseButton1Click:Connect(function()
+			local on = U.vflags[flagKey .. "CycleColor"] ~= true
 			U.setCycleColor(flagKey, on)
 			if on then h = U.cycle.hue apply() end
+			cycleB.BackgroundColor3 = on and U.pulseColor() or U.OFF
+			refreshUI()
 		end)
 
-		local alphaBar, alphaDot
-		if not noAlpha then
-			alphaBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, alphaY), BackgroundColor3 = Color3.fromHSV(h, sat, val) })
-			U.controlStroke(alphaBar)
-			U.new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) }, alphaBar)
-			alphaDot = marker(alphaBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0))
-			local breakLine = U.new("Frame", {
-				Name = "AlphaBreak", Size = UDim2.fromOffset(2, BAR_H + 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(U.cycle.alphaBreak or 0, 0, 0.5, 0),
-				BackgroundColor3 = Color3.fromRGB(220, 40, 40), BorderSizePixel = 0, ZIndex = 224, Visible = U.cycle.alphaBreak ~= nil,
-			}, alphaBar)
-			U.registerAlphaBreakMarker(breakLine)
-			alphaBar.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					U.setAlphaBreak(U.cycle.alphaBreak == nil and relX(alphaBar, input.Position.X) or nil)
-				end
-			end)
-			cycleBtn("CycleAlpha", "CycleAlpha", alphaY, function(on)
-				U.setCycleAlpha(flagKey, on)
-				if on then U.vflags[alphaKey] = U.cycle.alpha end
-			end)
-		end
-
-		local rgbY = (noAlpha and hueY or alphaY) + BAR_H + 6
-		local rgbW = MAP + GAP + TOG
+		local rgbX = PAD + TOG + GAP
+		local rgbW = MAP - TOG - GAP
 		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, rgbY), ZIndex = 221,
+			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(rgbX, botY), ZIndex = 221,
 		}, pop)
 		U.controlStroke(rgbBox)
 		local rgbText = U.label(rgbBox, "", {
@@ -1444,8 +1494,9 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			hueDot.Position = UDim2.new(h, 0, 0.5, 0)
 			if alphaBar then
 				alphaBar.BackgroundColor3 = Color3.fromHSV(h, sat, val)
-				alphaDot.Position = UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0)
+				alphaDot.Position = UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0)
 			end
+			cycleB.BackgroundColor3 = U.vflags[flagKey .. "CycleColor"] and U.pulseColor() or U.OFF
 			syncRgbText()
 		end
 		U.openPickerRefresh = refreshUI
@@ -1456,12 +1507,12 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local drag
 		local function move(pos)
 			if drag == "map" then
-				sat = relX(map, pos.X)
+				sat = math.clamp((pos.X - map.AbsolutePosition.X) / math.max(map.AbsoluteSize.X, 1), 0, 1)
 				val = 1 - math.clamp((pos.Y - map.AbsolutePosition.Y) / math.max(map.AbsoluteSize.Y, 1), 0, 1)
 			elseif drag == "hue" then
-				h = relX(hueBar, pos.X)
+				h = math.clamp((pos.X - hueBar.AbsolutePosition.X) / math.max(hueBar.AbsoluteSize.X, 1), 0, 1)
 			elseif drag == "alpha" and alphaBar then
-				U.vflags[alphaKey] = relX(alphaBar, pos.X)
+				U.vflags[alphaKey] = math.clamp((pos.Y - alphaBar.AbsolutePosition.Y) / math.max(alphaBar.AbsoluteSize.Y, 1), 0, 1)
 			else
 				return
 			end
@@ -1492,7 +1543,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		if U.gui.AbsoluteSize.X > 0 and px + POP_W > U.gui.AbsoluteSize.X then px = a.X - origin.X - POP_W - 6 end
 		pop.Position = UDim2.fromOffset(px, a.Y - origin.Y)
 		if U.vflags[flagKey .. "CycleColor"] then h = U.cycle.hue apply() end
-		if U.vflags[flagKey .. "CycleAlpha"] then U.vflags[alphaKey] = U.cycle.alpha end
 		U.openColorPicker = pop
 		U.armPopupOpen()
 		refreshUI()
@@ -1801,8 +1851,7 @@ function U.buildConfig()
 		data.__wmDocked, data.__kbDocked = U.wmDocked == true, U.kbDocked == true
 		if U.wm and U.wm.Parent then data.__wmPos = posOf(U.wm) end
 		if U.kbPanel and U.kbPanel.Parent then data.__kbPos = posOf(U.kbPanel) end
-		data.__alphaBreak = U.cycle.alphaBreak or false
-		return data
+			return data
 	end
 	local function applyData(data)
 		if type(data) ~= "table" then return end
@@ -1829,14 +1878,10 @@ function U.buildConfig()
 		if data.__kbDocked ~= nil then U.kbDocked = data.__kbDocked == true end
 		restorePos(U.wm, data.__wmPos)
 		restorePos(U.kbPanel, data.__kbPos)
-		if type(data.__alphaBreak) == "number" then U.setAlphaBreak(data.__alphaBreak)
-		elseif data.__alphaBreak == false then U.setAlphaBreak(nil) end
-
-		U.cycle.colorFlags, U.cycle.alphaFlags = {}, {}
+		U.cycle.colorFlags = {}
 		for k, v in pairs(U.vflags) do
-			if type(k) == "string" and v == true then
-				if k:sub(-10) == "CycleColor" then U.setCycleColor(k:sub(1, -11), true)
-				elseif k:sub(-10) == "CycleAlpha" then U.setCycleAlpha(k:sub(1, -11), true) end
+			if type(k) == "string" and v == true and k:sub(-10) == "CycleColor" then
+				U.setCycleColor(k:sub(1, -11), true)
 			end
 		end
 		U.applyTheme()
@@ -1887,7 +1932,7 @@ function U.buildConfig()
 	end)
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 170), LayoutOrder = 6 }, configsContent)
+	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 210), LayoutOrder = 6 }, configsContent)
 	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
@@ -1936,10 +1981,9 @@ function U.buildConfig()
 		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
 	})
 	credit:SetAttribute("FixedGray", true)
-	-- match gap above credit to gap below it (4px)
 	do
 		local pad = configsContent:FindFirstChildOfClass("UIPadding")
-		if pad then pad.PaddingBottom = UDim.new(0, 18) end
+		if pad then pad.PaddingBottom = UDim.new(0, 22) end
 	end
 end
 
@@ -1998,12 +2042,99 @@ function U.buildTabs()
 		b.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
 	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.LINE_H + U.BODY_H + U.TAB_H)
+	U.bindResize()
+end
+
+function U.applyBodySize(w, h, anchorRight, anchorBottom)
+	w = math.clamp(math.floor(w), U.MIN_W or 420, 1200)
+	h = math.clamp(math.floor(h), U.MIN_H or 280, 900)
+	local oldW, oldH = U.BODY_W, U.BODY_H
+	local shell = U.shell
+	if not shell then
+		U.BODY_W, U.BODY_H = w, h
+		return
+	end
+	local pos = shell.Position
+	local dx = (anchorRight and (oldW - w) or 0)
+	local dy = (anchorBottom and (oldH - h) or 0)
+	U.BODY_W, U.BODY_H = w, h
+	U.TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
+	shell.Size = UDim2.fromOffset(U.BODY_W, U.LINE_H + U.BODY_H + U.TAB_H)
+	shell.Position = UDim2.new(pos.X.Scale, pos.X.Offset + dx, pos.Y.Scale, pos.Y.Offset + dy)
+	if U.body then U.body.Size = UDim2.fromOffset(U.BODY_W, U.BODY_H) end
+	if U.tabRail then
+		U.tabRail.Position = UDim2.fromOffset(0, U.LINE_H + U.BODY_H)
+		U.tabRail.Size = UDim2.new(1, 0, 0, U.TAB_H)
+		for i, name in ipairs(U.TAB_NAMES) do
+			local b = U.tabButtons and U.tabButtons[name]
+			if b then
+				b.Size = UDim2.fromOffset((i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W, U.TAB_H)
+				b.Position = UDim2.fromOffset((i - 1) * U.TAB_W, 0)
+			end
+		end
+	end
+	for _, page in pairs(U.pageFrames or {}) do
+		U.relayoutColumn(page, 1)
+		U.relayoutColumn(page, 2)
+	end
+	if U.wmDocked then U.dock("wm") end
+	if U.kbDocked then U.dock("kb") end
+end
+
+function U.bindResize()
+	U.MIN_W, U.MIN_H = 420, 280
+	if not U.shell then return end
+	local function handle(name, size, pos, cursor)
+		local h = U.new("Frame", {
+			Name = "ResizeHandle", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = size, Position = pos, ZIndex = 50, Active = true,
+		}, U.shell)
+		h:SetAttribute("Cursor", cursor)
+		return h
+	end
+	local right = handle("Right", UDim2.new(0, 6, 1, -U.TAB_H), UDim2.new(1, -3, 0, 0), "Right")
+	local left = handle("Left", UDim2.new(0, 6, 1, -U.TAB_H), UDim2.fromOffset(-3, 0), "Left")
+	local bottom = handle("Bottom", UDim2.new(1, 0, 0, 6), UDim2.new(0, 0, 1, -3), "Bottom")
+	local function bind(edge, mode)
+		edge.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+			U.closePopups()
+			local start = input.Position
+			local startW, startH = U.BODY_W, U.BODY_H
+			local moving = true
+			local c1, c2
+			c1 = U.UIS.InputChanged:Connect(function(i)
+				if not moving then return end
+				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+				local d = i.Position - start
+				if mode == "right" then
+					U.applyBodySize(startW + d.X, startH, false, false)
+				elseif mode == "left" then
+					U.applyBodySize(startW - d.X, startH, true, false)
+				elseif mode == "bottom" then
+					U.applyBodySize(startW, startH + d.Y, false, false)
+				end
+			end)
+			c2 = U.UIS.InputEnded:Connect(function(i)
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					moving = false
+					c1:Disconnect()
+					c2:Disconnect()
+				end
+			end)
+			U.track(c1)
+			U.track(c2)
+		end)
+	end
+	bind(right, "right")
+	bind(left, "left")
+	bind(bottom, "bottom")
 end
 
 function U.bindInput()
 	U.track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "CycleAlpha", "KeybindBox") then return end
+		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "KeybindBox", "ResizeHandle") then return end
 		task.defer(function()
 			if tick() < (U.suppressPopupClose or 0) then return end
 			if U.openColorPicker and not U.clickHits(U.openColorPicker) then U.closeColorPicker() end
