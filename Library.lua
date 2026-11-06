@@ -1519,6 +1519,7 @@ function U.buildFloaters()
 	U.dragPanel(kb, "kb")
 
 
+end
 function U.buildConfig()
 
 	local FOLDER, selected, listFrame = "zwavelength", nil, nil
