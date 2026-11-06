@@ -41,7 +41,7 @@ U.activeNotifs = U.activeNotifs or {}
 U.keybindListEntries = U.keybindListEntries or {}
 U.keybindTargets = U.keybindTargets or {}
 U._kbListen = U._kbListen or {}
-U.wmDocked, U.kbDocked, U.pvDocked = true, true, true
+U.wmDocked, U.kbDocked = true, true
 U.running = true
 
 U.ELEMENT_BORDER = 1
@@ -50,7 +50,7 @@ U.LINE_H = 2
 U.PAD = 6 
 U.dockGap = 6
 U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 22, 8
-U.TAB_NAMES = { "combat", "visuals", "misc", "config" }
+U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
 
@@ -347,7 +347,6 @@ function U.applyTheme()
 	for _, f in ipairs(R.sectionBgs) do if f.Parent then f.BackgroundColor3 = T.SectionBg end end
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
 	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = T.Background end
-	if U.pvPanel and U.pvPanel.Parent then U.pvPanel.BackgroundColor3 = T.Background end
 	for _, l in ipairs(R.labels or {}) do
 		if l and l.Parent then l.TextColor3 = T.Text end
 	end
@@ -495,10 +494,6 @@ function U.shutdown()
 		"RemoveSniperScope", "LightingAmbientEnabled", "LightingOutdoorAmbientEnabled", "LightingGlobalShadows", "LightingPrioritizeQuality", "Watermark",
 	}) do
 		U.vflags[k] = false
-	end
-	pcall(function() U.Run:UnbindFromRenderStep("SM_ESP") end)
-	for _, fn in ipairs({ "_cleanupVisuals", "_cleanupCombat", "_cleanupMisc" }) do
-		if type(U[fn]) == "function" then pcall(U[fn]) end
 	end
 	pcall(U.closePopups)
 	for _, c in ipairs(U._conns or {}) do pcall(function() c:Disconnect() end) end
@@ -1302,6 +1297,7 @@ function U.buildShell()
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
 		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H), ClipsDescendants = true, Active = true,
 	}, shell)
+	table.insert(U.themeReg.bodyBgs, U.body)
 	U.pages = U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true }, U.body)
 
 	U.pageFrames = {}
@@ -1314,22 +1310,17 @@ end
 local function panelOf(kind)
 	if kind == "wm" then return U.wm end
 	if kind == "kb" then return U.kbPanel end
-	if kind == "pv" then return U.pvPanel end
 	return nil
 end
 local function flagOf(kind)
 	if kind == "wm" then return "Watermark" end
 	if kind == "kb" then return "KeybindsList" end
-	if kind == "pv" then return "Preview" end
 	return ""
 end
 
 function U.dockPos(kind, h)
 	local sp, sw = U.shell.Position, U.shell.Size.X.Offset
 	if sw < 2 then sw = U.BODY_W end
-	if kind == "pv" then
-		return Vector2.new(0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + sw + U.dockGap, sp.Y.Scale, sp.Y.Offset)
-	end
 	local right = kind == "kb"
 	return Vector2.new(right and 1 or 0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + (right and sw or 0), sp.Y.Scale, sp.Y.Offset - h - U.dockGap)
 end
@@ -1351,7 +1342,7 @@ function U.dockKeybinds() U.dock("kb") end
 
 function U.ensureSnapGhosts()
 	if not U.gui then return end
-	for _, kind in ipairs({ "wm", "kb", "pv" }) do
+	for _, kind in ipairs({ "wm", "kb" }) do
 		local key = kind .. "SnapGhost"
 		if not U[key] or not U[key].Parent then
 			local g = U.new("Frame", { Name = (kind == "wm" and "Wm" or "Kb") .. "SnapGhost", BorderSizePixel = 0, Visible = false, ZIndex = 40 }, U.gui)
@@ -1365,14 +1356,13 @@ end
 
 function U.showSnapGhost(kind)
 	if U.menuOpen == false then
-		U.hideSnapGhost("wm"); U.hideSnapGhost("kb"); U.hideSnapGhost("pv")
+		U.hideSnapGhost("wm"); U.hideSnapGhost("kb")
 		return
 	end
 	U.ensureSnapGhosts()
 	local f, g = panelOf(kind), U[kind .. "SnapGhost"]
 	if not U.shell or not f then return end
 	local h = panelH(f)
-	if kind == "pv" then h = U.LINE_H + U.TITLE_H end
 	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), h)
 	g.AnchorPoint, g.Position = U.dockPos(kind, h)
 	g.Visible = true
@@ -1389,10 +1379,6 @@ function U.overlapsSnap(kind, frame)
 	local gp, gs, fp, fs = g.AbsolutePosition, g.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
 	local cx = fp.X + fs.X * 0.5
 	local cy = fp.Y + fs.Y * 0.5
-	if kind == "pv" then
-		-- ghost is header-sized; test against header center so full panel can reattach
-		cy = fp.Y + math.min(fs.Y, (U.LINE_H + U.TITLE_H)) * 0.5
-	end
 	local pad = 12
 	return cx >= gp.X - pad and cx <= gp.X + gs.X + pad and cy >= gp.Y - pad and cy <= gp.Y + gs.Y + pad
 end
@@ -1400,11 +1386,10 @@ end
 function U.syncFloatingVisibility()
 	local menuOn = U.menuOpen ~= false
 	if U.shell then U.shell.Visible = menuOn end
-	for _, kind in ipairs({ "wm", "kb", "pv" }) do
+	for _, kind in ipairs({ "wm", "kb" }) do
 		local f = panelOf(kind)
 		if not f then continue end
 		local on = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"])
-		if kind == "pv" then on = on and U.currentTab == "visuals" end
 		f.Visible = on == true
 	end
 end
@@ -1413,10 +1398,6 @@ function U.dragPanel(f, kind)
 	local dragging, ds, sp
 	f.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		if kind == "pv" then
-			local relY = input.Position.Y - f.AbsolutePosition.Y
-			if relY > (U.LINE_H + U.TITLE_H + 2) then return end
-		end
 		dragging, ds, sp = true, input.Position, f.Position
 		U[kind .. "Docked"] = false
 		U.showSnapGhost(kind)
@@ -1537,86 +1518,6 @@ function U.buildFloaters()
 	
 	U.dragPanel(kb, "kb")
 
-	local PRE_W = math.floor(U.BODY_W / 2)
-	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
-	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
-	pv.Size = UDim2.fromOffset(PRE_W, shellH)
-	pv.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-	pv.Active = true
-	pv.Visible = false
-	pv.ClipsDescendants = true
-	U.pvPanel = pv
-	U.pvDocked = true
-	local pvTitleBar = U.new("Frame", {
-		Name = "TitleBar",
-		BackgroundColor3 = Color3.fromRGB(28, 28, 28),
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, U.TITLE_H),
-		Position = UDim2.fromOffset(0, U.LINE_H),
-		ZIndex = 2,
-	}, pv)
-	U.label(pvTitleBar, "preview", {
-		Position = UDim2.fromOffset(6, 0),
-		Size = UDim2.new(1, -12, 1, 0),
-		TextYAlignment = Enum.TextYAlignment.Center,
-	})
-	-- section top matches main UI body section inset (LINE_H + TITLE_H + PAD)
-	local secTop = U.LINE_H + U.TITLE_H + U.SEC_GAP
-	local pvSection = U.new("Frame", {
-		Name = "Section",
-		BackgroundColor3 = U.theme.SectionBg,
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		Position = UDim2.fromOffset(U.SEC_GAP, secTop),
-		Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(secTop + U.SEC_GAP)),
-	}, pv)
-	U.stroke(pvSection, "SectionBorder")
-	table.insert(U.themeReg.sectionBgs or {}, pvSection)
-	local viewport = Instance.new("ViewportFrame")
-	viewport.Name = "View"
-	viewport.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
-	viewport.BorderSizePixel = 0
-	viewport.Size = UDim2.fromScale(1, 1)
-	viewport.Ambient = Color3.fromRGB(200, 200, 200)
-	viewport.LightColor = Color3.fromRGB(255, 255, 255)
-	viewport.LightDirection = Vector3.new(-1, -1, -1)
-	viewport.Parent = pvSection
-	U.pvViewport = viewport
-	local pvOverlay = U.new("Frame", {
-		Name = "ESPOverlay",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 10,
-		ClipsDescendants = true,
-	}, pvSection)
-	U.pvOverlay = pvOverlay
-	local world = Instance.new("WorldModel")
-	world.Parent = viewport
-	U.pvWorld = world
-	local vcam = Instance.new("Camera")
-	vcam.Parent = viewport
-	viewport.CurrentCamera = vcam
-	U.pvCamera = vcam
-	U.pvYaw, U.pvPitch, U.pvDistScale = math.pi, 0.12, 1.35
-	U.pvFocus = Vector3.new(0, 3, 0)
-	U.pvBaseDist = 7
-	function U.pvUpdateCam()
-		local d = (U.pvBaseDist or 7) * (U.pvDistScale or 1.35)
-		local focus = U.pvFocus or Vector3.new(0, 3, 0)
-		local cf = CFrame.new(focus)
-			* CFrame.Angles(0, U.pvYaw or math.pi, 0)
-			* CFrame.Angles(-(U.pvPitch or 0.12), 0, 0)
-			* CFrame.new(0, 0, d)
-		vcam.CFrame = CFrame.lookAt(cf.Position, focus)
-	end
-	U.pvUpdateCam()
-	U.onFlag("Preview", function()
-		U.dock("pv")
-		U.syncFloatingVisibility()
-	end)
-	U.dragPanel(pv, "pv")
-end
 
 function U.buildConfig()
 
@@ -1792,8 +1693,6 @@ function U.buildConfig()
 	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
 	U.mkToggle(settingsSec, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
-	U.mkToggle(settingsSec, "preview", "Preview", nextOrder(), true)
-
 	U.buildFloaters()
 
 	local unload = U.mkButton(settingsSec, "unload", nextOrder(), true)
@@ -1807,10 +1706,9 @@ end
 
 function U.buildTabs()
 	local rail = U.new("Frame", {
-		Name = "TabRail", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
+		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
 		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H + U.BODY_H),
 	}, U.shell)
-	table.insert(U.themeReg.bodyBgs, rail)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
 	local tabIndex, swiping = {}, false
@@ -1826,8 +1724,7 @@ function U.buildTabs()
 		U.currentTab = name
 		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
 		U.syncFloatingVisibility()
-		if U.pvDocked then U.dock("pv") end
-		for n, b in pairs(U.tabButtons) do
+			for n, b in pairs(U.tabButtons) do
 			b.BackgroundColor3, b.TextColor3 = (n == name) and ON or OFF, U.theme.Text
 			local acc = b:FindFirstChild("TabAccent")
 			if acc then acc.Visible = n == name end
@@ -1893,18 +1790,15 @@ function U.bindInput()
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		U.hideSnapGhost("wm")
 		U.hideSnapGhost("kb")
-		U.hideSnapGhost("pv")
-		if U.wmDocked then U.dock("wm") end
+				if U.wmDocked then U.dock("wm") end
 		if U.kbDocked then U.dock("kb") end
-		if U.pvDocked then U.dock("pv") end
-	end))
+		end))
 
 	U.menuOpen = true
 	task.defer(function()
 		U.dock("wm")
 		U.dock("kb")
-		U.dock("pv")
-	end)
+		end)
 
 	U.track(U.UIS.InputBegan:Connect(function(input, gp)
 		if gp or U.kbBinding then return end
@@ -1952,9 +1846,6 @@ function Library:GetGui() return U.gui end
 function Library:GetTheme() return U.theme end
 function Library:IsMenuOpen() return U.menuOpen ~= false end
 function Library:GetCurrentTab() return U.currentTab end
-function Library:GetPreviewViewport() return U.pvViewport end
-function Library:GetPreviewWorld() return U.pvWorld end
-function Library:GetPreviewCamera() return U.pvCamera end
 function Library:OnTabChanged(fn)
 	U._tabListeners = U._tabListeners or {}
 	table.insert(U._tabListeners, fn)
@@ -1971,6 +1862,7 @@ end
 
 
 function U.buildExplorer()
+
 	local page = U.pageFrames and U.pageFrames.explorer
 	if not page then return end
 		for _, ch in ipairs(page:GetChildren()) do
