@@ -484,6 +484,7 @@ function U.closePopups()
 	U.closeColorPicker()
 	U.closeDropdown()
 	U.closeSettings()
+	if U.closeKeybindMode then U.closeKeybindMode() end
 end
 
 function U.shutdown()
@@ -587,7 +588,7 @@ function U.section(parent, title, col, row, rows)
 		BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -10, 1, -16), Position = UDim2.fromOffset(5, 12), ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
 	}, f)
-	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
+	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, content)
 	U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 2) }, content)
 	content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		if U.closeDropdown then U.closeDropdown() end
@@ -633,10 +634,21 @@ function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	U.refreshKeybindList()
 end
 
-function U.attachKeybind(row, toggleFlag, key, listText)
+function U.closeKeybindMode()
+	if U._kbModePopup then
+		pcall(function() U._kbModePopup:Destroy() end)
+		U._kbModePopup = nil
+	end
+end
+
+function U.attachKeybind(row, toggleFlag, key, listText, mode)
 	local kFlag = toggleFlag .. "Key"
+	local mFlag = toggleFlag .. "KeyMode"
 	U.keybindTargets[kFlag] = toggleFlag
 	U.vflags[kFlag] = U.vflags[kFlag] or U.parseKeyCode(key)
+	local m = tostring(mode or U.vflags[mFlag] or "Toggle"):lower()
+	if m ~= "hold" then m = "Toggle" else m = "Hold" end
+	U.vflags[mFlag] = m
 
 	local kb = U.new("TextButton", {
 		Name = "KeybindBox", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0.5),
@@ -656,8 +668,43 @@ function U.attachKeybind(row, toggleFlag, key, listText)
 		if not listening then show() end
 		U.fireFlag(kFlag)
 	end
+	U.setters[mFlag] = function(v)
+		local s = tostring(v or "Toggle")
+		U.vflags[mFlag] = (s:lower() == "hold") and "Hold" or "Toggle"
+		U.fireFlag(mFlag)
+	end
+
+	local function openModeMenu()
+		U.closeKeybindMode()
+		U.closePopups()
+		local pos = kb.AbsolutePosition
+		local size = kb.AbsoluteSize
+		local popup = U.new("Frame", {
+			Name = "KeybindMode", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0,
+			Size = UDim2.fromOffset(72, 40),
+			Position = UDim2.fromOffset(pos.X + size.X - 72, pos.Y + size.Y + 2),
+			ZIndex = 200,
+		}, U.gui)
+		U.edges(popup, U.ELEMENT_BORDER, false, 3)
+		U._kbModePopup = popup
+		local function opt(label, y)
+			local b = U.new("TextButton", {
+				AutoButtonColor = false, BackgroundColor3 = (U.vflags[mFlag] == label) and Color3.fromRGB(50, 50, 70) or Color3.fromRGB(28, 28, 28),
+				BorderSizePixel = 0, Size = UDim2.new(1, -4, 0, 16), Position = UDim2.fromOffset(2, y),
+				FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = label, ZIndex = 201,
+			}, popup)
+			b.MouseButton1Click:Connect(function()
+				U.setters[mFlag](label)
+				U.closeKeybindMode()
+			end)
+		end
+		opt("Toggle", 2)
+		opt("Hold", 20)
+	end
+
 	kb.MouseButton1Click:Connect(function()
 		if listening then return end
+		U.closeKeybindMode()
 		listening, U.kbBinding = true, true
 		fit("...")
 		local conn
@@ -668,6 +715,9 @@ function U.attachKeybind(row, toggleFlag, key, listText)
 			if input.KeyCode == Enum.KeyCode.Escape then show() else U.setters[kFlag](input.KeyCode) end
 			task.defer(function() U.kbBinding = false end)
 		end)
+	end)
+	kb.MouseButton2Click:Connect(function()
+		openModeMenu()
 	end)
 	U.registerKeybindList(listText, kFlag, toggleFlag)
 	return kb
@@ -693,7 +743,7 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function() set(not on) end)
 	if flag then
 		U.setters[flag] = set
-		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text) end
+		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text, kb.mode) end
 	end
 	return r
 end
@@ -716,10 +766,10 @@ end
 function U.sliderFrame(parent, text, order, tooltip, vw)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 30)
+	r.Size = UDim2.new(1, 0, 0, 28)
 	U.label(r, text, { Size = UDim2.new(1, -(vw + 4), 0, 12) })
 	local val = U.label(r, "", { Size = UDim2.fromOffset(vw, 12), Position = UDim2.new(1, -vw, 0, 0), TextXAlignment = Enum.TextXAlignment.Right })
-	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 14) }, r)
+	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 13) }, r)
 	U.controlStroke(track)
 	local fill = U.new("Frame", { BackgroundColor3 = U.pulseColor(), BorderSizePixel = 0, ZIndex = 3 }, track)
 	U.registerPulse(fill, function() return true end)
@@ -831,7 +881,7 @@ local DD_BG, DD_SEL, DD_HOV = Color3.fromRGB(32, 32, 32), Color3.fromRGB(40, 40,
 function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 36)
+	r.Size = UDim2.new(1, 0, 0, 32)
 	options = options or {}
 	limit = math.max(1, math.floor(tonumber(limit or (multi and 999 or 1)) or 1))
 	multi = limit > 1
@@ -1803,10 +1853,16 @@ function U.bindInput()
 
 	U.track(U.UIS.InputBegan:Connect(function(input, gp)
 		if gp or U.kbBinding then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+			if U._kbModePopup and not input:IsDescendantOf(U._kbModePopup) then
+				-- close handled after click targets
+			end
+		end
 		if input.KeyCode == (U.vflags.MenuKeybind or Enum.KeyCode.RightShift) then
 			U.menuOpen = not U.menuOpen
 			if not U.menuOpen then
 				U.closePopups()
+				U.closeKeybindMode()
 				U.hideSnapGhost("wm")
 				U.hideSnapGhost("kb")
 				U.hideTooltip()
@@ -1817,12 +1873,27 @@ function U.bindInput()
 				U.dock("kb")
 			end
 		end
-		
+
 		for kFlag, tFlag in pairs(U.keybindTargets) do
 			local k = U.vflags[kFlag]
 			if typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
-				local on = U.vflags[tFlag] ~= true
-				if U.setters[tFlag] then U.setters[tFlag](on) else U.setFlag(tFlag, on) end
+				local mode = tostring(U.vflags[tFlag .. "KeyMode"] or "Toggle")
+				if mode:lower() == "hold" then
+					if U.setters[tFlag] then U.setters[tFlag](true) else U.setFlag(tFlag, true) end
+				else
+					local on = U.vflags[tFlag] ~= true
+					if U.setters[tFlag] then U.setters[tFlag](on) else U.setFlag(tFlag, on) end
+				end
+			end
+		end
+	end))
+	U.track(U.UIS.InputEnded:Connect(function(input)
+		if U.kbBinding then return end
+		for kFlag, tFlag in pairs(U.keybindTargets) do
+			local k = U.vflags[kFlag]
+			local mode = tostring(U.vflags[tFlag .. "KeyMode"] or "Toggle")
+			if mode:lower() == "hold" and typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
+				if U.setters[tFlag] then U.setters[tFlag](false) else U.setFlag(tFlag, false) end
 			end
 		end
 	end))
@@ -1858,7 +1929,8 @@ local function tip(o) return o.Tooltip or o.tooltip end
 
 local function keybindOf(o, name)
 	if o.Keybind ~= true then return nil end
-	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
+	local mode = o.KeybindMode or o.Mode or o.DefaultMode or "Toggle"
+	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name, mode = mode }
 end
 
 
@@ -1946,21 +2018,6 @@ function U.buildExplorer()
 				end
 			end
 		end
-
-		local search = Instance.new("TextBox")
-		search.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-		search.BorderSizePixel = 0
-		search.ClearTextOnFocus = false
-		search.FontFace = U.font
-		search.TextSize = U.TEXT_SZ
-		search.TextColor3 = U.theme.Text
-		search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-		search.PlaceholderText = "filter..."
-		search.Text = ""
-		search.Size = UDim2.new(1, 0, 0, 16)
-		search.LayoutOrder = -1000000
-		search.Parent = explList
-		U.edges(search, U.ELEMENT_BORDER, false, 3)
 
 		local function disconnectTree(inst)
 			local cns = treeConns[inst]
@@ -2109,12 +2166,6 @@ function U.buildExplorer()
 			end
 		end
 
-		local function matchesFilter(inst, filter)
-			if filter == "" then return true end
-			return inst.Name:lower():find(filter, 1, true) ~= nil
-				or inst.ClassName:lower():find(filter, 1, true) ~= nil
-		end
-
 		local listOrder = 0
 		local function buildRow(inst, depth)
 			listOrder += 1
@@ -2186,11 +2237,8 @@ function U.buildExplorer()
 					if explorerOn and expanded[inst] then rebuildVisible() end
 				end)
 				treeConns[inst] = conns
-				local filter = search.Text:lower()
 				for _, ch in ipairs(kids) do
-					if filter == "" or matchesFilter(ch, filter) or expanded[ch] then
-						buildRow(ch, depth + 1)
-					end
+					buildRow(ch, depth + 1)
 				end
 			end
 		end
@@ -2201,10 +2249,6 @@ function U.buildExplorer()
 			listOrder = 0
 			buildRow(game, 0)
 		end
-
-		search:GetPropertyChangedSignal("Text"):Connect(function()
-			if explorerOn then rebuildVisible() end
-		end)
 
 		U._tabListeners = U._tabListeners or {}
 		table.insert(U._tabListeners, function(name)
