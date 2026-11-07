@@ -603,7 +603,9 @@ end
 -- Wrap a control so height animation clips/reveals without squashing children.
 function U.ensureSubWrap(control)
 	if control:GetAttribute("SubWrapped") then
-		return control.Parent or control
+		local w = control.Parent
+		if w then w.ClipsDescendants = true end
+		return w or control
 	end
 	local parent = control.Parent
 	if not parent then return control end
@@ -613,7 +615,7 @@ function U.ensureSubWrap(control)
 		Name = "SubWrap",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ClipsDescendants = false,
+		ClipsDescendants = true,
 		Size = UDim2.new(1, 0, 0, fullH),
 		LayoutOrder = order,
 	}, parent)
@@ -664,24 +666,9 @@ function U.setFadeTargets(targets, value)
 	end
 end
 
-function U.tweenFadeTargets(targets, toHidden, duration)
-	local info = TweenInfo.new(duration or 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local last
-	for _, t in ipairs(targets) do
-		local goal = toHidden and 1 or t.goal
-		local ok, tw = pcall(function()
-			return U.Tween:Create(t.obj, info, { [t.prop] = goal })
-		end)
-		if ok and tw then
-			tw:Play()
-			last = tw
-		end
-	end
-	return last
-end
-
 function U.animateSub(control, show)
 	local wrap = U.ensureSubWrap(control)
+	wrap.ClipsDescendants = true
 	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
 	local parentFlag = control:GetAttribute("ParentFlag")
 	local targets = U.subFadeTargets(control)
@@ -699,35 +686,18 @@ function U.animateSub(control, show)
 		U.endSubAnim(parentFlag)
 	end
 
-	-- cancel previous rs driver on this wrap
 	if wrap:GetAttribute("AnimConn") then
 		local old = U._subAnimConns and U._subAnimConns[wrap]
 		if old then pcall(function() old:Disconnect() end) end
 	end
 	U._subAnimConns = U._subAnimConns or {}
 
-	local function tweenFade(toHidden, dur)
-		local info = TweenInfo.new(dur or 0.05, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-		local last
-		for _, t in ipairs(targets) do
-			local goal = toHidden and 1 or t.goal
-			local ok, tw = pcall(function()
-				return U.Tween:Create(t.obj, info, { [t.prop] = goal })
-			end)
-			if ok and tw then
-				tw:Play()
-				last = tw
-			end
-		end
-		return last
-	end
-
-	-- smoothstep height on RenderStepped so list layout + line stay frame-synced
+	-- height drives a top→bottom clip reveal (same motion as the sub line)
 	local function driveHeight(fromH, toH, dur, onDone)
 		local t0 = os.clock()
 		fromH = tonumber(fromH) or 0
 		toH = tonumber(toH) or 0
-		dur = math.max(0.03, tonumber(dur) or 0.08)
+		dur = math.max(0.04, tonumber(dur) or 0.1)
 		local conn
 		conn = U.Run.RenderStepped:Connect(function()
 			if not still() then
@@ -737,7 +707,6 @@ function U.animateSub(control, show)
 				return
 			end
 			local a = math.clamp((os.clock() - t0) / dur, 0, 1)
-			-- smootherstep
 			local e = a * a * a * (a * (a * 6 - 15) + 10)
 			local h = fromH + (toH - fromH) * e
 			wrap.Size = UDim2.new(1, 0, 0, h)
@@ -754,56 +723,31 @@ function U.animateSub(control, show)
 		wrap:SetAttribute("AnimConn", true)
 	end
 
+	-- keep content fully opaque; clip does the gradual reveal
+	U.setFadeTargets(targets, 0)
+	control.Size = UDim2.new(1, 0, 0, fullH)
+	control.Position = UDim2.fromOffset(0, 0)
+	control.Visible = true
+
 	if show then
 		wrap.Visible = true
-		control.Visible = true
-		control.Size = UDim2.new(1, 0, 0, fullH)
-		control.Position = UDim2.fromOffset(0, 0)
-		U.setFadeTargets(targets, 1)
 		local fromH = wrap.Size.Y.Offset
 		if fromH < 0 then fromH = 0 end
-		wrap.Size = UDim2.new(1, 0, 0, fromH)
-		driveHeight(fromH, fullH, 0.08, function()
-			if not still() then
-				U.endSubAnim(parentFlag)
-				return
-			end
-			local ft = tweenFade(false, 0.05)
-			if ft then
-				ft.Completed:Connect(function()
-					if still() then finish() else U.endSubAnim(parentFlag) end
-				end)
-			else
-				finish()
-			end
+		driveHeight(fromH, fullH, 0.1, function()
+			if still() then finish() else U.endSubAnim(parentFlag) end
 		end)
 	else
-		local function collapse()
+		local fromH = wrap.Size.Y.Offset
+		if fromH < 1 then fromH = fullH end
+		driveHeight(fromH, 0, 0.1, function()
 			if not still() then
 				U.endSubAnim(parentFlag)
 				return
 			end
-			local fromH = wrap.Size.Y.Offset
-			if fromH < 1 then fromH = fullH end
-			driveHeight(fromH, 0, 0.08, function()
-				if not still() then
-					U.endSubAnim(parentFlag)
-					return
-				end
-				wrap.Visible = false
-				control.Visible = false
-				U.setFadeTargets(targets, 1)
-				finish()
-			end)
-		end
-		local ft = tweenFade(true, 0.04)
-		if ft then
-			ft.Completed:Connect(function()
-				if still() then collapse() else U.endSubAnim(parentFlag) end
-			end)
-		else
-			collapse()
-		end
+			wrap.Visible = false
+			control.Visible = false
+			finish()
+		end)
 	end
 end
 
@@ -2228,7 +2172,7 @@ function U.buildConfig()
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
 	local listBox = U.new("Frame", { Name = "SavedList", BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsContent)
-	U.edges(listBox, U.ELEMENT_BORDER, true, 3)
+	U.controlStroke(listBox)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
