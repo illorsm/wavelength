@@ -479,7 +479,7 @@ function U.shutdown()
 	end)
 end
 
-function U.armPopupOpen() U.suppressPopupClose = tick() + 0.08 end
+function U.armPopupOpen() U.suppressPopupClose = tick() + 0.25 end
 
 function U.objsAtMouse()
 	local p = U.UIS:GetMouseLocation()
@@ -1048,10 +1048,7 @@ function U.section(parent, col, row, rows)
 				fill()
 				if prune then prune() end
 				if display then display() end
-				-- if open dropdown is this flag, close so next open rebuilds list
-				if U.openDropdown and U.openDropdown:GetAttribute("Flag") == flag then
-					U.closeDropdown()
-				end
+				-- keep open list; next open rebuilds from live names. avoid random closes on join/leave.
 			end
 			U.track(U.Players.PlayerAdded:Connect(onRoster))
 			U.track(U.Players.PlayerRemoving:Connect(function()
@@ -1434,7 +1431,10 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		if #options == 0 then return end
 
 		local eb = U.ELEMENT_BORDER
-		local fullH = math.min(#options * 18, 140)
+		local rowH = 18
+		local maxH = 144 -- exact multiple of rowH so nothing is half-clipped
+		local contentH = #options * rowH
+		local fullH = math.min(contentH, maxH)
 		local boxW = math.floor(box.AbsoluteSize.X + 0.5)
 		local ebPx = math.floor(eb + 0.5)
 		local width = boxW + ebPx * 2
@@ -1448,17 +1448,25 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
+		U.edges(list, eb, false, 223, true)
+
+		local scroll = U.new("ScrollingFrame", {
+			Name = "DropScroll", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0),
+			CanvasSize = UDim2.fromOffset(0, contentH), AutomaticCanvasSize = Enum.AutomaticSize.None,
+			ScrollBarThickness = 0, ScrollBarImageTransparency = 1, ClipsDescendants = true,
+			ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 221,
+		}, list)
 		local holder = U.new("Frame", {
 			BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = false,
-			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221,
-		}, list)
-		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-		U.edges(list, eb, false, 223, true)
+			Size = UDim2.fromOffset(width, contentH), Position = UDim2.fromOffset(0, 0), ZIndex = 222,
+		}, scroll)
+		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 0) }, holder)
 
 		for _, opt in ipairs(options) do
 			local b = U.new("TextButton", {
-				AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), FontFace = U.font, TextSize = U.TEXT_SZ,
-				TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opt), ZIndex = 222,
+				AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, rowH), FontFace = U.font, TextSize = U.TEXT_SZ,
+				TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opt), ZIndex = 223,
 			}, holder)
 			U.new("UIPadding", { PaddingLeft = UDim.new(0, 7) }, b)
 			b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG
@@ -1489,6 +1497,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		U.openDropdown, U.openDropdownBox = list, box
 		U.armPopupOpen()
 		list.InputBegan:Connect(U.armPopupOpen)
+		scroll.InputBegan:Connect(U.armPopupOpen)
 		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH) }):Play()
 	end)
 	U.setters[flag] = function(v)
@@ -2446,7 +2455,7 @@ end
 function U.bindInput()
 	U.track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "KeybindBox", "ResizeHandle") then return end
+		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "KeybindBox", "ResizeHandle", "DropdownList", "DropScroll") then return end
 		task.defer(function()
 			if tick() < (U.suppressPopupClose or 0) then return end
 			if U.openColorPicker and not U.clickHits(U.openColorPicker) then U.closeColorPicker() end
