@@ -976,45 +976,10 @@ function U.section(parent, col, row, rows)
 		end
 		local function dropdown(o, parentFlag)
 			o = o or {}
-			local limit = o.Limit
-			if limit == nil then limit = o.Amount end
-			if limit == nil then limit = 1 end
-			local c = U.mkDropdown(content, o.Text or lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, nextOrder(), limit, tip(o))
+			local limit = o.Limit or o.Amount
+			if limit == nil then limit = (o.Multi == true) and 999 or 1 end
+			local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, tip(o))
 			return parentFlag and U.subOf(c, parentFlag) or c
-		end
-		local function playerDropdown(o, parentFlag)
-			o = o or {}
-			local flag = o.Flag or o.Name
-			local limit = o.Limit
-			if limit == nil then limit = 1 end
-			local options = {}
-			local row = U.mkDropdown(content, o.Text or lname(o, "dropdown"), flag, options, o.Default, nextOrder(), limit, tip(o))
-			local function refreshPlayers(excludedPlayer)
-				if not row.Parent then return end
-				local names, valid = {}, {}
-				for _, player in ipairs(U.Players:GetPlayers()) do
-					if player ~= excludedPlayer then
-						names[#names + 1] = player.Name
-						valid[player.Name] = true
-					end
-				end
-				table.sort(names, function(a, b) return string.lower(a) < string.lower(b) end)
-				U.updateDropdownOptions(flag, names)
-				local value = U.vflags[flag]
-				if type(value) == "table" then
-					local kept = {}
-					for _, name in ipairs(value) do
-						if valid[name] then kept[#kept + 1] = name end
-					end
-					if #kept ~= #value then U.setters[flag](kept) end
-				elseif value ~= nil and not valid[value] then
-					U.setters[flag](nil)
-				end
-			end
-			U.track(U.Players.PlayerAdded:Connect(function() refreshPlayers() end))
-			U.track(U.Players.PlayerRemoving:Connect(function(player) refreshPlayers(player) end))
-			refreshPlayers()
-			return parentFlag and U.subOf(row, parentFlag) or row
 		end
 		local function toggle(o)
 			o = o or {}
@@ -1040,7 +1005,6 @@ function U.section(parent, col, row, rows)
 			end
 			function obj:AddSlider(so) slider(so or {}, flag) return obj end
 			function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
-			function obj:AddPlayerDropdown(so) playerDropdown(so or {}, flag) return obj end
 			return obj
 		end
 		function api:AddSlider(o)
@@ -1055,10 +1019,6 @@ function U.section(parent, col, row, rows)
 		function api:AddDropdown(o)
 			o = o or {}
 			return { Row = dropdown(o), Flag = o.Flag or o.Name }
-		end
-		function api:AddPlayerDropdown(o)
-			o = o or {}
-			return { Row = playerDropdown(o), Flag = o.Flag or o.Name }
 		end
 		function api:AddButton(o)
 			o = o or {}
@@ -1355,16 +1315,16 @@ end
 
 local DD_BG, DD_SEL, DD_HOV = Color3.fromRGB(32, 32, 32), Color3.fromRGB(40, 40, 40), Color3.fromRGB(36, 36, 36)
 
-function U.mkDropdown(parent, text, flag, options, default, order, limit, tooltip)
+function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
 	r.Size = UDim2.new(1, 0, 0, 30)
 	options = options or {}
-	limit = math.max(0, math.floor(tonumber(limit) or 1))
-	local multi = limit ~= 1
+	limit = math.max(1, math.floor(tonumber(limit or (multi and 999 or 1)) or 1))
+	multi = limit > 1
 	if multi then
-		local d = type(default) == "table" and table.clone(default) or (default ~= nil and { default } or {})
-		if limit > 0 then while #d > limit do table.remove(d, 1) end end
+		local d = type(default) == "table" and default or (default ~= nil and { default } or {})
+		while #d > limit do table.remove(d, 1) end
 		U.vflags[flag] = d
 	else
 		U.vflags[flag] = type(default) == "table" and default[1] or default
@@ -1391,13 +1351,6 @@ function U.mkDropdown(parent, text, flag, options, default, order, limit, toolti
 		return tostring(U.vflags[flag] or "") == tostring(opt)
 	end
 
-	local refreshOpenOptions
-	U.dropdownRefreshers = U.dropdownRefreshers or {}
-	U.dropdownRefreshers[flag] = function(newOptions)
-		options = newOptions or {}
-		if refreshOpenOptions then refreshOpenOptions() end
-	end
-
 	box.MouseButton1Click:Connect(function()
 		U.closeColorPicker()
 		U.closeSettings()
@@ -1408,6 +1361,7 @@ function U.mkDropdown(parent, text, flag, options, default, order, limit, toolti
 		end
 		if #options == 0 then return end
 
+		
 		local eb = U.ELEMENT_BORDER
 		local fullH = math.min(#options * 18, 140)
 		local boxW = math.floor(box.AbsoluteSize.X + 0.5)
@@ -1430,69 +1384,52 @@ function U.mkDropdown(parent, text, flag, options, default, order, limit, toolti
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
 		U.edges(list, eb, false, 223, true)
 
-		local function renderOptions()
-			if not list.Parent then return end
-			for _, child in ipairs(holder:GetChildren()) do
-				if child:IsA("TextButton") then child:Destroy() end
-			end
-			fullH = math.min(#options * 18, 140)
-			holder.Size = UDim2.fromOffset(width, fullH)
-			for _, opt in ipairs(options) do
-				local optionText = tostring(opt)
-				local b = U.new("TextButton", {
-					AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), FontFace = U.font, TextSize = U.TEXT_SZ,
-					TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = optionText, ZIndex = 222,
-				}, holder)
-				U.new("UIPadding", { PaddingLeft = UDim.new(0, 7) }, b)
-				b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG
-				b.MouseEnter:Connect(function() if not isSelected(opt) then b.BackgroundColor3 = DD_HOV end end)
-				b.MouseLeave:Connect(function() b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG end)
-				b.MouseButton1Click:Connect(function()
-					if multi then
-						local cur = type(U.vflags[flag]) == "table" and table.clone(U.vflags[flag]) or {}
-						local at = table.find(cur, opt)
-						if at then
-							table.remove(cur, at)
-						else
-							table.insert(cur, opt)
-							if limit > 0 then while #cur > limit do table.remove(cur, 1) end end
-						end
-						U.vflags[flag] = cur
-						display()
-						renderOptions()
+		for _, opt in ipairs(options) do
+			local b = U.new("TextButton", {
+				AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), FontFace = U.font, TextSize = U.TEXT_SZ,
+				TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opt), ZIndex = 222,
+			}, holder)
+			U.new("UIPadding", { PaddingLeft = UDim.new(0, 7) }, b)
+			b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG
+			b.MouseEnter:Connect(function() if not isSelected(opt) then b.BackgroundColor3 = DD_HOV end end)
+			b.MouseLeave:Connect(function() b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG end)
+			b.MouseButton1Click:Connect(function()
+				if multi then
+					local cur = type(U.vflags[flag]) == "table" and table.clone(U.vflags[flag]) or {}
+					local at = table.find(cur, opt)
+					if at then
+						table.remove(cur, at)
 					else
-						U.vflags[flag] = opt
-						display()
-						U.closeDropdown()
+						table.insert(cur, opt)
+						while #cur > limit do table.remove(cur, 1) end
 					end
-					U.fireFlag(flag)
-				end)
-			end
-			if list.Parent then list.Size = UDim2.fromOffset(width, fullH) end
+					U.vflags[flag] = cur
+					for _, ch in ipairs(holder:GetChildren()) do
+						if ch:IsA("TextButton") then ch.BackgroundColor3 = isSelected(ch.Text) and DD_SEL or DD_BG end
+					end
+				else
+					U.vflags[flag] = opt
+					U.closeDropdown()
+				end
+				display()
+				U.fireFlag(flag)
+			end)
 		end
-		refreshOpenOptions = renderOptions
-		renderOptions()
 		U.openDropdown, U.openDropdownBox = list, box
 		U.armPopupOpen()
 		list.InputBegan:Connect(U.armPopupOpen)
 		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH) }):Play()
 	end)
 	U.setters[flag] = function(v)
-		if multi then
-			v = type(v) == "table" and table.clone(v) or (v ~= nil and { v } or {})
-			if limit > 0 then while #v > limit do table.remove(v, 1) end end
+		if multi and type(v) == "table" then
+			v = table.clone(v)
+			while #v > limit do table.remove(v, 1) end
 		end
 		U.vflags[flag] = v
 		display()
-		if refreshOpenOptions then refreshOpenOptions() end
 		U.fireFlag(flag)
 	end
 	return r
-end
-
-function U.updateDropdownOptions(flag, options)
-	local refresh = U.dropdownRefreshers and U.dropdownRefreshers[flag]
-	if refresh then refresh(options) end
 end
 
 function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
@@ -2222,10 +2159,10 @@ function U.buildConfig()
 	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
 	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, true, "accent b")
 	U.mkKeybind(settingsContent, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
-	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", nextOrder(), 1)
+	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
 	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
-	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, nextOrder(), 0), "Watermark")
+	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
 	U.subOf(U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder()), "Watermark")
 	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
 	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
