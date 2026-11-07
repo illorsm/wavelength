@@ -879,6 +879,31 @@ function U.secGeom(col, row, rows)
 	return x, y, w, h
 end
 
+function U.updateConfigListHeight()
+	local box = U.configListBox
+	local scroll = U.configListScroll
+	if not box or not box.Parent or not scroll then return end
+	local viewH = scroll.AbsoluteSize.Y
+	if viewH < 2 then return end
+	local layout = scroll:FindFirstChildOfClass("UIListLayout")
+	local gap = layout and layout.Padding.Offset or 4
+	local used = 0
+	for _, ch in ipairs(scroll:GetChildren()) do
+		if ch:IsA("GuiObject") and ch ~= box and ch.Visible then
+			used += ch.AbsoluteSize.Y + gap
+		end
+	end
+	local pad = scroll:FindFirstChildOfClass("UIPadding")
+	if pad then
+		used += (pad.PaddingTop.Offset or 0) + (pad.PaddingBottom.Offset or 0)
+	end
+	-- sit flush at bottom of section content with a small edge gap
+	local h = math.max(60, math.floor(viewH - used - 2))
+	if math.abs((box.Size.Y.Offset or 0) - h) > 0 then
+		box.Size = UDim2.new(1, 0, 0, h)
+	end
+end
+
 function U.relayoutColumn(page, side)
 	if not page then return end
 	side = side or 1
@@ -2202,14 +2227,19 @@ function U.buildConfig()
 	end)
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 210), LayoutOrder = 6 }, configsContent)
-	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
+	local listBox = U.new("Frame", { Name = "SavedList", BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsContent)
+	U.edges(listBox, U.ELEMENT_BORDER, true, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
 	}, listBox)
 	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, listFrame)
+	U.configListBox = listBox
+	U.configListScroll = configsContent
 	refreshList()
+	task.defer(function()
+		if U.updateConfigListHeight then U.updateConfigListHeight() end
+	end)
 
 	local o = 0
 	local function nextOrder() o += 1 return o end
@@ -2230,14 +2260,7 @@ function U.buildConfig()
 
 	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
 	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
-	local msgBox = U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder())
-	U.indentRow(msgBox, 12)
-	local function syncMsg()
-		msgBox.Visible = U.vflags.Watermark == true and table.find(U.vflags.WatermarkItems or {}, "message") ~= nil
-	end
-	U.onFlag("Watermark", syncMsg)
-	U.onFlag("WatermarkItems", syncMsg)
-	syncMsg()
+	U.subOf(U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder()), "Watermark")
 	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
 	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
@@ -2336,34 +2359,55 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 	end
 end
 
-function U.applyBodyLayout()
-	-- heavy: only current tab pages + dock, not every mouse pixel
-	local cur = U.currentTab
-	local page = U.pageFrames and U.pageFrames[cur]
-	if page then
-		U.relayoutColumn(page, 1)
-		U.relayoutColumn(page, 2)
-	else
-		for _, p in pairs(U.pageFrames or {}) do
-			U.relayoutColumn(p, 1)
-			U.relayoutColumn(p, 2)
+function U.layoutPage(page, full)
+	if not page then return end
+	-- direct section geometry (no deferred work while resizing)
+	for side = 1, 2 do
+		local frames = {}
+		for _, ch in ipairs(page:GetChildren()) do
+			if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+				frames[#frames + 1] = ch
+			end
 		end
-	end
-	if U.wmDocked then U.dock("wm") end
-	if U.kbDocked then U.dock("kb") end
-	for _, fn in ipairs(U.sliderLayouts or {}) do
-		pcall(fn)
+		table.sort(frames, function(a, b)
+			return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
+		end)
+		local n = #frames
+		for i, ch in ipairs(frames) do
+			local x, y, w, h = U.secGeom(side, i, n)
+			ch.Size = UDim2.fromOffset(w, h)
+			ch.Position = UDim2.fromOffset(x, y)
+			ch:SetAttribute("SectionRow", i)
+		end
 	end
 	for _, sec in ipairs(U.sectionObjs or {}) do
 		if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
-			pcall(sec.layoutTabs)
+			sec.layoutTabs()
 		end
 	end
+	if full then
+		for flag in pairs(U.subGroups or {}) do
+			U.updateSubLine(flag)
+		end
+		for _, fn in ipairs(U.sliderLayouts or {}) do
+			pcall(fn)
+		end
+	end
+	if U.updateConfigListHeight then
+		U.updateConfigListHeight()
+	end
+end
+
+function U.applyBodyLayout(full)
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	U.layoutPage(page, full == true)
+	if U.wmDocked then U.dock("wm") end
+	if U.kbDocked then U.dock("kb") end
 end
 
 function U.applyBodySize(w, h, anchorRight, anchorBottom)
 	U.applyShellSize(w, h, anchorRight, anchorBottom)
-	U.applyBodyLayout()
+	U.applyBodyLayout(true)
 end
 
 function U.bindResize()
@@ -2388,18 +2432,11 @@ function U.bindResize()
 			local start = input.Position
 			local startW, startH = U.BODY_W, U.BODY_H
 			local moving = true
-			local lastLayout = 0
-			local pending = false
-			local c1, c2, c3
-			local function doLayout()
-				pending = false
-				U.applyBodyLayout()
-			end
+			local c1, c2
 			c1 = U.UIS.InputChanged:Connect(function(i)
 				if not moving then return end
 				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
 				local d = i.Position - start
-				-- light: shell chrome only every move
 				if mode == "right" then
 					U.applyShellSize(startW + d.X, startH, false, false)
 				elseif mode == "left" then
@@ -2407,41 +2444,24 @@ function U.bindResize()
 				elseif mode == "bottom" then
 					U.applyShellSize(startW, startH + d.Y, false, false)
 				end
-				-- heavy layout throttled ~20fps during drag
-				local now = os.clock()
-				if now - lastLayout >= 0.05 then
-					lastLayout = now
-					doLayout()
-				else
-					pending = true
-				end
-			end)
-			c3 = U.Run.Heartbeat:Connect(function()
-				if moving and pending and (os.clock() - lastLayout) >= 0.05 then
-					lastLayout = os.clock()
-					doLayout()
-				end
+				-- every move: current tab sections + docks + saved list height
+				U.applyBodyLayout(false)
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 					moving = false
 					c1:Disconnect()
 					c2:Disconnect()
-					c3:Disconnect()
-					-- final accurate layout on release
-					U.applyBodyLayout()
-					-- also layout other tabs so switching stays correct
+					U.applyBodyLayout(true)
 					for name, p in pairs(U.pageFrames or {}) do
 						if name ~= U.currentTab then
-							U.relayoutColumn(p, 1)
-							U.relayoutColumn(p, 2)
+							U.layoutPage(p, true)
 						end
 					end
 				end
 			end)
 			U.track(c1)
 			U.track(c2)
-			U.track(c3)
 		end)
 	end
 	bind(right, "right")
