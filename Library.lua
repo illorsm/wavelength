@@ -559,60 +559,89 @@ function U.ensureSubGroup(flag, parentRow)
 	return g
 end
 
+function U.subFullHeight(control)
+	local h = control:GetAttribute("FullHeight")
+	if typeof(h) == "number" and h > 0 then return h end
+	h = control.Size.Y.Offset
+	if h < 2 then h = control.AbsoluteSize.Y end
+	if h < 2 then h = 16 end
+	control:SetAttribute("FullHeight", h)
+	return h
+end
+
 function U.animateSub(control, show)
+	control.ClipsDescendants = true
+	local fullH = U.subFullHeight(control)
+	local info = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	if show then
 		control.Visible = true
-		for _, d in ipairs(control:GetDescendants()) do
-			if d:IsA("TextLabel") or d:IsA("TextButton") then
-				local goal = d.TextTransparency
-				d.TextTransparency = 1
-				U.Tween:Create(d, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = goal }):Play()
-			elseif d:IsA("Frame") or d:IsA("ImageButton") or d:IsA("TextBox") then
-				if d.BackgroundTransparency < 1 then
-					local goal = d.BackgroundTransparency
-					d.BackgroundTransparency = 1
-					U.Tween:Create(d, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = goal }):Play()
-				end
-			end
+		if control.Size.Y.Offset < 1 then
+			control.Size = UDim2.new(1, 0, 0, 0)
 		end
-		if control:IsA("Frame") or control:IsA("TextButton") then
-			local goal = control.BackgroundTransparency
-			if goal < 1 then
-				control.BackgroundTransparency = 1
-				U.Tween:Create(control, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = goal }):Play()
+		local tw = U.Tween:Create(control, info, { Size = UDim2.new(1, 0, 0, fullH) })
+		tw:Play()
+		tw.Completed:Connect(function()
+			if control.Parent and control.Visible then
+				control.Size = UDim2.new(1, 0, 0, fullH)
 			end
-		end
+			if control:GetAttribute("ParentFlag") then
+				U.updateSubLine(control:GetAttribute("ParentFlag"))
+			end
+		end)
 	else
-		control.Visible = false
+		local tw = U.Tween:Create(control, info, { Size = UDim2.new(1, 0, 0, 0) })
+		tw:Play()
+		tw.Completed:Connect(function()
+			if control.Parent and control.Size.Y.Offset < 1 then
+				control.Visible = false
+			end
+			if control:GetAttribute("ParentFlag") then
+				U.updateSubLine(control:GetAttribute("ParentFlag"))
+			end
+		end)
 	end
 end
 
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
+	control.ClipsDescendants = true
+	do
+		local h = control.Size.Y.Offset
+		if h < 2 then h = 16 end
+		control:SetAttribute("FullHeight", h)
+	end
 	local parentFlag = keys and keys[1]
 	if parentFlag then
+		control:SetAttribute("ParentFlag", parentFlag)
 		local g = U.ensureSubGroup(parentFlag, U.toggleRows[parentFlag])
 		g.children[#g.children + 1] = control
 	end
 	local function sync()
 		local vis = pred() and true or false
-		if control.Visible ~= vis then
-			if vis then
-				U.animateSub(control, true)
-			else
-				control.Visible = false
-			end
+		local open = control.Visible and control.Size.Y.Offset > 1
+		if vis and not open then
+			U.animateSub(control, true)
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
-		else
-			control.Visible = vis
+		elseif not vis and (control.Visible or open) then
+			U.animateSub(control, false)
+			if U.closeDropdown then U.closeDropdown() end
+			if U.closeColorPicker then U.closeColorPicker() end
 		end
 		if parentFlag then
 			task.defer(function() U.updateSubLine(parentFlag) end)
 		end
 	end
 	for _, k in ipairs(keys) do U.onFlag(k, sync) end
-	sync()
+	-- initial state without animation
+	local vis = pred() and true or false
+	if vis then
+		control.Visible = true
+		control.Size = UDim2.new(1, 0, 0, U.subFullHeight(control))
+	else
+		control.Visible = false
+		control.Size = UDim2.new(1, 0, 0, 0)
+	end
 	return control
 end
 
@@ -656,9 +685,17 @@ function U.relayoutColumn(page, side)
 		ch.Position = UDim2.fromOffset(x, y)
 		ch:SetAttribute("SectionRow", i)
 	end
+	for _, sec in ipairs(U.sectionObjs or {}) do
+		if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
+			sec.layoutTabs()
+		end
+	end
 	task.defer(function()
 		for flag in pairs(U.subGroups or {}) do
 			U.updateSubLine(flag)
+		end
+		for _, fn in ipairs(U.sliderLayouts or {}) do
+			pcall(fn)
 		end
 	end)
 end
@@ -702,6 +739,8 @@ function U.section(parent, col, row, rows)
 		_current = nil,
 		_w = w,
 	}
+	U.sectionObjs = U.sectionObjs or {}
+	U.sectionObjs[#U.sectionObjs + 1] = sec
 
 	local function paintTabs()
 		for name, btn in pairs(sec._buttons) do
@@ -718,7 +757,10 @@ function U.section(parent, col, row, rows)
 		sec._buttons = {}
 		local gap = 6
 		local totalGap = gap * (n + 1)
-		local btnW = math.floor((w - totalGap) / n)
+		local sw = sec._frame.Size.X.Offset
+		if sw < 2 then sw = sec._frame.AbsoluteSize.X end
+		if sw < 2 then sw = w end
+		local btnW = math.floor((sw - totalGap) / n)
 		for i, t in ipairs(sec._tabs) do
 			local bx = gap + (i - 1) * (btnW + gap)
 			local selected = sec._current == t.name
@@ -745,6 +787,7 @@ function U.section(parent, col, row, rows)
 			end
 		end
 	end
+	sec.layoutTabs = layoutTabs
 
 	function sec:SelectTab(name)
 		if sec._current == name then return end
@@ -1037,10 +1080,8 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 
 	local function layout(v)
 		local t = math.clamp((v - minV) / span, 0, 1)
-		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
-		local fw = math.floor(w * t + 0.5)
-		fill.Position = UDim2.fromOffset(0, 0)
-		fill.Size = UDim2.fromOffset(fw, h)
+		fill.Position = UDim2.new(0, 0, 0, 0)
+		fill.Size = UDim2.new(t, 0, 1, 0)
 	end
 	local function set(v)
 		v = math.clamp(v, minV, maxV)
@@ -1052,6 +1093,8 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	val.Text = U.formatSliderVal(default, step, suffix, maxV, infAt)
 	layout(default)
 	task.defer(function() layout(U.vflags[flag] or default) end)
+	U.sliderLayouts = U.sliderLayouts or {}
+	U.sliderLayouts[#U.sliderLayouts + 1] = function() layout(U.vflags[flag] or default) end
 
 	local function fromX(x)
 		local v = math.clamp(math.floor((minV + (maxV - minV) * relX(track, x)) / step + 0.5) * step, minV, maxV)
@@ -1088,12 +1131,15 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local a, b = math.clamp(U.vflags[flagMin] or minV, minV, maxV), math.clamp(U.vflags[flagMax] or maxV, minV, maxV)
 		if a > b then a, b = b, a end
 		U.vflags[flagMin], U.vflags[flagMax] = a, b
-		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
-		local x0, x1 = math.floor(w * (a - minV) / span + 0.5), math.floor(w * (b - minV) / span + 0.5)
-		fill.Position, fill.Size = UDim2.fromOffset(x0, 0), UDim2.fromOffset(math.max(0, x1 - x0), h)
+		local t0 = (a - minV) / span
+		local t1 = (b - minV) / span
+		fill.Position = UDim2.new(t0, 0, 0, 0)
+		fill.Size = UDim2.new(math.max(0, t1 - t0), 0, 1, 0)
 		val.Text = U.formatSliderVal(a, step, "", maxV, false) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, infAtMax)
 	end
 	refresh()
+	U.sliderLayouts = U.sliderLayouts or {}
+	U.sliderLayouts[#U.sliderLayouts + 1] = refresh
 
 	local drag
 	local function at(x)
@@ -2079,6 +2125,14 @@ function U.applyBodySize(w, h, anchorRight, anchorBottom)
 	end
 	if U.wmDocked then U.dock("wm") end
 	if U.kbDocked then U.dock("kb") end
+	task.defer(function()
+		for _, fn in ipairs(U.sliderLayouts or {}) do
+			pcall(fn)
+		end
+		for _, sec in ipairs(U.sectionObjs or {}) do
+			if sec.layoutTabs then pcall(sec.layoutTabs) end
+		end
+	end)
 end
 
 function U.bindResize()
@@ -2092,9 +2146,10 @@ function U.bindResize()
 		h:SetAttribute("Cursor", cursor)
 		return h
 	end
-	local right = handle("Right", UDim2.new(0, 6, 1, -U.TAB_H), UDim2.new(1, -3, 0, 0), "Right")
-	local left = handle("Left", UDim2.new(0, 6, 1, -U.TAB_H), UDim2.fromOffset(-3, 0), "Left")
-	local bottom = handle("Bottom", UDim2.new(1, 0, 0, 6), UDim2.new(0, 0, 1, -3), "Bottom")
+	local edge = 12
+	local right = handle("Right", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.new(1, -math.floor(edge / 2), 0, 0), "Right")
+	local left = handle("Left", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.fromOffset(-math.floor(edge / 2), 0), "Left")
+	local bottom = handle("Bottom", UDim2.new(1, 0, 0, edge), UDim2.new(0, 0, 1, -math.floor(edge / 2)), "Bottom")
 	local function bind(edge, mode)
 		edge.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
