@@ -684,9 +684,6 @@ function U.animateSub(control, show)
 	local wrap = U.ensureSubWrap(control)
 	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
 	local parentFlag = control:GetAttribute("ParentFlag")
-	-- faster + smoother than Quad
-	local heightInfo = TweenInfo.new(0.09, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-	local fadeInfo = TweenInfo.new(0.06, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 	local targets = U.subFadeTargets(control)
 
 	local gen = (control:GetAttribute("AnimGen") or 0) + 1
@@ -702,24 +699,20 @@ function U.animateSub(control, show)
 		U.endSubAnim(parentFlag)
 	end
 
-	local function followLine()
-		if not parentFlag then return end
-		task.spawn(function()
-			local t0 = os.clock()
-			while os.clock() - t0 < 0.2 and still() do
-				U.updateSubLine(parentFlag)
-				task.wait()
-			end
-			if still() then U.updateSubLine(parentFlag) end
-		end)
+	-- cancel previous rs driver on this wrap
+	if wrap:GetAttribute("AnimConn") then
+		local old = U._subAnimConns and U._subAnimConns[wrap]
+		if old then pcall(function() old:Disconnect() end) end
 	end
+	U._subAnimConns = U._subAnimConns or {}
 
-	local function tweenFade(toHidden)
+	local function tweenFade(toHidden, dur)
+		local info = TweenInfo.new(dur or 0.05, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 		local last
 		for _, t in ipairs(targets) do
 			local goal = toHidden and 1 or t.goal
 			local ok, tw = pcall(function()
-				return U.Tween:Create(t.obj, fadeInfo, { [t.prop] = goal })
+				return U.Tween:Create(t.obj, info, { [t.prop] = goal })
 			end)
 			if ok and tw then
 				tw:Play()
@@ -729,53 +722,83 @@ function U.animateSub(control, show)
 		return last
 	end
 
+	-- smoothstep height on RenderStepped so list layout + line stay frame-synced
+	local function driveHeight(fromH, toH, dur, onDone)
+		local t0 = os.clock()
+		fromH = tonumber(fromH) or 0
+		toH = tonumber(toH) or 0
+		dur = math.max(0.03, tonumber(dur) or 0.08)
+		local conn
+		conn = U.Run.RenderStepped:Connect(function()
+			if not still() then
+				conn:Disconnect()
+				U._subAnimConns[wrap] = nil
+				U.endSubAnim(parentFlag)
+				return
+			end
+			local a = math.clamp((os.clock() - t0) / dur, 0, 1)
+			-- smootherstep
+			local e = a * a * a * (a * (a * 6 - 15) + 10)
+			local h = fromH + (toH - fromH) * e
+			wrap.Size = UDim2.new(1, 0, 0, h)
+			if parentFlag then U.updateSubLine(parentFlag) end
+			if a >= 1 then
+				conn:Disconnect()
+				U._subAnimConns[wrap] = nil
+				wrap.Size = UDim2.new(1, 0, 0, toH)
+				if parentFlag then U.updateSubLine(parentFlag) end
+				if onDone then onDone() end
+			end
+		end)
+		U._subAnimConns[wrap] = conn
+		wrap:SetAttribute("AnimConn", true)
+	end
+
 	if show then
 		wrap.Visible = true
 		control.Visible = true
 		control.Size = UDim2.new(1, 0, 0, fullH)
 		control.Position = UDim2.fromOffset(0, 0)
 		U.setFadeTargets(targets, 1)
-		wrap.Size = UDim2.new(1, 0, 0, 0)
-		local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, fullH) })
-		tw:Play()
-		followLine()
-		-- start fade near end of height expand for a tighter, smoother feel
-		task.delay(0.055, function()
-			if not still() then return end
-			tweenFade(false)
-		end)
-		tw.Completed:Connect(function()
-			if not still() then return end
-			wrap.Size = UDim2.new(1, 0, 0, fullH)
-			task.delay(0.06, function()
-				if still() then finish() else U.endSubAnim(parentFlag) end
-			end)
+		local fromH = wrap.Size.Y.Offset
+		if fromH < 0 then fromH = 0 end
+		wrap.Size = UDim2.new(1, 0, 0, fromH)
+		driveHeight(fromH, fullH, 0.08, function()
+			if not still() then
+				U.endSubAnim(parentFlag)
+				return
+			end
+			local ft = tweenFade(false, 0.05)
+			if ft then
+				ft.Completed:Connect(function()
+					if still() then finish() else U.endSubAnim(parentFlag) end
+				end)
+			else
+				finish()
+			end
 		end)
 	else
-		local fadeTw = tweenFade(true)
-		followLine()
 		local function collapse()
 			if not still() then
 				U.endSubAnim(parentFlag)
 				return
 			end
-			local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, 0) })
-			tw:Play()
-			tw.Completed:Connect(function()
+			local fromH = wrap.Size.Y.Offset
+			if fromH < 1 then fromH = fullH end
+			driveHeight(fromH, 0, 0.08, function()
 				if not still() then
 					U.endSubAnim(parentFlag)
 					return
 				end
-				if wrap.Size.Y.Offset < 1 then
-					wrap.Visible = false
-					control.Visible = false
-					U.setFadeTargets(targets, 1)
-				end
+				wrap.Visible = false
+				control.Visible = false
+				U.setFadeTargets(targets, 1)
 				finish()
 			end)
 		end
-		if fadeTw then
-			fadeTw.Completed:Connect(function()
+		local ft = tweenFade(true, 0.04)
+		if ft then
+			ft.Completed:Connect(function()
 				if still() then collapse() else U.endSubAnim(parentFlag) end
 			end)
 		else
@@ -2839,7 +2862,7 @@ function Library:CreateWindow(opts)
 	if U.bindTooltipFollow then U.bindTooltipFollow() end
 	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
 	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
-	U.subGroups, U.toggleRows, U._subFade, U.subBusy, U.subPending = {}, {}, {}, {}, {}
+	U.subGroups, U.toggleRows, U._subFade, U.subBusy, U.subPending, U._subAnimConns = {}, {}, {}, {}, {}, {}
 	U.themeReg = U.newReg()
 	U.openColorPicker, U.openDropdown, U.openDropdownBox, U.openSettings = nil, nil, nil, nil
 	U.wm, U.kbPanel, U.wmSnapGhost, U.kbSnapGhost = nil, nil, nil, nil
