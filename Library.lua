@@ -518,7 +518,7 @@ function U.updateSubLine(flag)
 	if not host then return end
 	local kids = {}
 	for _, c in ipairs(g.children) do
-		if c.Parent and c.Visible then kids[#kids + 1] = c end
+		if c.Parent and c.Visible and c.AbsoluteSize.Y > 0.5 then kids[#kids + 1] = c end
 	end
 	if #kids == 0 then
 		line.Visible = false
@@ -527,11 +527,12 @@ function U.updateSubLine(flag)
 	local last = kids[#kids]
 	local origin = host.AbsolutePosition
 	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
-	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y * 0.5 - origin.Y
+	-- line ends at bottom of revealed wrap (cover reveal progresses with height)
+	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y - origin.Y
 	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
 	line.Position = UDim2.fromOffset(x, y0)
 	line.Size = UDim2.fromOffset(1, math.max(0, y1 - y0))
-	line.Visible = true
+	line.Visible = y1 > y0
 	line.BackgroundColor3 = U.pulseColor()
 end
 
@@ -569,61 +570,115 @@ function U.subFullHeight(control)
 	return h
 end
 
-function U.animateSub(control, show)
-	control.ClipsDescendants = true
+-- Wrap a control so height animation clips/reveals without squashing children.
+function U.ensureSubWrap(control)
+	if control:GetAttribute("SubWrapped") then
+		return control.Parent or control
+	end
+	local parent = control.Parent
+	if not parent then return control end
 	local fullH = U.subFullHeight(control)
-	local info = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local order = control.LayoutOrder
+	local wrap = U.new("Frame", {
+		Name = "SubWrap",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Size = UDim2.new(1, 0, 0, fullH),
+		LayoutOrder = order,
+	}, parent)
+	control.Parent = wrap
+	control.LayoutOrder = 0
+	control.Size = UDim2.new(1, 0, 0, fullH)
+	control.Position = UDim2.fromOffset(0, 0)
+	control:SetAttribute("SubWrapped", true)
+	control:SetAttribute("FullHeight", fullH)
+	wrap:SetAttribute("FullHeight", fullH)
+	return wrap
+end
+
+function U.animateSub(control, show)
+	local wrap = U.ensureSubWrap(control)
+	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
+	local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local parentFlag = control:GetAttribute("ParentFlag")
 	if show then
+		wrap.Visible = true
 		control.Visible = true
-		if control.Size.Y.Offset < 1 then
-			control.Size = UDim2.new(1, 0, 0, 0)
+		if wrap.Size.Y.Offset < 1 then
+			wrap.Size = UDim2.new(1, 0, 0, 0)
 		end
-		local tw = U.Tween:Create(control, info, { Size = UDim2.new(1, 0, 0, fullH) })
+		-- content stays full size; wrap height reveal acts like a cover lifting downward
+		control.Size = UDim2.new(1, 0, 0, fullH)
+		control.Position = UDim2.fromOffset(0, 0)
+		local tw = U.Tween:Create(wrap, info, { Size = UDim2.new(1, 0, 0, fullH) })
 		tw:Play()
-		tw.Completed:Connect(function()
-			if control.Parent and control.Visible then
-				control.Size = UDim2.new(1, 0, 0, fullH)
-			end
-			if control:GetAttribute("ParentFlag") then
-				U.updateSubLine(control:GetAttribute("ParentFlag"))
-			end
+		local conn
+		conn = tw.Completed:Connect(function()
+			if conn then conn:Disconnect() end
+			if wrap.Parent then wrap.Size = UDim2.new(1, 0, 0, fullH) end
+			if parentFlag then U.updateSubLine(parentFlag) end
 		end)
+		-- live line follow during tween
+		if parentFlag then
+			task.spawn(function()
+				local t0 = os.clock()
+				while os.clock() - t0 < 0.2 do
+					U.updateSubLine(parentFlag)
+					task.wait()
+				end
+				U.updateSubLine(parentFlag)
+			end)
+		end
 	else
-		local tw = U.Tween:Create(control, info, { Size = UDim2.new(1, 0, 0, 0) })
+		local tw = U.Tween:Create(wrap, info, { Size = UDim2.new(1, 0, 0, 0) })
 		tw:Play()
-		tw.Completed:Connect(function()
-			if control.Parent and control.Size.Y.Offset < 1 then
+		if parentFlag then
+			task.spawn(function()
+				local t0 = os.clock()
+				while os.clock() - t0 < 0.2 do
+					U.updateSubLine(parentFlag)
+					task.wait()
+				end
+				U.updateSubLine(parentFlag)
+			end)
+		end
+		local conn
+		conn = tw.Completed:Connect(function()
+			if conn then conn:Disconnect() end
+			if wrap.Parent and wrap.Size.Y.Offset < 1 then
+				wrap.Visible = false
 				control.Visible = false
 			end
-			if control:GetAttribute("ParentFlag") then
-				U.updateSubLine(control:GetAttribute("ParentFlag"))
-			end
+			if parentFlag then U.updateSubLine(parentFlag) end
 		end)
 	end
 end
 
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
-	control.ClipsDescendants = true
-	do
-		local h = control.Size.Y.Offset
-		if h < 2 then h = 16 end
-		control:SetAttribute("FullHeight", h)
-	end
+	local fullH = control.Size.Y.Offset
+	if fullH < 2 then fullH = 16 end
+	control:SetAttribute("FullHeight", fullH)
+	local wrap = U.ensureSubWrap(control)
 	local parentFlag = keys and keys[1]
 	if parentFlag then
 		control:SetAttribute("ParentFlag", parentFlag)
+		wrap:SetAttribute("ParentFlag", parentFlag)
 		local g = U.ensureSubGroup(parentFlag, U.toggleRows[parentFlag])
-		g.children[#g.children + 1] = control
+		-- track wrap for line extent (visible height)
+		g.children[#g.children + 1] = wrap
+	end
+	local function isOpen()
+		return wrap.Visible and wrap.Size.Y.Offset > 1
 	end
 	local function sync()
 		local vis = pred() and true or false
-		local open = control.Visible and control.Size.Y.Offset > 1
-		if vis and not open then
+		if vis and not isOpen() then
 			U.animateSub(control, true)
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
-		elseif not vis and (control.Visible or open) then
+		elseif not vis and (wrap.Visible or isOpen()) then
 			U.animateSub(control, false)
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
@@ -633,14 +688,17 @@ function U.subIf(control, keys, pred)
 		end
 	end
 	for _, k in ipairs(keys) do U.onFlag(k, sync) end
-	-- initial state without animation
 	local vis = pred() and true or false
 	if vis then
+		wrap.Visible = true
 		control.Visible = true
-		control.Size = UDim2.new(1, 0, 0, U.subFullHeight(control))
+		wrap.Size = UDim2.new(1, 0, 0, fullH)
+		control.Size = UDim2.new(1, 0, 0, fullH)
 	else
+		wrap.Visible = false
 		control.Visible = false
-		control.Size = UDim2.new(1, 0, 0, 0)
+		wrap.Size = UDim2.new(1, 0, 0, 0)
+		control.Size = UDim2.new(1, 0, 0, fullH)
 	end
 	return control
 end
@@ -1439,13 +1497,16 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 
 		local MAP, BAR_H, PAD, TITLE, TOG, GAP = 120, 12, 8, 16, 14, 6
 		local mapY = PAD + TITLE
-		local alphaW = noAlpha and 0 or BAR_H
-		local alphaGap = noAlpha and 0 or GAP
+		-- equal gap from map to hue (below) and alpha (right)
 		local hueY = mapY + MAP + GAP
-		local botY = hueY + BAR_H + GAP
-		local POP_W = PAD + MAP + alphaGap + alphaW + PAD
+		local alphaX = PAD + MAP + GAP
+		local hasAlpha = not noAlpha
+		local rightW = hasAlpha and BAR_H or TOG
+		local POP_W = PAD + MAP + GAP + rightW + PAD
 		local RGB_H = 16
-		local POP_H = botY + math.max(TOG, RGB_H) + PAD
+		-- bottom row: rgb text under map; cycle sits at corner right of hue / under alpha
+		local botY = hueY + BAR_H + GAP
+		local POP_H = botY + RGB_H + PAD
 
 		local pop = U.new("Frame", {
 			Name = "ColorPop", BackgroundColor3 = Color3.fromRGB(24, 24, 24), BorderSizePixel = 0, Size = UDim2.fromOffset(POP_W, POP_H), ZIndex = 220, Active = true,
@@ -1475,9 +1536,10 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local mapDot = marker(map, UDim2.fromOffset(8, 8), 224, UDim2.new())
 
 		local alphaBar, alphaDot
-		if not noAlpha then
+		if hasAlpha then
+			-- same thickness as hue bar height; same GAP from map as hue has below map
 			alphaBar = btn("ImageButton", {
-				Size = UDim2.fromOffset(BAR_H, MAP), Position = UDim2.fromOffset(PAD + MAP + GAP, mapY),
+				Size = UDim2.fromOffset(BAR_H, MAP), Position = UDim2.fromOffset(alphaX, mapY),
 				BackgroundColor3 = Color3.fromHSV(h, sat, val),
 			})
 			U.controlStroke(alphaBar)
@@ -1497,10 +1559,13 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		U.new("UIGradient", { Color = ColorSequence.new(hueKeys) }, hueBar)
 		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(h, 0, 0.5, 0))
 
+		-- cycle toggle: corner right of hue bar, directly below transparency bar
+		local cycleY = hueY + math.floor((BAR_H - TOG) / 2)
+		local cycleX = alphaX + math.floor((rightW - TOG) / 2)
 		local refreshUI
 		local cycleB = btn("TextButton", {
 			Name = "CycleColor", Text = "", Size = UDim2.fromOffset(TOG, TOG),
-			Position = UDim2.fromOffset(PAD, botY + (RGB_H - TOG) / 2),
+			Position = UDim2.fromOffset(cycleX, cycleY),
 			BackgroundColor3 = U.vflags[flagKey .. "CycleColor"] and U.pulseColor() or U.OFF,
 		})
 		U.controlStroke(cycleB)
@@ -1513,11 +1578,11 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			refreshUI()
 		end)
 
-		local rgbX = PAD + TOG + GAP
-		local rgbW = MAP - TOG - GAP
+		-- rgb text gets full width under map + alpha column for full "r, g, b, a" readout
+		local rgbW = MAP + GAP + rightW
 		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(rgbX, botY), ZIndex = 221,
+			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, botY), ZIndex = 221,
 		}, pop)
 		U.controlStroke(rgbBox)
 		local rgbText = U.label(rgbBox, "", {
