@@ -976,9 +976,10 @@ function U.section(parent, col, row, rows)
 		end
 		local function dropdown(o, parentFlag)
 			o = o or {}
-			local limit = o.Limit or o.Amount
-			if limit == nil then limit = (o.Multi == true) and 999 or 1 end
-			local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, tip(o))
+			local limit = o.Limit
+			if limit == nil then limit = o.Amount end
+			if limit == nil then limit = 1 end
+			local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, false, nextOrder(), limit, tip(o))
 			return parentFlag and U.subOf(c, parentFlag) or c
 		end
 		local function toggle(o)
@@ -1005,6 +1006,13 @@ function U.section(parent, col, row, rows)
 			end
 			function obj:AddSlider(so) slider(so or {}, flag) return obj end
 			function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
+			function obj:AddPlayerDropdown(so)
+				so = so or {}
+				so = table.clone(so)
+				local c = api:AddPlayerDropdown(so)
+				if c and c.Row then U.subOf(c.Row, flag) end
+				return obj
+			end
 			return obj
 		end
 		function api:AddSlider(o)
@@ -1019,6 +1027,40 @@ function U.section(parent, col, row, rows)
 		function api:AddDropdown(o)
 			o = o or {}
 			return { Row = dropdown(o), Flag = o.Flag or o.Name }
+		end
+		function api:AddPlayerDropdown(o)
+			o = o or {}
+			local limit = o.Limit
+			if limit == nil then limit = o.Amount end
+			if limit == nil then limit = 1 end
+			local flag = o.Flag or o.Name
+			local names = {}
+			local function fill()
+				for i = #names, 1, -1 do names[i] = nil end
+				for _, plr in ipairs(U.Players:GetPlayers()) do
+					names[#names + 1] = plr.Name
+				end
+				table.sort(names)
+			end
+			fill()
+			local row, _, prune, display = U.mkDropdown(content, lname(o, "players"), flag, names, o.Default, false, nextOrder(), limit, tip(o))
+			local function onRoster()
+				fill()
+				if prune then prune() end
+				if display then display() end
+				-- if open dropdown is this flag, close so next open rebuilds list
+				if U.openDropdown and U.openDropdown:GetAttribute("Flag") == flag then
+					U.closeDropdown()
+				end
+			end
+			U.track(U.Players.PlayerAdded:Connect(onRoster))
+			U.track(U.Players.PlayerRemoving:Connect(function()
+				task.defer(onRoster)
+			end))
+			if parentFlag then
+				-- not used here; parentFlag only on nested dropdown helper
+			end
+			return { Row = row, Flag = flag }
 		end
 		function api:AddButton(o)
 			o = o or {}
@@ -1320,11 +1362,19 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	U.bindTooltip(r, tooltip)
 	r.Size = UDim2.new(1, 0, 0, 30)
 	options = options or {}
-	limit = math.max(1, math.floor(tonumber(limit or (multi and 999 or 1)) or 1))
-	multi = limit > 1
+	-- Limit: 1 = single (closes on select), 0 = unlimited multi, >1 = multi with that cap
+	local lim = tonumber(limit)
+	if lim == nil then
+		if multi == true then lim = 0 else lim = 1 end
+	end
+	lim = math.floor(lim)
+	if lim < 0 then lim = 0 end
+	local unlimited = lim == 0
+	multi = unlimited or lim > 1
+	local maxCount = unlimited and 1e9 or lim
 	if multi then
 		local d = type(default) == "table" and default or (default ~= nil and { default } or {})
-		while #d > limit do table.remove(d, 1) end
+		while #d > maxCount do table.remove(d, 1) end
 		U.vflags[flag] = d
 	else
 		U.vflags[flag] = type(default) == "table" and default[1] or default
@@ -1351,6 +1401,28 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		return tostring(U.vflags[flag] or "") == tostring(opt)
 	end
 
+	local function pruneSelection()
+		if not multi then
+			local cur = U.vflags[flag]
+			if cur ~= nil and not table.find(options, cur) then
+				U.vflags[flag] = nil
+				display()
+				U.fireFlag(flag)
+			end
+			return
+		end
+		local cur = type(U.vflags[flag]) == "table" and U.vflags[flag] or {}
+		local kept = {}
+		for _, v in ipairs(cur) do
+			if table.find(options, v) then kept[#kept + 1] = v end
+		end
+		if #kept ~= #cur then
+			U.vflags[flag] = kept
+			display()
+			U.fireFlag(flag)
+		end
+	end
+
 	box.MouseButton1Click:Connect(function()
 		U.closeColorPicker()
 		U.closeSettings()
@@ -1361,7 +1433,6 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		end
 		if #options == 0 then return end
 
-		
 		local eb = U.ELEMENT_BORDER
 		local fullH = math.min(#options * 18, 140)
 		local boxW = math.floor(box.AbsoluteSize.X + 0.5)
@@ -1401,7 +1472,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 						table.remove(cur, at)
 					else
 						table.insert(cur, opt)
-						while #cur > limit do table.remove(cur, 1) end
+						while #cur > maxCount do table.remove(cur, 1) end
 					end
 					U.vflags[flag] = cur
 					for _, ch in ipairs(holder:GetChildren()) do
@@ -1423,13 +1494,13 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	U.setters[flag] = function(v)
 		if multi and type(v) == "table" then
 			v = table.clone(v)
-			while #v > limit do table.remove(v, 1) end
+			while #v > maxCount do table.remove(v, 1) end
 		end
 		U.vflags[flag] = v
 		display()
 		U.fireFlag(flag)
 	end
-	return r
+	return r, options, pruneSelection, display
 end
 
 function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
