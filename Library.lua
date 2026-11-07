@@ -1495,17 +1495,16 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			if same then return end
 		end
 
-		local MAP, BAR_H, PAD, TITLE, TOG, GAP = 120, 12, 8, 16, 14, 6
+		local MAP, TOG, PAD, TITLE, GAP = 120, 14, 8, 16, 6
+		local BAR = TOG -- hue height & alpha width match cycle toggle
 		local mapY = PAD + TITLE
-		-- equal gap from map to hue (below) and alpha (right)
 		local hueY = mapY + MAP + GAP
 		local alphaX = PAD + MAP + GAP
 		local hasAlpha = not noAlpha
-		local rightW = hasAlpha and BAR_H or TOG
+		local rightW = hasAlpha and BAR or TOG
 		local POP_W = PAD + MAP + GAP + rightW + PAD
 		local RGB_H = 16
-		-- bottom row: rgb text under map; cycle sits at corner right of hue / under alpha
-		local botY = hueY + BAR_H + GAP
+		local botY = hueY + BAR + GAP
 		local POP_H = botY + RGB_H + PAD
 
 		local pop = U.new("Frame", {
@@ -1537,9 +1536,8 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 
 		local alphaBar, alphaDot
 		if hasAlpha then
-			-- same thickness as hue bar height; same GAP from map as hue has below map
 			alphaBar = btn("ImageButton", {
-				Size = UDim2.fromOffset(BAR_H, MAP), Position = UDim2.fromOffset(alphaX, mapY),
+				Size = UDim2.fromOffset(BAR, MAP), Position = UDim2.fromOffset(alphaX, mapY),
 				BackgroundColor3 = Color3.fromHSV(h, sat, val),
 			})
 			U.controlStroke(alphaBar)
@@ -1547,21 +1545,21 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 				Rotation = 90,
 				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
 			}, alphaBar)
-			alphaDot = marker(alphaBar, UDim2.fromOffset(BAR_H + 4, 2), 223, UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0))
+			alphaDot = marker(alphaBar, UDim2.fromOffset(BAR + 4, 2), 223, UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0))
 		end
 
-		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
+		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
 		U.controlStroke(hueBar)
 		local hueKeys = {}
 		for i, c in ipairs({ { 0, 0 }, { 0.17, 60 }, { 0.33, 120 }, { 0.5, 180 }, { 0.67, 240 }, { 0.83, 300 }, { 1, 0 } }) do
 			hueKeys[i] = ColorSequenceKeypoint.new(c[1], Color3.fromHSV(c[2] / 360, 1, 1))
 		end
 		U.new("UIGradient", { Color = ColorSequence.new(hueKeys) }, hueBar)
-		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(h, 0, 0.5, 0))
+		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR + 4), 223, UDim2.new(h, 0, 0.5, 0))
 
-		-- cycle toggle: corner right of hue bar, directly below transparency bar
-		local cycleY = hueY + math.floor((BAR_H - TOG) / 2)
+		-- cycle at corner: right of hue bar, below transparency bar (same column as alpha)
 		local cycleX = alphaX + math.floor((rightW - TOG) / 2)
+		local cycleY = hueY + math.floor((BAR - TOG) / 2)
 		local refreshUI
 		local cycleB = btn("TextButton", {
 			Name = "CycleColor", Text = "", Size = UDim2.fromOffset(TOG, TOG),
@@ -1578,15 +1576,15 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			refreshUI()
 		end)
 
-		-- rgb text gets full width under map + alpha column for full "r, g, b, a" readout
-		local rgbW = MAP + GAP + rightW
+		-- rgb box: starts at color bar left, ends at cycle toggle right edge
+		local rgbW = (cycleX + TOG) - PAD
 		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
 			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, botY), ZIndex = 221,
 		}, pop)
 		U.controlStroke(rgbBox)
 		local rgbText = U.label(rgbBox, "", {
-			Position = UDim2.fromOffset(4, 0), Size = UDim2.new(1, -6, 1, 0),
+			Position = UDim2.fromOffset(3, 0), Size = UDim2.new(1, -6, 1, 0),
 			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 222,
 		})
 		local function syncRgbText()
