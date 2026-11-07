@@ -87,15 +87,16 @@ function U.edges(parent, thick, outward, z, noTop)
 		local e = U.new("Frame", {
 			Name = name, BorderSizePixel = 0, BackgroundColor3 = U.theme.ElementBorder, Size = size, Position = pos, ZIndex = z or (parent.ZIndex + 2),
 		}, parent)
-		local reg = U.themeReg.elementBorders
-		reg[#reg + 1] = e
+		U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 	end
 	if outward then
+		-- full box outside parent (used only when parent is not clipped)
 		if not noTop then edge("BTop", UDim2.new(1, o * 2, 0, thick), UDim2.fromOffset(-o, -o)) end
 		edge("BBottom", UDim2.new(1, o * 2, 0, thick), UDim2.new(0, -o, 1, 0))
 		edge("BLeft", UDim2.new(0, thick, 1, o * 2), UDim2.fromOffset(-o, -o))
 		edge("BRight", UDim2.new(0, thick, 1, o * 2), UDim2.new(1, 0, 0, -o))
 	else
+		-- inward: stays inside parent bounds so section/scroll ClipsDescendants cannot hide sides
 		if not noTop then edge("BTop", UDim2.new(1, 0, 0, thick), UDim2.fromOffset(0, 0)) end
 		edge("BBottom", UDim2.new(1, 0, 0, thick), UDim2.new(0, 0, 1, -thick))
 		edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(0, 0))
@@ -105,7 +106,6 @@ end
 
 function U.controlStroke(parent, thick)
 	parent.ClipsDescendants = false
-	-- inward edges so section/scroll clip parents don't crop borders
 	U.edges(parent, thick or U.ELEMENT_BORDER, false)
 end
 
@@ -536,7 +536,6 @@ function U.updateSubLine(flag)
 	local last = kids[#kids]
 	local origin = host.AbsolutePosition
 	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
-	-- line ends at bottom of revealed wrap (cover reveal progresses with height)
 	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y - origin.Y
 	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
 	line.Position = UDim2.fromOffset(x, y0)
@@ -579,28 +578,6 @@ function U.subFullHeight(control)
 	return h
 end
 
--- Convert scale-Y sizes on a control tree to offset so clipping never squashes them.
-function U.freezeOffsetSizes(root, refH)
-	refH = refH or root.Size.Y.Offset
-	if refH < 2 then refH = 16 end
-	local function walk(obj, parentH)
-		for _, ch in ipairs(obj:GetChildren()) do
-			if ch:IsA("GuiObject") then
-				local sz = ch.Size
-				if sz.Y.Scale ~= 0 then
-					local y = sz.Y.Scale * parentH + sz.Y.Offset
-					ch.Size = UDim2.new(sz.X.Scale, sz.X.Offset, 0, math.max(1, math.floor(y + 0.5)))
-				end
-				local useH = ch.Size.Y.Offset
-				if useH < 1 then useH = parentH end
-				walk(ch, useH)
-			end
-		end
-	end
-	walk(root, refH)
-end
-
--- Wrap a control so only a clip window grows; content stays full-size underneath.
 function U.ensureSubWrap(control)
 	if control:GetAttribute("SubWrapped") then
 		return control.Parent or control
@@ -608,13 +585,12 @@ function U.ensureSubWrap(control)
 	local parent = control.Parent
 	if not parent then return control end
 	local fullH = U.subFullHeight(control)
-	U.freezeOffsetSizes(control, fullH)
 	local order = control.LayoutOrder
 	local wrap = U.new("Frame", {
 		Name = "SubWrap",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ClipsDescendants = true,
+		ClipsDescendants = false,
 		Size = UDim2.new(1, 0, 0, fullH),
 		LayoutOrder = order,
 	}, parent)
@@ -622,74 +598,114 @@ function U.ensureSubWrap(control)
 	control.LayoutOrder = 0
 	control.Size = UDim2.new(1, 0, 0, fullH)
 	control.Position = UDim2.fromOffset(0, 0)
-	control.AnchorPoint = Vector2.new(0, 0)
 	control:SetAttribute("SubWrapped", true)
 	control:SetAttribute("FullHeight", fullH)
 	wrap:SetAttribute("FullHeight", fullH)
 	return wrap
 end
 
+function U.subFadeTargets(root)
+	local list = {}
+	local function add(obj, prop)
+		if not obj then return end
+		list[#list + 1] = { obj = obj, prop = prop, goal = obj[prop] }
+	end
+	add(root, "BackgroundTransparency")
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			add(d, "TextTransparency")
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			add(d, "ImageTransparency")
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("Frame") then
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("UIStroke") then
+			add(d, "Transparency")
+		end
+	end
+	return list
+end
+
+function U.setFadeTargets(targets, value)
+	for _, t in ipairs(targets) do
+		pcall(function() t.obj[t.prop] = value end)
+	end
+end
+
+function U.tweenFadeTargets(targets, toHidden, duration)
+	local info = TweenInfo.new(duration or 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local last
+	for _, t in ipairs(targets) do
+		local goal = toHidden and 1 or t.goal
+		local ok, tw = pcall(function()
+			return U.Tween:Create(t.obj, info, { [t.prop] = goal })
+		end)
+		if ok and tw then
+			tw:Play()
+			last = tw
+		end
+	end
+	return last
+end
+
 function U.animateSub(control, show)
 	local wrap = U.ensureSubWrap(control)
 	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
-	local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local parentFlag = control:GetAttribute("ParentFlag")
-	-- keep canvas locked at full size for the entire animation
-	control.Visible = true
-	control.Size = UDim2.new(1, 0, 0, fullH)
-	control.Position = UDim2.fromOffset(0, 0)
+	local heightInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local targets = U.subFadeTargets(control)
+
+	local function followLine()
+		if not parentFlag then return end
+		task.spawn(function()
+			local t0 = os.clock()
+			while os.clock() - t0 < 0.28 do
+				U.updateSubLine(parentFlag)
+				task.wait()
+			end
+			U.updateSubLine(parentFlag)
+		end)
+	end
+
 	if show then
+		-- 1) invisible, 2) open space (push items below), 3) fade in
 		wrap.Visible = true
-		if wrap.Size.Y.Offset >= fullH - 0.5 then
-			wrap.Size = UDim2.new(1, 0, 0, fullH)
-			if parentFlag then U.updateSubLine(parentFlag) end
-			return
-		end
+		control.Visible = true
+		control.Size = UDim2.new(1, 0, 0, fullH)
+		control.Position = UDim2.fromOffset(0, 0)
+		U.setFadeTargets(targets, 1)
 		if wrap.Size.Y.Offset < 1 then
 			wrap.Size = UDim2.new(1, 0, 0, 0)
 		end
-		local tw = U.Tween:Create(wrap, info, { Size = UDim2.new(1, 0, 0, fullH) })
+		local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, fullH) })
 		tw:Play()
-		if parentFlag then
-			task.spawn(function()
-				local t0 = os.clock()
-				while os.clock() - t0 < 0.22 do
-					U.updateSubLine(parentFlag)
-					task.wait()
-				end
-				U.updateSubLine(parentFlag)
-			end)
-		end
-		tw.Completed:Once(function()
+		followLine()
+		tw.Completed:Connect(function()
 			if wrap.Parent then wrap.Size = UDim2.new(1, 0, 0, fullH) end
+			U.tweenFadeTargets(targets, false, 0.1)
 			if parentFlag then U.updateSubLine(parentFlag) end
 		end)
 	else
-		if wrap.Size.Y.Offset < 1 then
-			wrap.Visible = false
-			control.Visible = false
-			if parentFlag then U.updateSubLine(parentFlag) end
-			return
-		end
-		local tw = U.Tween:Create(wrap, info, { Size = UDim2.new(1, 0, 0, 0) })
-		tw:Play()
-		if parentFlag then
-			task.spawn(function()
-				local t0 = os.clock()
-				while os.clock() - t0 < 0.22 do
-					U.updateSubLine(parentFlag)
-					task.wait()
+		-- fade out first, then collapse space
+		local fadeTw = U.tweenFadeTargets(targets, true, 0.08)
+		followLine()
+		local function collapse()
+			local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, 0) })
+			tw:Play()
+			tw.Completed:Connect(function()
+				if wrap.Parent and wrap.Size.Y.Offset < 1 then
+					wrap.Visible = false
+					control.Visible = false
 				end
-				U.updateSubLine(parentFlag)
+				if parentFlag then U.updateSubLine(parentFlag) end
 			end)
 		end
-		tw.Completed:Once(function()
-			if wrap.Parent and wrap.Size.Y.Offset < 1 then
-				wrap.Visible = false
-				control.Visible = false
-			end
-			if parentFlag then U.updateSubLine(parentFlag) end
-		end)
+		if fadeTw then
+			fadeTw.Completed:Connect(collapse)
+		else
+			collapse()
+		end
 	end
 end
 
@@ -698,7 +714,6 @@ function U.subIf(control, keys, pred)
 	local fullH = control.Size.Y.Offset
 	if fullH < 2 then fullH = 16 end
 	control:SetAttribute("FullHeight", fullH)
-	U.freezeOffsetSizes(control, fullH)
 	local wrap = U.ensureSubWrap(control)
 	local parentFlag = keys and keys[1]
 	if parentFlag then
