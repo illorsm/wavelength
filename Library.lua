@@ -515,6 +515,30 @@ end
 
 U.subGroups = U.subGroups or {}
 U.toggleRows = U.toggleRows or {}
+U.subBusy = U.subBusy or {}
+U.subPending = U.subPending or {}
+
+function U.hasSubItems(flag)
+	local g = U.subGroups[flag]
+	return g and g.children and #g.children > 0
+end
+
+function U.beginSubAnim(flag)
+	if not flag then return end
+	U.subBusy[flag] = true
+	U.subPending[flag] = (U.subPending[flag] or 0) + 1
+end
+
+function U.endSubAnim(flag)
+	if not flag then return end
+	local n = (U.subPending[flag] or 1) - 1
+	if n <= 0 then
+		U.subPending[flag] = 0
+		U.subBusy[flag] = false
+	else
+		U.subPending[flag] = n
+	end
+end
 
 function U.updateSubLine(flag)
 	local g = U.subGroups[flag]
@@ -660,7 +684,9 @@ function U.animateSub(control, show)
 	local wrap = U.ensureSubWrap(control)
 	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
 	local parentFlag = control:GetAttribute("ParentFlag")
-	local heightInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	-- faster + smoother than Quad
+	local heightInfo = TweenInfo.new(0.09, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local fadeInfo = TweenInfo.new(0.06, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 	local targets = U.subFadeTargets(control)
 
 	local gen = (control:GetAttribute("AnimGen") or 0) + 1
@@ -669,11 +695,18 @@ function U.animateSub(control, show)
 		return control:GetAttribute("AnimGen") == gen and wrap.Parent ~= nil
 	end
 
+	U.beginSubAnim(parentFlag)
+
+	local function finish()
+		if parentFlag then U.updateSubLine(parentFlag) end
+		U.endSubAnim(parentFlag)
+	end
+
 	local function followLine()
 		if not parentFlag then return end
 		task.spawn(function()
 			local t0 = os.clock()
-			while os.clock() - t0 < 0.28 and still() do
+			while os.clock() - t0 < 0.2 and still() do
 				U.updateSubLine(parentFlag)
 				task.wait()
 			end
@@ -681,8 +714,22 @@ function U.animateSub(control, show)
 		end)
 	end
 
+	local function tweenFade(toHidden)
+		local last
+		for _, t in ipairs(targets) do
+			local goal = toHidden and 1 or t.goal
+			local ok, tw = pcall(function()
+				return U.Tween:Create(t.obj, fadeInfo, { [t.prop] = goal })
+			end)
+			if ok and tw then
+				tw:Play()
+				last = tw
+			end
+		end
+		return last
+	end
+
 	if show then
-		-- 1 invisible  2 open space under toggle  3 fade in
 		wrap.Visible = true
 		control.Visible = true
 		control.Size = UDim2.new(1, 0, 0, fullH)
@@ -692,32 +739,44 @@ function U.animateSub(control, show)
 		local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, fullH) })
 		tw:Play()
 		followLine()
+		-- start fade near end of height expand for a tighter, smoother feel
+		task.delay(0.055, function()
+			if not still() then return end
+			tweenFade(false)
+		end)
 		tw.Completed:Connect(function()
 			if not still() then return end
 			wrap.Size = UDim2.new(1, 0, 0, fullH)
-			U.tweenFadeTargets(targets, false, 0.1)
-			if parentFlag then U.updateSubLine(parentFlag) end
+			task.delay(0.06, function()
+				if still() then finish() else U.endSubAnim(parentFlag) end
+			end)
 		end)
 	else
-		local fadeTw = U.tweenFadeTargets(targets, true, 0.08)
+		local fadeTw = tweenFade(true)
 		followLine()
 		local function collapse()
-			if not still() then return end
+			if not still() then
+				U.endSubAnim(parentFlag)
+				return
+			end
 			local tw = U.Tween:Create(wrap, heightInfo, { Size = UDim2.new(1, 0, 0, 0) })
 			tw:Play()
 			tw.Completed:Connect(function()
-				if not still() then return end
+				if not still() then
+					U.endSubAnim(parentFlag)
+					return
+				end
 				if wrap.Size.Y.Offset < 1 then
 					wrap.Visible = false
 					control.Visible = false
 					U.setFadeTargets(targets, 1)
 				end
-				if parentFlag then U.updateSubLine(parentFlag) end
+				finish()
 			end)
 		end
 		if fadeTw then
 			fadeTw.Completed:Connect(function()
-				if still() then collapse() end
+				if still() then collapse() else U.endSubAnim(parentFlag) end
 			end)
 		else
 			collapse()
@@ -1156,11 +1215,17 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	U.label(r, text, { Size = UDim2.new(1, -(20 + reserve), 1, 0), Position = UDim2.fromOffset(18, 0) })
 
 	local function set(v)
+		if flag and U.hasSubItems(flag) and U.subBusy[flag] then
+			return
+		end
 		on = v == true
 		box.BackgroundColor3 = col()
 		if flag then U.setFlag(flag, on) end
 	end
-	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function() set(not on) end)
+	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function()
+		if flag and U.hasSubItems(flag) and U.subBusy[flag] then return end
+		set(not on)
+	end)
 	if flag then
 		U.setters[flag] = set
 		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text) end
@@ -2774,7 +2839,7 @@ function Library:CreateWindow(opts)
 	if U.bindTooltipFollow then U.bindTooltipFollow() end
 	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
 	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
-	U.subGroups, U.toggleRows, U._subFade = {}, {}, {}
+	U.subGroups, U.toggleRows, U._subFade, U.subBusy, U.subPending = {}, {}, {}, {}, {}
 	U.themeReg = U.newReg()
 	U.openColorPicker, U.openDropdown, U.openDropdownBox, U.openSettings = nil, nil, nil, nil
 	U.wm, U.kbPanel, U.wmSnapGhost, U.kbSnapGhost = nil, nil, nil, nil
