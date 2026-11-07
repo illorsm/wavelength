@@ -1501,6 +1501,10 @@ function U.mkButton(parent, text, order, confirm)
 		TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = text,
 	}, r)
 	U.controlStroke(btn)
+	if order == 1 then
+		local top = btn:FindFirstChild("BTop")
+		if top then top.Position = UDim2.fromOffset(0, 0) end
+	end
 	btn:SetAttribute("Confirm", confirm == true)
 	btn:SetAttribute("Label", text)
 	return btn
@@ -2126,7 +2130,7 @@ function U.buildConfig()
 	end)
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { Name = "SavedList", BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsContent)
+	local listBox = U.new("Frame", { Name = "SavedList", BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = false, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsContent)
 	U.edges(listBox, U.ELEMENT_BORDER, true, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
