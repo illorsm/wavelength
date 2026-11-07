@@ -686,7 +686,7 @@ function U.animateSub(control, show)
 	local parentFlag = control:GetAttribute("ParentFlag")
 	local targets = U.subFadeTargets(control)
 
-	-- cancel any leftover animation driver
+	-- cancel leftover anim driver if any
 	if wrap:GetAttribute("AnimConn") then
 		local old = U._subAnimConns and U._subAnimConns[wrap]
 		if old then pcall(function() old:Disconnect() end) end
@@ -710,7 +710,6 @@ function U.animateSub(control, show)
 	end
 	if parentFlag then U.updateSubLine(parentFlag) end
 end
-
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
 	local fullH = control.Size.Y.Offset
