@@ -89,27 +89,21 @@ function U.edges(parent, thick, outward, z, noTop)
 		}, parent)
 		U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 	end
-	-- frame edges for list attach / special cases (outward keeps full inner size)
 	if not noTop then edge("BTop", UDim2.new(1, o * 2, 0, thick), UDim2.fromOffset(-o, -o)) end
-	edge("BBottom", UDim2.new(1, o * 2, 0, thick), UDim2.new(0, -o, 1, 0))
-	edge("BLeft", UDim2.new(0, thick, 1, o * 2), UDim2.fromOffset(-o, -o))
-	edge("BRight", UDim2.new(0, thick, 1, o * 2), UDim2.new(1, 0, 0, -o))
+	edge("BBottom", UDim2.new(1, o * 2, 0, thick), outward and UDim2.new(0, -o, 1, 0) or UDim2.new(0, 0, 1, -thick))
+	-- extend left/right through corners when outward so no missing pixels
+	if outward then
+		edge("BLeft", UDim2.new(0, thick, 1, o * 2), UDim2.fromOffset(-o, -o))
+		edge("BRight", UDim2.new(0, thick, 1, o * 2), UDim2.new(1, 0, 0, -o))
+	else
+		edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(0, 0))
+		edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, -thick, 0, 0))
+	end
 end
 
 function U.controlStroke(parent, thick)
 	parent.ClipsDescendants = false
-	for _, ch in ipairs(parent:GetChildren()) do
-		if ch.Name == "ElementStroke" and ch:IsA("UIStroke") then ch:Destroy() end
-	end
-	local s = U.new("UIStroke", {
-		Name = "ElementStroke",
-		Thickness = thick or U.ELEMENT_BORDER,
-		Color = U.theme.ElementBorder,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		LineJoinMode = Enum.LineJoinMode.Miter,
-	}, parent)
-	U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = s
-	return s
+	U.edges(parent, thick or U.ELEMENT_BORDER, true)
 end
 
 function U.track(c)
@@ -315,12 +309,7 @@ function U.applyTheme()
 	for _, g in ipairs(R.accents) do if g.Parent then g.Color = U.accentSequence() end end
 	for _, s in ipairs(R.borders) do if s.Parent then s.Color = T.Border end end
 	for _, s in ipairs(R.sectionBorders) do if s.Parent then s.Color = T.SectionBorder end end
-	for _, s in ipairs(R.elementBorders) do
-		if s.Parent then
-			if s:IsA("UIStroke") then s.Color = T.ElementBorder
-			else s.BackgroundColor3 = T.ElementBorder end
-		end
-	end
+	for _, s in ipairs(R.elementBorders) do if s.Parent then s.BackgroundColor3 = T.ElementBorder end end
 	for _, f in ipairs(R.bodyBgs) do if f.Parent then f.BackgroundColor3 = T.Background end end
 	for _, f in ipairs(R.sectionBgs) do if f.Parent then f.BackgroundColor3 = T.SectionBg end end
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
@@ -544,6 +533,7 @@ function U.updateSubLine(flag)
 	local last = kids[#kids]
 	local origin = host.AbsolutePosition
 	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
+	-- line ends at bottom of revealed wrap (cover reveal progresses with height)
 	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y - origin.Y
 	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
 	line.Position = UDim2.fromOffset(x, y0)
@@ -586,6 +576,7 @@ function U.subFullHeight(control)
 	return h
 end
 
+-- Wrap a control so height animation clips/reveals without squashing children.
 function U.ensureSubWrap(control)
 	if control:GetAttribute("SubWrapped") then
 		return control.Parent or control
@@ -617,7 +608,6 @@ function U.cacheSubFade(control)
 	local list = {}
 	local function add(obj, prop)
 		if not obj then return end
-		-- store the visible goal once, while control is still fully shown
 		list[#list + 1] = { obj = obj, prop = prop, goal = obj[prop] }
 	end
 	add(control, "BackgroundTransparency")
@@ -692,7 +682,7 @@ function U.animateSub(control, show)
 	end
 
 	if show then
-		-- invisible → open space → fade in (goals are cached from first visible state)
+		-- 1 invisible  2 open space under toggle  3 fade in
 		wrap.Visible = true
 		control.Visible = true
 		control.Size = UDim2.new(1, 0, 0, fullH)
@@ -740,7 +730,7 @@ function U.subIf(control, keys, pred)
 	local fullH = control.Size.Y.Offset
 	if fullH < 2 then fullH = 16 end
 	control:SetAttribute("FullHeight", fullH)
-	-- cache fade goals while still fully visible
+	-- capture visible fade goals once, before first hide
 	U.cacheSubFade(control)
 	local wrap = U.ensureSubWrap(control)
 	local parentFlag = keys and keys[1]
@@ -962,7 +952,7 @@ function U.section(parent, col, row, rows)
 			Visible = #sec._tabs == 0,
 		}, pages)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
-		U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 2) }, content)
+		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 2) }, content)
 		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
@@ -1380,7 +1370,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221,
 		}, list)
 		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-		U.edges(list, eb, true, 223, true)
+		U.edges(list, eb, false, 223, true)
 
 		for _, opt in ipairs(options) do
 			local b = U.new("TextButton", {
@@ -2125,7 +2115,7 @@ function U.buildConfig()
 
 	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
 	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 210), LayoutOrder = 6 }, configsContent)
-	U.edges(listBox, U.ELEMENT_BORDER, true, 3)
+	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
