@@ -2246,15 +2246,6 @@ function U.buildConfig()
 	local unload = U.mkButton(settingsContent, "unload", nextOrder(), true)
 	U.bindButton(unload, U.shutdown, 2)
 
-	local credit = U.label(configsContent.Parent.Parent, "wavelength ui by illorsm", {
-		Name = "WavelengthCredit", Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 1, -18), TextColor3 = U.GRAY_TEXT,
-		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
-	})
-	credit:SetAttribute("FixedGray", true)
-	do
-		local pad = configsContent:FindFirstChildOfClass("UIPadding")
-		if pad then pad.PaddingBottom = UDim.new(0, 22) end
-	end
 end
 
 function U.buildTabs()
@@ -2315,7 +2306,7 @@ function U.buildTabs()
 	U.bindResize()
 end
 
-function U.applyBodySize(w, h, anchorRight, anchorBottom)
+function U.applyShellSize(w, h, anchorRight, anchorBottom)
 	w = math.clamp(math.floor(w), U.MIN_W or 420, 1200)
 	h = math.clamp(math.floor(h), U.MIN_H or 280, 900)
 	local oldW, oldH = U.BODY_W, U.BODY_H
@@ -2343,20 +2334,36 @@ function U.applyBodySize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
-	for _, page in pairs(U.pageFrames or {}) do
+end
+
+function U.applyBodyLayout()
+	-- heavy: only current tab pages + dock, not every mouse pixel
+	local cur = U.currentTab
+	local page = U.pageFrames and U.pageFrames[cur]
+	if page then
 		U.relayoutColumn(page, 1)
 		U.relayoutColumn(page, 2)
+	else
+		for _, p in pairs(U.pageFrames or {}) do
+			U.relayoutColumn(p, 1)
+			U.relayoutColumn(p, 2)
+		end
 	end
 	if U.wmDocked then U.dock("wm") end
 	if U.kbDocked then U.dock("kb") end
-	task.defer(function()
-		for _, fn in ipairs(U.sliderLayouts or {}) do
-			pcall(fn)
+	for _, fn in ipairs(U.sliderLayouts or {}) do
+		pcall(fn)
+	end
+	for _, sec in ipairs(U.sectionObjs or {}) do
+		if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
+			pcall(sec.layoutTabs)
 		end
-		for _, sec in ipairs(U.sectionObjs or {}) do
-			if sec.layoutTabs then pcall(sec.layoutTabs) end
-		end
-	end)
+	end
+end
+
+function U.applyBodySize(w, h, anchorRight, anchorBottom)
+	U.applyShellSize(w, h, anchorRight, anchorBottom)
+	U.applyBodyLayout()
 end
 
 function U.bindResize()
@@ -2374,24 +2381,45 @@ function U.bindResize()
 	local right = handle("Right", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.new(1, -math.floor(edge / 2), 0, 0), "Right")
 	local left = handle("Left", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.fromOffset(-math.floor(edge / 2), 0), "Left")
 	local bottom = handle("Bottom", UDim2.new(1, 0, 0, edge), UDim2.new(0, 0, 1, -math.floor(edge / 2)), "Bottom")
-	local function bind(edge, mode)
-		edge.InputBegan:Connect(function(input)
+	local function bind(edgeObj, mode)
+		edgeObj.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
 			U.closePopups()
 			local start = input.Position
 			local startW, startH = U.BODY_W, U.BODY_H
 			local moving = true
-			local c1, c2
+			local lastLayout = 0
+			local pending = false
+			local c1, c2, c3
+			local function doLayout()
+				pending = false
+				U.applyBodyLayout()
+			end
 			c1 = U.UIS.InputChanged:Connect(function(i)
 				if not moving then return end
 				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
 				local d = i.Position - start
+				-- light: shell chrome only every move
 				if mode == "right" then
-					U.applyBodySize(startW + d.X, startH, false, false)
+					U.applyShellSize(startW + d.X, startH, false, false)
 				elseif mode == "left" then
-					U.applyBodySize(startW - d.X, startH, true, false)
+					U.applyShellSize(startW - d.X, startH, true, false)
 				elseif mode == "bottom" then
-					U.applyBodySize(startW, startH + d.Y, false, false)
+					U.applyShellSize(startW, startH + d.Y, false, false)
+				end
+				-- heavy layout throttled ~20fps during drag
+				local now = os.clock()
+				if now - lastLayout >= 0.05 then
+					lastLayout = now
+					doLayout()
+				else
+					pending = true
+				end
+			end)
+			c3 = U.Run.Heartbeat:Connect(function()
+				if moving and pending and (os.clock() - lastLayout) >= 0.05 then
+					lastLayout = os.clock()
+					doLayout()
 				end
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
@@ -2399,10 +2427,21 @@ function U.bindResize()
 					moving = false
 					c1:Disconnect()
 					c2:Disconnect()
+					c3:Disconnect()
+					-- final accurate layout on release
+					U.applyBodyLayout()
+					-- also layout other tabs so switching stays correct
+					for name, p in pairs(U.pageFrames or {}) do
+						if name ~= U.currentTab then
+							U.relayoutColumn(p, 1)
+							U.relayoutColumn(p, 2)
+						end
+					end
 				end
 			end)
 			U.track(c1)
 			U.track(c2)
+			U.track(c3)
 		end)
 	end
 	bind(right, "right")
