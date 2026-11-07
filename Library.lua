@@ -686,72 +686,13 @@ function U.animateSub(control, show)
 	local parentFlag = control:GetAttribute("ParentFlag")
 	local targets = U.subFadeTargets(control)
 
-	local gen = (control:GetAttribute("AnimGen") or 0) + 1
-	control:SetAttribute("AnimGen", gen)
-	local function still()
-		return control:GetAttribute("AnimGen") == gen and wrap.Parent ~= nil
-	end
-
-	U.beginSubAnim(parentFlag)
-
-	local function finish()
-		if parentFlag then U.updateSubLine(parentFlag) end
-		U.endSubAnim(parentFlag)
-	end
-
-	-- cancel previous rs driver on this wrap
+	-- cancel any leftover animation driver
 	if wrap:GetAttribute("AnimConn") then
 		local old = U._subAnimConns and U._subAnimConns[wrap]
 		if old then pcall(function() old:Disconnect() end) end
-	end
-	U._subAnimConns = U._subAnimConns or {}
-
-	local function tweenFade(toHidden, dur)
-		local info = TweenInfo.new(dur or 0.05, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-		local last
-		for _, t in ipairs(targets) do
-			local goal = toHidden and 1 or t.goal
-			local ok, tw = pcall(function()
-				return U.Tween:Create(t.obj, info, { [t.prop] = goal })
-			end)
-			if ok and tw then
-				tw:Play()
-				last = tw
-			end
-		end
-		return last
-	end
-
-	-- smoothstep height on RenderStepped so list layout + line stay frame-synced
-	local function driveHeight(fromH, toH, dur, onDone)
-		local t0 = os.clock()
-		fromH = tonumber(fromH) or 0
-		toH = tonumber(toH) or 0
-		dur = math.max(0.03, tonumber(dur) or 0.08)
-		local conn
-		conn = U.Run.RenderStepped:Connect(function()
-			if not still() then
-				conn:Disconnect()
-				U._subAnimConns[wrap] = nil
-				U.endSubAnim(parentFlag)
-				return
-			end
-			local a = math.clamp((os.clock() - t0) / dur, 0, 1)
-			-- smootherstep
-			local e = a * a * a * (a * (a * 6 - 15) + 10)
-			local h = fromH + (toH - fromH) * e
-			wrap.Size = UDim2.new(1, 0, 0, h)
-			if parentFlag then U.updateSubLine(parentFlag) end
-			if a >= 1 then
-				conn:Disconnect()
-				U._subAnimConns[wrap] = nil
-				wrap.Size = UDim2.new(1, 0, 0, toH)
-				if parentFlag then U.updateSubLine(parentFlag) end
-				if onDone then onDone() end
-			end
-		end)
-		U._subAnimConns[wrap] = conn
-		wrap:SetAttribute("AnimConn", true)
+		U._subAnimConns = U._subAnimConns or {}
+		U._subAnimConns[wrap] = nil
+		wrap:SetAttribute("AnimConn", nil)
 	end
 
 	if show then
@@ -759,52 +700,15 @@ function U.animateSub(control, show)
 		control.Visible = true
 		control.Size = UDim2.new(1, 0, 0, fullH)
 		control.Position = UDim2.fromOffset(0, 0)
-		U.setFadeTargets(targets, 1)
-		local fromH = wrap.Size.Y.Offset
-		if fromH < 0 then fromH = 0 end
-		wrap.Size = UDim2.new(1, 0, 0, fromH)
-		driveHeight(fromH, fullH, 0.08, function()
-			if not still() then
-				U.endSubAnim(parentFlag)
-				return
-			end
-			local ft = tweenFade(false, 0.05)
-			if ft then
-				ft.Completed:Connect(function()
-					if still() then finish() else U.endSubAnim(parentFlag) end
-				end)
-			else
-				finish()
-			end
-		end)
+		wrap.Size = UDim2.new(1, 0, 0, fullH)
+		U.setFadeTargets(targets, 0)
 	else
-		local function collapse()
-			if not still() then
-				U.endSubAnim(parentFlag)
-				return
-			end
-			local fromH = wrap.Size.Y.Offset
-			if fromH < 1 then fromH = fullH end
-			driveHeight(fromH, 0, 0.08, function()
-				if not still() then
-					U.endSubAnim(parentFlag)
-					return
-				end
-				wrap.Visible = false
-				control.Visible = false
-				U.setFadeTargets(targets, 1)
-				finish()
-			end)
-		end
-		local ft = tweenFade(true, 0.04)
-		if ft then
-			ft.Completed:Connect(function()
-				if still() then collapse() else U.endSubAnim(parentFlag) end
-			end)
-		else
-			collapse()
-		end
+		wrap.Size = UDim2.new(1, 0, 0, 0)
+		wrap.Visible = false
+		control.Visible = false
+		U.setFadeTargets(targets, 1)
 	end
+	if parentFlag then U.updateSubLine(parentFlag) end
 end
 
 function U.subIf(control, keys, pred)
