@@ -107,7 +107,6 @@ function U.controlStroke(parent, thick)
 		Color = U.theme.ElementBorder,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		LineJoinMode = Enum.LineJoinMode.Miter,
-		BorderOffset = 0,
 	}, parent)
 	U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = s
 	return s
