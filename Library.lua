@@ -515,31 +515,6 @@ end
 
 U.subGroups = U.subGroups or {}
 U.toggleRows = U.toggleRows or {}
-U.subBusy = U.subBusy or {}
-U.subPending = U.subPending or {}
-
-function U.hasSubItems(flag)
-	local g = U.subGroups[flag]
-	return g and g.children and #g.children > 0
-end
-
-function U.beginSubAnim(flag)
-	if not flag then return end
-	U.subBusy[flag] = true
-	U.subPending[flag] = (U.subPending[flag] or 0) + 1
-end
-
-function U.endSubAnim(flag)
-	if not flag then return end
-	local n = (U.subPending[flag] or 1) - 1
-	if n <= 0 then
-		U.subPending[flag] = 0
-		U.subBusy[flag] = false
-	else
-		U.subPending[flag] = n
-	end
-end
-
 function U.updateSubLine(flag)
 	local g = U.subGroups[flag]
 	if not g or not g.line or not g.parentRow or not g.parentRow.Parent then return end
@@ -627,96 +602,22 @@ function U.ensureSubWrap(control)
 	return wrap
 end
 
-function U.cacheSubFade(control)
-	if control:GetAttribute("FadeCached") then return end
-	local list = {}
-	local function add(obj, prop)
-		if not obj then return end
-		list[#list + 1] = { obj = obj, prop = prop, goal = obj[prop] }
-	end
-	add(control, "BackgroundTransparency")
-	for _, d in ipairs(control:GetDescendants()) do
-		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-			add(d, "TextTransparency")
-			add(d, "BackgroundTransparency")
-		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
-			add(d, "ImageTransparency")
-			add(d, "BackgroundTransparency")
-		elseif d:IsA("Frame") then
-			add(d, "BackgroundTransparency")
-		elseif d:IsA("UIStroke") then
-			add(d, "Transparency")
-		end
-	end
-	U._subFade = U._subFade or {}
-	U._subFade[control] = list
-	control:SetAttribute("FadeCached", true)
-end
-
-function U.subFadeTargets(control)
-	U.cacheSubFade(control)
-	return (U._subFade and U._subFade[control]) or {}
-end
-
-function U.setFadeTargets(targets, value)
-	for _, t in ipairs(targets) do
-		pcall(function() t.obj[t.prop] = value end)
-	end
-end
-
-function U.tweenFadeTargets(targets, toHidden, duration)
-	local info = TweenInfo.new(duration or 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local last
-	for _, t in ipairs(targets) do
-		local goal = toHidden and 1 or t.goal
-		local ok, tw = pcall(function()
-			return U.Tween:Create(t.obj, info, { [t.prop] = goal })
-		end)
-		if ok and tw then
-			tw:Play()
-			last = tw
-		end
-	end
-	return last
-end
-
 function U.animateSub(control, show)
 	local wrap = U.ensureSubWrap(control)
 	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
-	local parentFlag = control:GetAttribute("ParentFlag")
-	local targets = U.subFadeTargets(control)
-
-	-- cancel leftover anim driver if any
-	if wrap:GetAttribute("AnimConn") then
-		local old = U._subAnimConns and U._subAnimConns[wrap]
-		if old then pcall(function() old:Disconnect() end) end
-		U._subAnimConns = U._subAnimConns or {}
-		U._subAnimConns[wrap] = nil
-		wrap:SetAttribute("AnimConn", nil)
+	wrap.Visible = show
+	control.Visible = show
+	wrap.Size = UDim2.new(1, 0, 0, show and fullH or 0)
+	if control:GetAttribute("ParentFlag") then
+		U.updateSubLine(control:GetAttribute("ParentFlag"))
 	end
-
-	if show then
-		wrap.Visible = true
-		control.Visible = true
-		control.Size = UDim2.new(1, 0, 0, fullH)
-		control.Position = UDim2.fromOffset(0, 0)
-		wrap.Size = UDim2.new(1, 0, 0, fullH)
-		U.setFadeTargets(targets, 0)
-	else
-		wrap.Size = UDim2.new(1, 0, 0, 0)
-		wrap.Visible = false
-		control.Visible = false
-		U.setFadeTargets(targets, 1)
-	end
-	if parentFlag then U.updateSubLine(parentFlag) end
 end
+
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
 	local fullH = control.Size.Y.Offset
 	if fullH < 2 then fullH = 16 end
 	control:SetAttribute("FullHeight", fullH)
-	-- capture visible fade goals once, before first hide
-	U.cacheSubFade(control)
 	local wrap = U.ensureSubWrap(control)
 	local parentFlag = keys and keys[1]
 	if parentFlag then
@@ -751,12 +652,10 @@ function U.subIf(control, keys, pred)
 		wrap.Visible = true
 		control.Visible = true
 		wrap.Size = UDim2.new(1, 0, 0, fullH)
-		U.setFadeTargets(U.subFadeTargets(control), 0)
 	else
 		wrap.Visible = false
 		control.Visible = false
 		wrap.Size = UDim2.new(1, 0, 0, 0)
-		U.setFadeTargets(U.subFadeTargets(control), 1)
 	end
 	return control
 end
@@ -1166,15 +1065,11 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	U.label(r, text, { Size = UDim2.new(1, -(20 + reserve), 1, 0), Position = UDim2.fromOffset(18, 0) })
 
 	local function set(v)
-		if flag and U.hasSubItems(flag) and U.subBusy[flag] then
-			return
-		end
 		on = v == true
 		box.BackgroundColor3 = col()
 		if flag then U.setFlag(flag, on) end
 	end
 	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function()
-		if flag and U.hasSubItems(flag) and U.subBusy[flag] then return end
 		set(not on)
 	end)
 	if flag then
@@ -2822,7 +2717,7 @@ function Library:CreateWindow(opts)
 	if U.bindTooltipFollow then U.bindTooltipFollow() end
 	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
 	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
-	U.subGroups, U.toggleRows, U._subFade, U.subBusy, U.subPending, U._subAnimConns = {}, {}, {}, {}, {}, {}
+	U.subGroups, U.toggleRows = {}, {}
 	U.themeReg = U.newReg()
 	U.openColorPicker, U.openDropdown, U.openDropdownBox, U.openSettings = nil, nil, nil, nil
 	U.wm, U.kbPanel, U.wmSnapGhost, U.kbSnapGhost = nil, nil, nil, nil
