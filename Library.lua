@@ -593,8 +593,16 @@ function U.ensureSubGroup(flag, parentRow)
 	g = { parentRow = parentRow, children = {}, line = nil }
 	U.subGroups[flag] = g
 	if parentRow and parentRow.Parent then
-		-- parent to the tab's scrolling content so the line clips / hides with the tab
+		-- MUST NOT parent under UIListLayout (would push rows down). Prefer Pages frame.
 		local host = parentRow.Parent
+		local climb = host
+		while climb do
+			if climb.Name == "Pages" then
+				host = climb
+				break
+			end
+			climb = climb.Parent
+		end
 		local line = U.new("Frame", {
 			Name = "SubLine", BorderSizePixel = 0, BackgroundColor3 = U.pulseColor(),
 			Size = UDim2.fromOffset(1, 0), Position = UDim2.fromOffset(6, 0), ZIndex = 8, Visible = false,
@@ -605,13 +613,19 @@ function U.ensureSubGroup(flag, parentRow)
 		end)
 		g.line = line
 		g.host = host
-		-- keep line locked to the toggle as layout shifts (sibling expand/collapse)
 		U.track(parentRow:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
 			U.updateSubLine(flag)
 		end))
 		U.track(parentRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 			U.updateSubLine(flag)
 		end))
+		-- scroll moves AbsolutePosition of rows
+		local scroll = parentRow.Parent
+		if scroll and scroll:IsA("ScrollingFrame") then
+			U.track(scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+				U.updateSubLine(flag)
+			end))
+		end
 	end
 	return g
 end
@@ -1024,7 +1038,7 @@ function U.section(parent, col, row, rows)
 			local obj = { Flag = flag, Row = t, _parent = content }
 			function obj:AddColorpicker(co)
 				co = co or {}
-				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color", co.Transparency or co.DefaultTransparency)
+				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.Transparency == true, co.Name or "color")
 				return obj
 			end
 			function obj:AddToggle(so)
@@ -1102,7 +1116,7 @@ function U.section(parent, col, row, rows)
 			o = o or {}
 			local r = U.row(content, nextOrder())
 			U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
-			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color", o.Transparency or o.DefaultTransparency)
+			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.Transparency == true, o.Name or "color")
 			return { Row = r, Flag = o.Flag or o.Name }
 		end
 		function api:AddLabel(o)
@@ -1112,7 +1126,7 @@ function U.section(parent, col, row, rows)
 			local obj = { Row = r, Label = lab }
 			function obj:AddColorpicker(co)
 				co = co or {}
-				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color", co.Transparency or co.DefaultTransparency)
+				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.Transparency == true, co.Name or "color")
 				return obj
 			end
 			return obj
@@ -1641,14 +1655,46 @@ function U.bindButton(btn, callback, delay)
 	end)
 end
 
-function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, defaultTransparency)
+function U.parseColorDefault(v)
+	if typeof(v) == "Color3" then
+		return v, 0
+	end
+	if type(v) == "table" then
+		if typeof(v[1]) == "Color3" then
+			return v[1], math.clamp(tonumber(v[2] or v.a or v.A or v.Transparency) or 0, 0, 1)
+		end
+		if typeof(v.Color) == "Color3" then
+			return v.Color, math.clamp(tonumber(v.Transparency or v.a or v.A or v[2]) or 0, 0, 1)
+		end
+		-- Color3-like (0-1 components) with optional A
+		if typeof(v.R) == "number" and typeof(v.G) == "number" and typeof(v.B) == "number" then
+			local a = tonumber(v.A or v.a or v.Transparency or v[4]) or 0
+			return Color3.new(v.R, v.G, v.B), math.clamp(a, 0, 1)
+		end
+		local r = tonumber(v[1] or v.r)
+		local g = tonumber(v[2] or v.g)
+		local b = tonumber(v[3] or v.b)
+		local a = tonumber(v[4] or v.a or v.A or v.Transparency) or 0
+		if r and g and b then
+			if r > 1 or g > 1 or b > 1 then
+				return Color3.fromRGB(r, g, b), math.clamp(a, 0, 1)
+			end
+			return Color3.new(r, g, b), math.clamp(a, 0, 1)
+		end
+	end
+	return Color3.new(1, 1, 1), 0
+end
+
+function U.attachPicker(rowFrame, flagKey, defaultVal, showTransparency, title)
 	title = string.lower(tostring(title or "color"))
+	showTransparency = showTransparency == true
 	local alphaKey = flagKey .. "Transparency"
+	local defaultColor, defaultAlpha = U.parseColorDefault(defaultVal)
 	U.vflags[flagKey] = defaultColor
-	if not noAlpha then
-		local a = tonumber(defaultTransparency)
-		if a == nil then a = 0 end
-		U.vflags[alphaKey] = math.clamp(a, 0, 1)
+	if showTransparency then
+		U.vflags[alphaKey] = defaultAlpha
+	else
+		U.vflags[alphaKey] = 0
 	end
 	local h, sat, val = defaultColor:ToHSV()
 
@@ -1661,7 +1707,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 	U.controlStroke(sw)
 	local swFill = U.new("Frame", {
 		Name = "SwatchFill", BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), BackgroundColor3 = defaultColor, ZIndex = 13,
-		BackgroundTransparency = noAlpha and 0 or (U.vflags[alphaKey] or 0),
+		BackgroundTransparency = showTransparency and (U.vflags[alphaKey] or 0) or 0,
 	}, sw)
 
 	local function refreshOpen()
@@ -1670,7 +1716,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 	local function paint()
 		local c = Color3.fromHSV(h, sat, val)
 		U.vflags[flagKey], swFill.BackgroundColor3 = c, c
-		swFill.BackgroundTransparency = noAlpha and 0 or (U.vflags[alphaKey] or 0)
+		swFill.BackgroundTransparency = showTransparency and (U.vflags[alphaKey] or 0) or 0
 		local tk = U.THEME_KEYS[flagKey]
 		if tk then U.theme[tk] = c U.applyTheme() end
 	end
@@ -1679,13 +1725,20 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 		U.fireFlag(flagKey)
 	end
 	U.setters[flagKey] = function(v)
-		if typeof(v) ~= "Color3" then return end
-		h, sat, val = v:ToHSV()
+		local c, a = U.parseColorDefault(v)
+		if typeof(v) == "Color3" then
+			c = v
+		end
+		h, sat, val = c:ToHSV()
+		U.vflags[flagKey] = c
+		if showTransparency and type(v) == "table" then
+			U.vflags[alphaKey] = a
+		end
 		paint()
 		refreshOpen()
 		U.fireFlag(flagKey)
 	end
-	if not noAlpha then
+	if showTransparency then
 		U.setters[alphaKey] = function(a)
 			U.vflags[alphaKey] = a
 			swFill.BackgroundTransparency = a or 0
@@ -1703,11 +1756,11 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 		end
 
 		local MAP, TOG, PAD, TITLE, GAP = 120, 14, 8, 16, 6
-		local BAR = TOG -- hue height & alpha width match cycle toggle
+		local BAR = TOG
 		local mapY = PAD + TITLE
 		local hueY = mapY + MAP + GAP
 		local alphaX = PAD + MAP + GAP
-		local hasAlpha = not noAlpha
+		local hasAlpha = showTransparency
 		local rightW = hasAlpha and BAR or TOG
 		local POP_W = PAD + MAP + GAP + rightW + PAD
 		local RGB_H = 16
@@ -1764,7 +1817,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 		U.new("UIGradient", { Color = ColorSequence.new(hueKeys) }, hueBar)
 		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR + 4), 223, UDim2.new(h, 0, 0.5, 0))
 
-		-- cycle at corner: right of hue bar, below transparency bar (same column as alpha)
 		local cycleX = alphaX + math.floor((rightW - TOG) / 2)
 		local cycleY = hueY + math.floor((BAR - TOG) / 2)
 		local refreshUI
@@ -1783,7 +1835,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 			refreshUI()
 		end)
 
-		-- rgb box: starts at color bar left, ends at cycle toggle right edge
 		local rgbW = (cycleX + TOG) - PAD
 		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
@@ -1797,7 +1848,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 		local function syncRgbText()
 			local c = Color3.fromHSV(h, sat, val)
 			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
-			if noAlpha then
+			if not hasAlpha then
 				rgbText.Text = string.format("%d, %d, %d", r, g, b)
 			else
 				local a = U.vflags[alphaKey] or 0
@@ -1865,6 +1916,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, default
 	end)
 	return sw
 end
+
 
 function U.shellHeight()
 	return U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
@@ -2277,7 +2329,7 @@ function U.buildConfig()
 	local o = 0
 	local function nextOrder() o += 1 return o end
 	local function themeRow(label, flag, key, title)
-		return U.attachPicker(U.mkColorRow(settingsContent, label, nextOrder()), flag, U.theme[key], true, title or label)
+		return U.attachPicker(U.mkColorRow(settingsContent, label, nextOrder()), flag, U.theme[key], false, title or label)
 	end
 	themeRow("text", "ThemeText", "Text", "text color")
 	themeRow("border", "ThemeBorder", "Border", "border color")
@@ -2286,8 +2338,8 @@ function U.buildConfig()
 	themeRow("section background", "ThemeSectionBg", "SectionBg")
 	themeRow("background", "ThemeBackground", "Background")
 	local accentRow = U.mkColorRow(settingsContent, "accent", nextOrder())
-	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
-	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, true, "accent b")
+	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, false, "accent a")
+	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, false, "accent b")
 	U.mkKeybind(settingsContent, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
 	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
