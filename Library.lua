@@ -49,7 +49,7 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 12, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 18, 8
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -2627,14 +2627,26 @@ function U.bindInput()
 	local dragging, ds, sp
 	local function beginDrag(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if not U.shell or not U.shell.Parent then return end
+		local objs = U.objsAtMouse()
+		if #objs == 0 then return end
+		local onUi = false
+		for _, o in ipairs(objs) do
+			if o == U.shell or o:IsDescendantOf(U.shell) then onUi = true break end
+		end
+		if not onUi then return end
+		-- only drag from non-interactive surfaces (background / header / section chrome)
+		for _, o in ipairs(objs) do
+			if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") then return end
+			if o.Name == "ResizeHandle" or o.Name == "DropdownList" or o.Name == "DropScroll" or o.Name == "ColorPop" then return end
+		end
 		U.closePopups()
 		dragging, ds, sp = true, input.Position, U.shell.Position
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then dragging = false end
 		end)
 	end
-	U.track(U.titleBar.InputBegan:Connect(beginDrag))
-	U.track(U.accent.InputBegan:Connect(beginDrag))
+	U.track(U.UIS.InputBegan:Connect(beginDrag))
 	U.track(U.UIS.InputChanged:Connect(function(input)
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
