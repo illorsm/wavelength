@@ -1945,14 +1945,22 @@ function U.buildShell()
 		Position = UDim2.fromOffset(0, U.LINE_H),
 		ZIndex = 6,
 	}, shell)
-	U.titleLabel = U.label(U.titleBar, tostring(U.windowTitle or "wavelength"), {
+	-- vertically center the title glyph box in the header band
+	U.titleLabel = U.new("TextLabel", {
 		Name = "TitleLabel",
-		Size = UDim2.new(1, -12, 1, 0),
-		Position = UDim2.fromOffset(6, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		FontFace = U.font,
+		TextSize = U.TEXT_SZ,
+		TextColor3 = U.theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
+		Text = tostring(U.windowTitle or "wavelength"),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 6, 0.5, 0),
+		Size = UDim2.new(1, -12, 0, U.TEXT_SZ),
 		ZIndex = 7,
-	})
+	}, U.titleBar)
 	table.insert(U.themeReg.labels, U.titleLabel)
 
 	U.body = U.new("Frame", {
