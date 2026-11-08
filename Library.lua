@@ -1034,11 +1034,15 @@ function U.section(parent, col, row, rows)
 			if limit == nil then limit = o.Amount end
 			if limit == nil then limit = 1 end
 			local flag = o.Flag or o.Name
+			local excludeSelf = o.ExcludeSelf == true
 			local names = {}
 			local function fill()
 				for i = #names, 1, -1 do names[i] = nil end
+				local selfName = U.lp and U.lp.Name
 				for _, plr in ipairs(U.Players:GetPlayers()) do
-					names[#names + 1] = plr.Name
+					if not (excludeSelf and selfName and plr.Name == selfName) then
+						names[#names + 1] = plr.Name
+					end
 				end
 				table.sort(names)
 			end
@@ -1443,12 +1447,14 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		local bb = box:FindFirstChild("BBottom")
 		if bb then bb.Visible = false end
 
+		-- list is fullH + bottom border so BBottom does not cover the last option
+		local listH = fullH + ebPx
 		local list = U.new("Frame", {
 			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
-		U.edges(list, eb, false, 223, true)
+		U.edges(list, eb, false, 224, true)
 
 		local scroll = U.new("ScrollingFrame", {
 			Name = "DropScroll", BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -1498,7 +1504,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		U.armPopupOpen()
 		list.InputBegan:Connect(U.armPopupOpen)
 		scroll.InputBegan:Connect(U.armPopupOpen)
-		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH) }):Play()
+		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, listH) }):Play()
 	end)
 	U.setters[flag] = function(v)
 		if multi and type(v) == "table" then
