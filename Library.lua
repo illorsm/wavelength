@@ -49,7 +49,7 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 16, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 14, 8
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -1427,7 +1427,9 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	local box = U.new("TextButton", {
 		Name = "DropBox", AutoButtonColor = false, BackgroundColor3 = DD_BG, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 16),
 		Position = UDim2.fromOffset(0, 14), FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true,
 	}, r)
+	U.new("UIPadding", { PaddingLeft = UDim.new(0, 0), PaddingRight = UDim.new(0, 4) }, box)
 	U.controlStroke(box)
 
 	local function display()
@@ -1948,9 +1950,13 @@ function U.buildShell()
 		Name = "TitleLabel",
 		Size = UDim2.new(1, -12, 1, 0),
 		Position = UDim2.fromOffset(6, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		ZIndex = 7,
 	})
+	-- pixel font sits optically high; nudge text down 1px within the bar
+	U.titleLabel.Position = UDim2.fromOffset(6, 1)
+	U.titleLabel.Size = UDim2.new(1, -12, 1, -1)
 	table.insert(U.themeReg.labels, U.titleLabel)
 
 	U.body = U.new("Frame", {
