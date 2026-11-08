@@ -49,7 +49,7 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 16, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 12, 8
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -804,7 +804,7 @@ end
 
 function U.secGeom(col, row, rows)
 	local gap = U.SEC_GAP
-	local topPad = gap + 7
+	local topPad = 7 -- only section-tab overhang; no extra gap under title
 	local bottomPad = gap
 	local w = math.floor((U.BODY_W - gap * 3) / 2)
 	local x = (col == 1) and gap or (gap * 2 + w)
@@ -1945,7 +1945,10 @@ function U.buildShell()
 		Position = UDim2.fromOffset(0, U.LINE_H),
 		ZIndex = 6,
 	}, shell)
-	-- vertically center the title glyph box in the header band
+	-- Center between UI top (y=0) and section border (LINE_H + TITLE_H + 7).
+	-- 7 matches section topPad (tab overhang only; section headers unchanged).
+	local bandBottom = U.LINE_H + U.TITLE_H + 7
+	local titleY = math.floor(bandBottom / 2 - U.TEXT_SZ / 2 + 0.5) - U.LINE_H
 	U.titleLabel = U.new("TextLabel", {
 		Name = "TitleLabel",
 		BackgroundTransparency = 1,
@@ -1956,8 +1959,7 @@ function U.buildShell()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		Text = tostring(U.windowTitle or "wavelength"),
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 6, 0.5, 0),
+		Position = UDim2.fromOffset(6, titleY),
 		Size = UDim2.new(1, -12, 0, U.TEXT_SZ),
 		ZIndex = 7,
 	}, U.titleBar)
