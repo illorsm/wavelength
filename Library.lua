@@ -2625,21 +2625,25 @@ function U.bindInput()
 	end))
 
 	local dragging, ds, sp
+	local function isUiDragSurface(obj)
+		if not obj then return false end
+		-- header + true UI background only (not section frames / slider tracks / rows)
+		if obj == U.shell or obj == U.body or obj == U.titleBar or obj == U.accent or obj == U.titleLabel or obj == U.pages or obj == U.tabRail then
+			return true
+		end
+		if U.pageFrames then
+			for _, pf in pairs(U.pageFrames) do
+				if obj == pf then return true end
+			end
+		end
+		return false
+	end
 	local function beginDrag(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
 		if not U.shell or not U.shell.Parent then return end
 		local objs = U.objsAtMouse()
 		if #objs == 0 then return end
-		local onUi = false
-		for _, o in ipairs(objs) do
-			if o == U.shell or o:IsDescendantOf(U.shell) then onUi = true break end
-		end
-		if not onUi then return end
-		-- only drag from non-interactive surfaces (background / header / section chrome)
-		for _, o in ipairs(objs) do
-			if o:IsA("TextButton") or o:IsA("ImageButton") or o:IsA("TextBox") then return end
-			if o.Name == "ResizeHandle" or o.Name == "DropdownList" or o.Name == "DropScroll" or o.Name == "ColorPop" then return end
-		end
+		if not isUiDragSurface(objs[1]) then return end
 		U.closePopups()
 		dragging, ds, sp = true, input.Position, U.shell.Position
 		input.Changed:Connect(function()
