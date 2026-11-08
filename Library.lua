@@ -49,7 +49,7 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 0, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 16, 8
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -540,15 +540,28 @@ function U.endSubAnim(flag)
 	end
 end
 
+function U.isGuiShown(inst)
+	while inst do
+		if inst:IsA("GuiObject") and inst.Visible == false then return false end
+		inst = inst.Parent
+	end
+	return true
+end
+
 function U.updateSubLine(flag)
 	local g = U.subGroups[flag]
 	if not g or not g.line or not g.parentRow or not g.parentRow.Parent then return end
 	local line = g.line
 	local host = g.host or g.line.Parent
 	if not host then return end
+	-- hide when parent toggle / tab content is not visible (multi-tab sections)
+	if not U.isGuiShown(g.parentRow) then
+		line.Visible = false
+		return
+	end
 	local kids = {}
 	for _, c in ipairs(g.children) do
-		if c.Parent and c.Visible and c.AbsoluteSize.Y > 0.5 then kids[#kids + 1] = c end
+		if c.Parent and c.Visible and c.AbsoluteSize.Y > 0.5 and U.isGuiShown(c) then kids[#kids + 1] = c end
 	end
 	if #kids == 0 then
 		line.Visible = false
@@ -557,13 +570,18 @@ function U.updateSubLine(flag)
 	local last = kids[#kids]
 	local origin = host.AbsolutePosition
 	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
-	-- line ends at bottom of revealed wrap (cover reveal progresses with height)
 	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y - origin.Y
 	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
 	line.Position = UDim2.fromOffset(x, y0)
 	line.Size = UDim2.fromOffset(1, math.max(0, y1 - y0))
 	line.Visible = y1 > y0
 	line.BackgroundColor3 = U.pulseColor()
+end
+
+function U.updateAllSubLines()
+	for flag in pairs(U.subGroups or {}) do
+		U.updateSubLine(flag)
+	end
 end
 
 function U.ensureSubGroup(flag, parentRow)
@@ -575,7 +593,8 @@ function U.ensureSubGroup(flag, parentRow)
 	g = { parentRow = parentRow, children = {}, line = nil }
 	U.subGroups[flag] = g
 	if parentRow and parentRow.Parent then
-		local host = parentRow.Parent.Parent or parentRow.Parent
+		-- parent to the tab's scrolling content so the line clips / hides with the tab
+		local host = parentRow.Parent
 		local line = U.new("Frame", {
 			Name = "SubLine", BorderSizePixel = 0, BackgroundColor3 = U.pulseColor(),
 			Size = UDim2.fromOffset(1, 0), Position = UDim2.fromOffset(6, 0), ZIndex = 8, Visible = false,
@@ -586,6 +605,13 @@ function U.ensureSubGroup(flag, parentRow)
 		end)
 		g.line = line
 		g.host = host
+		-- keep line locked to the toggle as layout shifts (sibling expand/collapse)
+		U.track(parentRow:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+			U.updateSubLine(flag)
+		end))
+		U.track(parentRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			U.updateSubLine(flag)
+		end))
 	end
 	return g
 end
@@ -704,6 +730,7 @@ function U.animateSub(control, show)
 	end
 	if parentFlag then U.updateSubLine(parentFlag) end
 	U.endSubAnim(parentFlag)
+	task.defer(U.updateAllSubLines)
 end
 
 function U.subIf(control, keys, pred)
@@ -935,6 +962,7 @@ function U.section(parent, col, row, rows)
 		paintTabs()
 		if U.closeDropdown then U.closeDropdown() end
 		if U.closeColorPicker then U.closeColorPicker() end
+		task.defer(U.updateAllSubLines)
 	end
 
 	function sec:AddTab(name)
@@ -996,7 +1024,7 @@ function U.section(parent, col, row, rows)
 			local obj = { Flag = flag, Row = t, _parent = content }
 			function obj:AddColorpicker(co)
 				co = co or {}
-				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
+				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color", co.Transparency or co.DefaultTransparency)
 				return obj
 			end
 			function obj:AddToggle(so)
@@ -1074,7 +1102,7 @@ function U.section(parent, col, row, rows)
 			o = o or {}
 			local r = U.row(content, nextOrder())
 			U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
-			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color")
+			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color", o.Transparency or o.DefaultTransparency)
 			return { Row = r, Flag = o.Flag or o.Name }
 		end
 		function api:AddLabel(o)
@@ -1084,7 +1112,7 @@ function U.section(parent, col, row, rows)
 			local obj = { Row = r, Label = lab }
 			function obj:AddColorpicker(co)
 				co = co or {}
-				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
+				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color", co.Transparency or co.DefaultTransparency)
 				return obj
 			end
 			return obj
@@ -1613,11 +1641,15 @@ function U.bindButton(btn, callback, delay)
 	end)
 end
 
-function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
+function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title, defaultTransparency)
 	title = string.lower(tostring(title or "color"))
 	local alphaKey = flagKey .. "Transparency"
 	U.vflags[flagKey] = defaultColor
-	if not noAlpha then U.vflags[alphaKey] = 0 end
+	if not noAlpha then
+		local a = tonumber(defaultTransparency)
+		if a == nil then a = 0 end
+		U.vflags[alphaKey] = math.clamp(a, 0, 1)
+	end
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
@@ -1834,6 +1866,10 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	return sw
 end
 
+function U.shellHeight()
+	return U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
+end
+
 function U.buildShell()
 	local TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
 	U.TAB_W, U.TAB_H = TAB_W, 32
@@ -1841,7 +1877,7 @@ function U.buildShell()
 
 	local shell = U.new("Frame", {
 		Name = "Shell", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, ClipsDescendants = true, Active = true,
-		Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.BODY_H + U.LINE_H), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -(U.TITLE_H + U.BODY_H) / 2),
+		Size = UDim2.fromOffset(U.BODY_W, U.shellHeight()), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -U.shellHeight() / 2),
 	}, U.gui)
 	U.shell = shell
 	U.stroke(shell, "Border")
@@ -1852,14 +1888,22 @@ function U.buildShell()
 
 	U.titleBar = U.new("Frame", {
 		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		Size = UDim2.new(1, 0, 0, 10),
+		Size = UDim2.new(1, 0, 0, U.TITLE_H),
 		Position = UDim2.fromOffset(0, U.LINE_H),
 		ZIndex = 6,
 	}, shell)
+	U.titleLabel = U.label(U.titleBar, tostring(U.windowTitle or "wavelength"), {
+		Name = "TitleLabel",
+		Size = UDim2.new(1, -12, 1, 0),
+		Position = UDim2.fromOffset(6, 0),
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 7,
+	})
+	table.insert(U.themeReg.labels, U.titleLabel)
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
-		Position = UDim2.fromOffset(0, U.LINE_H), ClipsDescendants = true, Active = true,
+		Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H), ClipsDescendants = true, Active = true,
 	}, shell)
 	table.insert(U.themeReg.bodyBgs, U.body)
 	U.pages = U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true }, U.body)
@@ -2255,6 +2299,45 @@ function U.buildConfig()
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
 	U.buildFloaters()
 
+	local function teleportTo(jobId)
+		local ts = game:GetService("TeleportService")
+		pcall(function()
+			ts:TeleportToPlaceInstance(game.PlaceId, jobId, U.lp)
+		end)
+	end
+
+	local rejoin = U.mkButton(settingsContent, "rejoin", nextOrder(), true)
+	U.bindButton(rejoin, function()
+		teleportTo(game.JobId)
+	end, 2)
+
+	local hop = U.mkButton(settingsContent, "server hop", nextOrder(), true)
+	U.bindButton(hop, function()
+		local ok, body = pcall(function()
+			return game:HttpGet(("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(game.PlaceId))
+		end)
+		if not ok or type(body) ~= "string" then
+			U.pushNotification({ text = "server hop failed", time = 2 })
+			return
+		end
+		local decOk, data = pcall(function() return U.Http:JSONDecode(body) end)
+		if not decOk or type(data) ~= "table" or type(data.data) ~= "table" then
+			U.pushNotification({ text = "server hop failed", time = 2 })
+			return
+		end
+		local candidates = {}
+		for _, server in ipairs(data.data) do
+			if server.id and server.id ~= game.JobId and (server.playing or 0) < (server.maxPlayers or 0) then
+				candidates[#candidates + 1] = server.id
+			end
+		end
+		if #candidates == 0 then
+			U.pushNotification({ text = "no servers found", time = 2 })
+			return
+		end
+		teleportTo(candidates[math.random(1, #candidates)])
+	end, 2)
+
 	local unload = U.mkButton(settingsContent, "unload", nextOrder(), true)
 	U.bindButton(unload, U.shutdown, 2)
 
@@ -2263,7 +2346,7 @@ end
 function U.buildTabs()
 	local rail = U.new("Frame", {
 		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
-		Position = UDim2.fromOffset(0, U.LINE_H + U.BODY_H),
+		Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H + U.BODY_H),
 	}, U.shell)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
@@ -2314,7 +2397,7 @@ function U.buildTabs()
 		U.tabButtons[name] = b
 		b.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
-	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.LINE_H + U.BODY_H + U.TAB_H)
+	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
 	U.bindResize()
 end
 
@@ -2332,11 +2415,18 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 	local dy = (anchorBottom and (oldH - h) or 0)
 	U.BODY_W, U.BODY_H = w, h
 	U.TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
-	shell.Size = UDim2.fromOffset(U.BODY_W, U.LINE_H + U.BODY_H + U.TAB_H)
+	shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
 	shell.Position = UDim2.new(pos.X.Scale, pos.X.Offset + dx, pos.Y.Scale, pos.Y.Offset + dy)
-	if U.body then U.body.Size = UDim2.fromOffset(U.BODY_W, U.BODY_H) end
+	if U.body then
+		U.body.Size = UDim2.fromOffset(U.BODY_W, U.BODY_H)
+		U.body.Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H)
+	end
+	if U.titleBar then
+		U.titleBar.Size = UDim2.new(1, 0, 0, U.TITLE_H)
+		U.titleBar.Position = UDim2.fromOffset(0, U.LINE_H)
+	end
 	if U.tabRail then
-		U.tabRail.Position = UDim2.fromOffset(0, U.LINE_H + U.BODY_H)
+		U.tabRail.Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H + U.BODY_H)
 		U.tabRail.Size = UDim2.new(1, 0, 0, U.TAB_H)
 		for i, name in ipairs(U.TAB_NAMES) do
 			local b = U.tabButtons and U.tabButtons[name]
@@ -2894,6 +2984,7 @@ end
 function Library:CreateWindow(opts)
 	opts = opts or {}
 	local name = tostring(opts.Name or "wavelength")
+	U.windowTitle = name
 	if opts.Width then U.BODY_W = opts.Width end
 	if opts.Height then U.BODY_H = opts.Height end
 	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
