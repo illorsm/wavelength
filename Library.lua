@@ -1984,7 +1984,7 @@ function U.bindBottomBarUpdater()
 		U.bottomBarUpdateConn:Disconnect()
 		U.bottomBarUpdateConn = nil
 	end
-	if U.bottomBarOn and type(U.bottomBarText) == "function" then
+	if U.bottomBarOn and U.bottomBarLabel and type(U.bottomBarText) == "function" then
 		local elapsed = 0
 		U.bottomBarUpdateConn = U.Run.Heartbeat:Connect(function(dt)
 			if not U.running or not U.bottomBarOn then return end
@@ -1995,6 +1995,21 @@ function U.bindBottomBarUpdater()
 			end
 		end)
 	end
+end
+
+function U.createBottomBar()
+	if U.bottomBar or not U.shell then return end
+	U.bottomBar = U.new("Frame", {
+		Name = "BottomBar", BackgroundColor3 = U.theme.SectionBg,
+		BorderSizePixel = 0, Visible = true, ZIndex = 6,
+	}, U.shell)
+	table.insert(U.themeReg.sectionBgs, U.bottomBar)
+	U.stroke(U.bottomBar, "SectionBorder")
+	U.bottomBarLabel = U.label(U.bottomBar, "", {
+		Name = "BottomBarText", Size = UDim2.new(1, -10, 1, 0),
+		Position = UDim2.fromOffset(5, 0),
+		TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 7,
+	})
 end
 
 function U.layoutBottomBar()
@@ -2008,8 +2023,17 @@ function U.layoutBottomBar()
 end
 
 function U.setBottomBar(on, text)
+	if type(on) == "string" then
+		text, on = on, true
+	end
 	U.bottomBarOn = on == true
 	if text ~= nil then U.bottomBarText = text end
+	if U.bottomBarOn then
+		U.createBottomBar()
+	elseif U.bottomBar then
+		U.bottomBar:Destroy()
+		U.bottomBar, U.bottomBarLabel = nil, nil
+	end
 	U.bindBottomBarUpdater()
 	if U.shell then
 		U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
@@ -2040,29 +2064,24 @@ function U.buildShell()
 	U.accent = U.new("Frame", { Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 5 }, shell)
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, U.accent))
 
-	U.titleBar = U.new("Frame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		Size = UDim2.new(1, 0, 0, U.TITLE_H),
-		Position = UDim2.fromOffset(0, U.LINE_H),
-		ZIndex = 6,
-	}, shell)
-	local bandBottom = U.LINE_H + U.TITLE_H + 7
-	local titleY = math.floor(bandBottom / 2 - U.TEXT_SZ / 2 + 0.5) - U.LINE_H
-	U.titleLabel = U.new("TextLabel", {
-		Name = "TitleLabel",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		FontFace = U.font,
-		TextSize = U.TEXT_SZ,
-		TextColor3 = U.theme.Text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		Text = tostring(U.windowTitle or "wavelength"),
-		Position = UDim2.fromOffset(6, titleY),
-		Size = UDim2.new(1, -12, 0, U.TEXT_SZ),
-		ZIndex = 7,
-	}, U.titleBar)
-	table.insert(U.themeReg.labels, U.titleLabel)
+	U.titleBar, U.titleLabel = nil, nil
+	if U.windowTitle ~= nil then
+		U.titleBar = U.new("Frame", {
+			BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+			Size = UDim2.new(1, 0, 0, U.TITLE_H),
+			Position = UDim2.fromOffset(0, U.LINE_H), ZIndex = 6,
+		}, shell)
+		local bandBottom = U.LINE_H + U.TITLE_H + 7
+		local titleY = math.floor(bandBottom / 2 - U.TEXT_SZ / 2 + 0.5) - U.LINE_H
+		U.titleLabel = U.new("TextLabel", {
+			Name = "TitleLabel", BackgroundTransparency = 1, BorderSizePixel = 0,
+			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+			Text = U.windowTitle, Position = UDim2.fromOffset(6, titleY),
+			Size = UDim2.new(1, -12, 0, U.TEXT_SZ), ZIndex = 7,
+		}, U.titleBar)
+		table.insert(U.themeReg.labels, U.titleLabel)
+	end
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
@@ -2077,22 +2096,8 @@ function U.buildShell()
 	end
 	U.currentTab = U.TAB_NAMES[1]
 
-	U.bottomBar = U.new("Frame", {
-		Name = "BottomBar",
-		BackgroundColor3 = U.theme.SectionBg,
-		BorderSizePixel = 0,
-		Visible = false,
-		ZIndex = 6,
-	}, U.shell)
-	table.insert(U.themeReg.sectionBgs, U.bottomBar)
-	U.stroke(U.bottomBar, "SectionBorder")
-	U.bottomBarLabel = U.label(U.bottomBar, "", {
-		Name = "BottomBarText",
-		Size = UDim2.new(1, -10, 1, 0),
-		Position = UDim2.fromOffset(5, 0),
-		TextYAlignment = Enum.TextYAlignment.Center,
-		ZIndex = 7,
-	})
+	U.bottomBar, U.bottomBarLabel = nil, nil
+	if U.bottomBarOn then U.createBottomBar() end
 	U.layoutBottomBar()
 	U.bindBottomBarUpdater()
 end
@@ -3351,14 +3356,15 @@ end
 
 function Library:CreateWindow(opts)
 	opts = opts or {}
-	local name = tostring(opts.Name or "wavelength")
-	U.windowTitle = name
+	local name = opts.name
+	if name == nil then name = opts.Name end
+	U.windowTitle = (type(name) == "string" and name ~= "") and name or nil
+	U.TITLE_H = U.windowTitle and 22 or 0
 	if opts.Width then U.BODY_W = opts.Width end
 	if opts.Height then U.BODY_H = opts.Height end
-	U.bottomBarOn = opts.BottomBar == true
-	if opts.BottomBarText ~= nil then
-		U.bottomBarText = opts.BottomBarText
-	end
+	U.bottomBarOn = type(opts.BottomBar) == "string"
+	U.bottomBarText = U.bottomBarOn and opts.BottomBar or ""
+	if opts.BottomBarText ~= nil then U.bottomBarText = opts.BottomBarText end
 	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
 		U.TAB_NAMES = {}
 		for _, t in ipairs(opts.Tabs) do
