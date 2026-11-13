@@ -49,11 +49,11 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 400, 520, 28, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 480, 540, 22, 8
 U.BOTTOM_BAR_H = 18
 U.bottomBarOn = false
 U.bottomBarText = ""
-U.MIN_W, U.MIN_H = 320, 400
+U.MIN_W, U.MIN_H = 360, 400
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
@@ -2539,7 +2539,7 @@ function U.buildTabs()
 end
 
 function U.applyShellSize(w, h, anchorRight, anchorBottom)
-	w = math.clamp(math.floor(w), U.MIN_W or 320, 1200)
+	w = math.clamp(math.floor(w), U.MIN_W or 360, 1200)
 	h = math.clamp(math.floor(h), U.MIN_H or 400, 1000)
 	local oldW, oldH = U.BODY_W, U.BODY_H
 	local shell = U.shell
@@ -2574,6 +2574,25 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 		end
 	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
+end
+
+function U.quickReflow()
+	-- cheap: only widths / x positions / bottom bar / tabs already handled in applyShellSize
+	local gap = U.SEC_GAP
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	if page then
+		local w = math.floor((U.BODY_W - gap * 3) / 2)
+		for side = 1, 2 do
+			local x = (side == 1) and gap or (gap * 2 + w)
+			for _, ch in ipairs(page:GetChildren()) do
+				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+					ch.Position = UDim2.fromOffset(x, ch.Position.Y.Offset)
+				end
+			end
+		end
+	end
+	if U.quickReflow then U.quickReflow() elseif U.layoutBottomBar then U.layoutBottomBar() end
 end
 
 function U.sectionContentHeight(ch)
@@ -2663,7 +2682,7 @@ function U.applyBodySize(w, h, anchorRight, anchorBottom)
 end
 
 function U.bindResize()
-	U.MIN_W, U.MIN_H = U.MIN_W or 320, U.MIN_H or 400
+	U.MIN_W, U.MIN_H = U.MIN_W or 360, U.MIN_H or 400
 	if not U.shell then return end
 	local function handle(name, size, pos, cursor)
 		local h = U.new("Frame", {
@@ -2685,7 +2704,6 @@ function U.bindResize()
 			local startW, startH = U.BODY_W, U.BODY_H
 			local moving = true
 			local c1, c2
-			local lastLayout = 0
 			c1 = U.UIS.InputChanged:Connect(function(i)
 				if not moving then return end
 				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -2697,12 +2715,7 @@ function U.bindResize()
 				elseif mode == "bottom" then
 					U.applyShellSize(startW, startH + d.Y, false, false)
 				end
-				-- throttle expensive layout while resizing
-				local now = os.clock()
-				if now - lastLayout >= 0.05 then
-					lastLayout = now
-					U.applyBodyLayout(false)
-				end
+				U.quickReflow()
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -2773,8 +2786,9 @@ function U.bindInput()
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		if U.wmDocked then U.dock("wm") end
+		if U.kbDocked then U.dock("kb") end
 	end))
-	-- snap docks once when drag ends (handled via input.Changed on beginDrag end)
 
 	U.menuOpen = true
 	task.defer(function()
@@ -2873,7 +2887,7 @@ function U.buildExplorer()
 		Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 42,
 	}, panel)
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, expAccent))
-	U.label(panel, "dex explorer", {
+	U.label(panel, "explorer", {
 		Name = "ExplorerTitle",
 		Size = UDim2.new(1, -12, 0, 18),
 		Position = UDim2.fromOffset(6, U.LINE_H + 2),
@@ -2960,7 +2974,7 @@ function U.buildExplorer()
 			return e and e.o or 9999
 		end
 
-		-- Dex Vanilla3 class icons (rbxassetid://114851699900089)
+		-- class icons (rbxassetid://114851699900089)
 		-- 32x32 tiles, 25 columns. Icons dict is 1-based; Display uses 0-based index.
 		local ICON_MAP_ID = "rbxassetid://114851699900089"
 		local ICON_SIZE = 32
