@@ -520,6 +520,24 @@ U.subGroups = U.subGroups or {}
 U.toggleRows = U.toggleRows or {}
 U.subBusy = U.subBusy or {}
 U.subPending = U.subPending or {}
+U._layoutQueued = U._layoutQueued or setmetatable({}, { __mode = "k" })
+
+function U.queuePageLayout(page)
+	if not page or not page.Parent or U._layoutQueued[page] then return end
+	U._layoutQueued[page] = true
+	task.defer(function()
+		U._layoutQueued[page] = nil
+		if not page.Parent then return end
+		if U._layoutBusy then U.queuePageLayout(page) return end
+		U.layoutPage(page, false)
+	end)
+end
+
+function U.queueSectionLayout(inst)
+	local node = inst
+	while node and not (node:IsA("Frame") and node:GetAttribute("SectionCol")) do node = node.Parent end
+	if node and node.Parent then U.queuePageLayout(node.Parent) end
+end
 
 function U.hasSubItems(flag)
 	local g = U.subGroups[flag]
@@ -743,6 +761,7 @@ function U.animateSub(control, show)
 	end
 	if parentFlag then U.updateSubLine(parentFlag) end
 	U.endSubAnim(parentFlag)
+	U.queueSectionLayout(wrap)
 	task.defer(U.updateAllSubLines)
 end
 
@@ -802,7 +821,7 @@ end
 
 function U.secGeom(col, row, rows)
 	local gap = U.SEC_GAP
-	local topPad = 11 -- breathing room below the main tab rail
+	local topPad = 14 -- gap below the main tab rail
 	local bottomPad = gap
 	local w = math.floor((U.BODY_W - gap * 3) / 2)
 	local x = (col == 1) and gap or (gap * 2 + w)
@@ -897,7 +916,7 @@ function U.section(parent, col, row, rows)
 
 	local header = U.new("Frame", {
 		Name = "SectionTabs", BackgroundTransparency = 1, BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, -7), ZIndex = 5,
+		Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, -7), ZIndex = 30, Active = true,
 	}, f)
 
 	local pages = U.new("Frame", {
@@ -965,7 +984,8 @@ function U.section(parent, col, row, rows)
 					TextSize = U.TEXT_SZ,
 					TextColor3 = selected and U.theme.Text or U.GRAY_TEXT,
 					Text = t.name,
-					ZIndex = 6,
+					ZIndex = 31,
+					Active = true,
 				}, header)
 				btn:SetAttribute("FixedGray", not selected)
 				sec._buttons[t.name] = btn
@@ -978,6 +998,7 @@ function U.section(parent, col, row, rows)
 	end
 
 sec.layoutTabs = layoutTabs
+	f:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutTabs)
 
 	function sec:SelectTab(name)
 		if sec._current == name then return end
@@ -1016,16 +1037,10 @@ sec.layoutTabs = layoutTabs
 		}, pages)
 		local listLayout = U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
 		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, content)
-		local layoutPending = false
 		local function requestPageLayout()
-			if layoutPending then return end
-			layoutPending = true
-			task.defer(function()
-				layoutPending = false
-				if U._layoutBusy then requestPageLayout() return end
-				local pg = content.Parent and content.Parent.Parent
-				if pg and U.layoutPage then U.layoutPage(pg, false) end
-			end)
+			local sectionFrame = content.Parent and content.Parent.Parent
+			local page = sectionFrame and sectionFrame.Parent
+			if page then U.queuePageLayout(page) end
 		end
 		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			if U.closeDropdown then U.closeDropdown() end
@@ -2160,7 +2175,7 @@ function U.dragPanel(f, kind)
 end
 
 function U.buildFloaters()
-	local gen, P = U.gen, U.PAD
+	local P = U.PAD
 	local textPos, textSize = UDim2.fromOffset(P, U.LINE_H + P), UDim2.new(1, -P * 2, 0, U.TEXT_SZ)
 
 	local wm = U.mkPanel(U.gui, "Watermark", 50)
@@ -2169,14 +2184,17 @@ function U.buildFloaters()
 	local wtxt = U.label(wm, "", { Position = textPos, Size = textSize, TextYAlignment = Enum.TextYAlignment.Center })
 	U.wmText = wtxt
 
-	local frames, fps = 0, 60
-	U.track(U.Run.RenderStepped:Connect(function() frames += 1 end))
-	task.spawn(function()
-		while U.running and U.gen == gen do
-			task.wait(1)
-			fps, frames = frames, 0
+	local frames, fps, elapsed = 0, 60, 0
+	local refreshWm
+	U.track(U.Run.RenderStepped:Connect(function(dt)
+		frames += 1
+		elapsed += dt
+		if elapsed >= 1 then
+			fps = math.floor(frames / elapsed + 0.5)
+			frames, elapsed = 0, 0
+			if U.vflags.Watermark and refreshWm then refreshWm() end
 		end
-	end)
+	end))
 	local function ping()
 		local ok, v = pcall(function()
 			if U.lp and U.lp.GetNetworkPing then
@@ -2186,7 +2204,7 @@ function U.buildFloaters()
 		end)
 		return ok and v or 0
 	end
-	local function refreshWm()
+	refreshWm = function()
 		local on = U.vflags.Watermark == true
 		wm.Visible = on
 		if not on then return end
@@ -2201,18 +2219,11 @@ function U.buildFloaters()
 		wtxt.Text = #parts > 0 and table.concat(parts, " | ") or "wavelength"
 		wtxt.TextColor3 = U.theme.Text
 		wm.Size = U.panelSize(U.textW(wtxt), 1)
-		U.dock("wm")
 		U.syncFloatingVisibility()
 	end
 	U.onFlag("Watermark", function() refreshWm() U.syncFloatingVisibility() end)
 	U.onFlag("WatermarkItems", refreshWm)
 	U.onFlag("WatermarkMessage", refreshWm)
-	task.spawn(function()
-		while U.running and U.gen == gen do
-			task.wait(0.25)
-			if U.vflags.Watermark then refreshWm() end
-		end
-	end)
 	refreshWm()
 	U.dragPanel(wm, "wm")
 
@@ -2239,7 +2250,6 @@ function U.buildFloaters()
 			count += 1
 		end
 		kb.Size = U.panelSize(maxW, math.max(count, 1))
-		U.dock("kb")
 		U.syncFloatingVisibility()
 	end
 	function U.refreshKeybindList()
@@ -2252,6 +2262,15 @@ function U.buildFloaters()
 		U._kbRefreshing = false
 	end
 	U.onFlag("KeybindsList", function() U.refreshKeybindList() end)
+
+	local function updateDockedPanels()
+		if U.wmDocked then U.dock("wm") end
+		if U.kbDocked then U.dock("kb") end
+	end
+	U.track(U.shell:GetPropertyChangedSignal("Position"):Connect(updateDockedPanels))
+	U.track(U.shell:GetPropertyChangedSignal("Size"):Connect(updateDockedPanels))
+	U.track(wm:GetPropertyChangedSignal("Size"):Connect(function() if U.wmDocked then U.dock("wm") end end))
+	U.track(kb:GetPropertyChangedSignal("Size"):Connect(function() if U.kbDocked then U.dock("kb") end end))
 
 	U.dragPanel(kb, "kb")
 
@@ -2440,6 +2459,7 @@ function U.buildConfig()
 
 	U.buildFloaters()
 	pcall(function() U.buildExplorer() end)
+	U.queuePageLayout(p)
 
 	local function teleportTo(jobId)
 		local ts = game:GetService("TeleportService")
@@ -2503,6 +2523,7 @@ function U.buildTabs()
 		local dir = (tabIndex[name] or 0) > (tabIndex[from] or 0) and 1 or -1
 		local oldPage, newPage = U.pageFrames[from], U.pageFrames[name]
 		U.currentTab = name
+		if newPage and U.layoutPage then U.layoutPage(newPage, false) end
 		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
 		U.syncFloatingVisibility()
 			for n, b in pairs(U.tabButtons) do
@@ -2580,12 +2601,9 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
-	for _, page in pairs(U.pageFrames or {}) do
-		U.layoutPage(page, false)
-	end
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	if page then U.layoutPage(page, false) end
 	if U.layoutBottomBar then U.layoutBottomBar() end
-	if U.wmDocked then U.dock("wm") end
-	if U.kbDocked then U.dock("kb") end
 end
 
 function U.quickReflow()
@@ -2634,14 +2652,10 @@ end
 
 function U.layoutPage(page, full)
 	if not page then return end
-	if U._layoutBusy then return end
+	if U._layoutBusy then U.queuePageLayout(page) return end
 	U._layoutBusy = true
 	local gap = U.SEC_GAP
-	local topPad = 11
-	local bottomReserve = gap
-	if U.bottomBarOn then
-		bottomReserve = bottomReserve + (U.BOTTOM_BAR_H or 18) + gap
-	end
+	local topPad = 14
 	for side = 1, 2 do
 		local frames = {}
 		for _, ch in ipairs(page:GetChildren()) do
@@ -2657,15 +2671,11 @@ function U.layoutPage(page, full)
 		local y = topPad
 		for i, ch in ipairs(frames) do
 			local h = U.sectionContentHeight(ch)
-			ch.Size = UDim2.fromOffset(w, h)
-			ch.Position = UDim2.fromOffset(x, y)
-			ch:SetAttribute("SectionRow", i)
+			local size, position = UDim2.fromOffset(w, h), UDim2.fromOffset(x, y)
+			if ch.Size ~= size then ch.Size = size end
+			if ch.Position ~= position then ch.Position = position end
+			if ch:GetAttribute("SectionRow") ~= i then ch:SetAttribute("SectionRow", i) end
 			y = y + h + gap
-		end
-	end
-	for _, sec in ipairs(U.sectionObjs or {}) do
-		if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
-			sec.layoutTabs()
 		end
 	end
 	if full then
@@ -2676,7 +2686,7 @@ function U.layoutPage(page, full)
 			pcall(fn)
 		end
 	end
-	if U.updateConfigListHeight then
+	if U.updateConfigListHeight and page == U.pageFrames.config then
 		U.updateConfigListHeight()
 	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
@@ -2788,11 +2798,7 @@ function U.bindInput()
 		U.closePopups()
 		dragging, ds, sp = true, input.Position, U.shell.Position
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-				if U.wmDocked then U.dock("wm") end
-				if U.kbDocked then U.dock("kb") end
-			end
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
 		end)
 	end
 	U.track(U.UIS.InputBegan:Connect(beginDrag))
@@ -2800,8 +2806,6 @@ function U.bindInput()
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-		if U.wmDocked then U.dock("wm") end
-		if U.kbDocked then U.dock("kb") end
 	end))
 
 	U.menuOpen = true
