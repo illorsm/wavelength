@@ -460,6 +460,7 @@ end
 function U.shutdown()
 	if U._shuttingDown then return end
 	U._shuttingDown, U.running = true, false
+	if U.bottomBarUpdateConn then U.bottomBarUpdateConn:Disconnect() U.bottomBarUpdateConn = nil end
 	for _, k in ipairs({
 		"VisualsEnabled", "NoRecoil", "NoSpread", "LeftArmEnabled", "RightArmEnabled", "LeftGloveEnabled", "RightGloveEnabled", "HideGloveSurfaces",
 		"RemoveSniperScope", "LightingAmbientEnabled", "LightingOutdoorAmbientEnabled", "LightingGlobalShadows", "LightingPrioritizeQuality", "Watermark",
@@ -1967,6 +1968,35 @@ function U.shellHeight()
 	return h
 end
 
+function U.refreshBottomBar()
+	if not U.bottomBarLabel then return end
+	local value = U.bottomBarText
+	if type(value) == "function" then
+		local ok, result = pcall(value)
+		value = ok and result or ""
+	end
+	value = tostring(value or "")
+	if U.bottomBarLabel.Text ~= value then U.bottomBarLabel.Text = value end
+end
+
+function U.bindBottomBarUpdater()
+	if U.bottomBarUpdateConn then
+		U.bottomBarUpdateConn:Disconnect()
+		U.bottomBarUpdateConn = nil
+	end
+	if U.bottomBarOn and type(U.bottomBarText) == "function" then
+		local elapsed = 0
+		U.bottomBarUpdateConn = U.Run.Heartbeat:Connect(function(dt)
+			if not U.running or not U.bottomBarOn then return end
+			elapsed += dt
+			if elapsed >= 0.25 then
+				elapsed %= 0.25
+				U.refreshBottomBar()
+			end
+		end)
+	end
+end
+
 function U.layoutBottomBar()
 	if not U.bottomBar then return end
 	local gap = U.SEC_GAP
@@ -1974,19 +2004,24 @@ function U.layoutBottomBar()
 	if not U.bottomBarOn then return end
 	U.bottomBar.Size = UDim2.new(1, -gap * 2, 0, U.BOTTOM_BAR_H or 18)
 	U.bottomBar.Position = UDim2.new(0, gap, 1, -(gap + (U.BOTTOM_BAR_H or 18)))
-	if U.bottomBarLabel then
-		U.bottomBarLabel.Text = tostring(U.bottomBarText or "")
-	end
+	U.refreshBottomBar()
 end
 
 function U.setBottomBar(on, text)
 	U.bottomBarOn = on == true
-	if text ~= nil then U.bottomBarText = tostring(text) end
+	if text ~= nil then U.bottomBarText = text end
+	U.bindBottomBarUpdater()
 	if U.shell then
 		U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
 		U.layoutBottomBar()
 		U.applyBodyLayout(true)
 	end
+end
+
+function U.setBottomBarText(text)
+	U.bottomBarText = text
+	U.bindBottomBarUpdater()
+	U.refreshBottomBar()
 end
 
 function U.buildShell()
@@ -2059,6 +2094,7 @@ function U.buildShell()
 		ZIndex = 7,
 	})
 	U.layoutBottomBar()
+	U.bindBottomBarUpdater()
 end
 
 local function panelOf(kind)
@@ -2652,6 +2688,10 @@ end
 
 function U.layoutPage(page, full)
 	if not page then return end
+	if page == U.explorerPage then
+		if U.layoutExplorer then U.layoutExplorer() end
+		return
+	end
 	if U._layoutBusy then U.queuePageLayout(page) return end
 	U._layoutBusy = true
 	local gap = U.SEC_GAP
@@ -2915,6 +2955,7 @@ function U.buildExplorer()
 		Position = UDim2.fromOffset(0, U.LINE_H + 20),
 		ZIndex = 41,
 	}, panel)
+	U.explorerPage = page
 	do
 		local dragging, ds, sp
 		local function begin(input)
@@ -3025,8 +3066,10 @@ function U.buildExplorer()
 			return ch
 		end
 
-		local explList = U.section(page, 1, 1, 2):AddTab("explorer")._content
-		local propList = U.section(page, 1, 2, 2):AddTab("properties")._content
+		local explorerSection = U.section(page, 1, 1, 2)
+		local propertiesSection = U.section(page, 1, 2, 2)
+		local explList = explorerSection:AddTab("explorer")._content
+		local propList = propertiesSection:AddTab("properties")._content
 		explList.ScrollBarThickness = 0
 		explList.ScrollBarImageTransparency = 1
 		propList.ScrollBarThickness = 0
@@ -3034,39 +3077,28 @@ function U.buildExplorer()
 
 		local function layoutExplorer()
 			if not page or not page.Parent then return end
-			local gap = 8
-			local topPad = 4
-			local frames = {}
-			for _, ch in ipairs(page:GetChildren()) do
-				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") then
-					frames[#frames + 1] = ch
-				end
+			local gap, topPad, bottomPad = 8, 4, 4
+			local width = math.max(1, page.AbsoluteSize.X - gap * 2)
+			local height = math.max(2, page.AbsoluteSize.Y - topPad - bottomPad - gap)
+			local firstHeight = math.floor(height / 2)
+			local secondHeight = height - firstHeight
+			local first = explorerSection._frame
+			local second = propertiesSection._frame
+			if first and first.Parent == page then
+				first.Position = UDim2.fromOffset(gap, topPad)
+				first.Size = UDim2.fromOffset(width, firstHeight)
 			end
-			table.sort(frames, function(a, b)
-				return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
-			end)
-			local pw = math.max(page.AbsoluteSize.X, panel.AbsoluteSize.X - 4, 200)
-			local ph = math.max(page.AbsoluteSize.Y, panel.AbsoluteSize.Y - (U.LINE_H + 24), 200)
-			local n = math.max(1, #frames)
-			local usable = ph - topPad - gap - gap * (n - 1)
-			local h = math.floor(usable / n)
-			local y = topPad
-			local w = math.max(1, pw - gap * 2)
-			for i, ch in ipairs(frames) do
-				local hh = h
-				if i == n then hh = math.max(1, ph - gap - y) end
-				ch.Size = UDim2.fromOffset(w, hh)
-				ch.Position = UDim2.fromOffset(gap, y)
-				y = y + hh + gap
+			if second and second.Parent == page then
+				second.Position = UDim2.fromOffset(gap, topPad + firstHeight + gap)
+				second.Size = UDim2.fromOffset(width, secondHeight)
 			end
-			for _, sec in ipairs(U.sectionObjs or {}) do
-				if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
-					pcall(sec.layoutTabs)
-				end
-			end
+			if explorerSection.layoutTabs then explorerSection.layoutTabs() end
+			if propertiesSection.layoutTabs then propertiesSection.layoutTabs() end
 		end
+		U.layoutExplorer = layoutExplorer
 		task.defer(layoutExplorer)
 		panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
+		page:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
 
 		for _, list in ipairs({ explList, propList }) do
 			for _, ch in ipairs(list:GetChildren()) do
@@ -3325,7 +3357,7 @@ function Library:CreateWindow(opts)
 	if opts.Height then U.BODY_H = opts.Height end
 	U.bottomBarOn = opts.BottomBar == true
 	if opts.BottomBarText ~= nil then
-		U.bottomBarText = tostring(opts.BottomBarText)
+		U.bottomBarText = opts.BottomBarText
 	end
 	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
 		U.TAB_NAMES = {}
@@ -3337,6 +3369,7 @@ function Library:CreateWindow(opts)
 		end
 	end
 
+	if U.bottomBarUpdateConn then U.bottomBarUpdateConn:Disconnect() U.bottomBarUpdateConn = nil end
 	U._shuttingDown, U.running, U.menuOpen = false, true, true
 	U.gen = (U.gen or 0) + 1
 	U.hideTooltip()
@@ -3412,6 +3445,14 @@ function Library:CreateWindow(opts)
 	end
 	function win:SetBottomBar(on, text)
 		U.setBottomBar(on, text)
+		return self
+	end
+	function win:SetBottomBarText(text)
+		U.setBottomBarText(text)
+		return self
+	end
+	function win:RefreshBottomBar()
+		U.refreshBottomBar()
 		return self
 	end
 	function win:Init()
