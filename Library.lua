@@ -1011,6 +1011,7 @@ function U.section(parent, col, row, rows)
 		end)
 		-- reflow section heights when items change
 		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			if U._layoutBusy or U._resizeMoving then return end
 			local pg = content.Parent and content.Parent.Parent
 			if pg and U.layoutPage then
 				task.defer(function() U.layoutPage(pg, false) end)
@@ -2573,11 +2574,26 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
+	-- section widths only (quickReflow is non-recursive)
+	local gap = U.SEC_GAP
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	if page then
+		local sw = math.floor((U.BODY_W - gap * 3) / 2)
+		for side = 1, 2 do
+			local x = (side == 1) and gap or (gap * 2 + sw)
+			for _, ch in ipairs(page:GetChildren()) do
+				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+					ch.Size = UDim2.fromOffset(sw, ch.Size.Y.Offset)
+					ch.Position = UDim2.fromOffset(x, ch.Position.Y.Offset)
+				end
+			end
+		end
+	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
 end
 
 function U.quickReflow()
-	-- cheap: only widths / x positions / bottom bar / tabs already handled in applyShellSize
+	-- cheap: widths / x only + bottom bar (never recurse)
 	local gap = U.SEC_GAP
 	local page = U.pageFrames and U.pageFrames[U.currentTab]
 	if page then
@@ -2592,7 +2608,7 @@ function U.quickReflow()
 			end
 		end
 	end
-	if U.quickReflow then U.quickReflow() elseif U.layoutBottomBar then U.layoutBottomBar() end
+	if U.layoutBottomBar then U.layoutBottomBar() end
 end
 
 function U.sectionContentHeight(ch)
@@ -2623,6 +2639,8 @@ end
 
 function U.layoutPage(page, full)
 	if not page then return end
+	if U._layoutBusy then return end
+	U._layoutBusy = true
 	local gap = U.SEC_GAP
 	local topPad = 7
 	local bottomReserve = gap
@@ -2667,6 +2685,7 @@ function U.layoutPage(page, full)
 		U.updateConfigListHeight()
 	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
+	U._layoutBusy = false
 end
 
 function U.applyBodyLayout(full)
@@ -2703,6 +2722,7 @@ function U.bindResize()
 			local start = input.Position
 			local startW, startH = U.BODY_W, U.BODY_H
 			local moving = true
+			U._resizeMoving = true
 			local c1, c2
 			c1 = U.UIS.InputChanged:Connect(function(i)
 				if not moving then return end
@@ -2715,11 +2735,12 @@ function U.bindResize()
 				elseif mode == "bottom" then
 					U.applyShellSize(startW, startH + d.Y, false, false)
 				end
-				U.quickReflow()
+				-- applyShellSize already updates section widths; no extra work
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 					moving = false
+					U._resizeMoving = false
 					c1:Disconnect()
 					c2:Disconnect()
 					U.applyBodyLayout(true)
@@ -3050,6 +3071,11 @@ function U.buildExplorer()
 				ch.Size = UDim2.fromOffset(w, hh)
 				ch.Position = UDim2.fromOffset(gap, y)
 				y = y + hh + gap
+			end
+			for _, sec in ipairs(U.sectionObjs or {}) do
+				if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
+					pcall(sec.layoutTabs)
+				end
 			end
 		end
 		task.defer(layoutExplorer)
