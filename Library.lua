@@ -802,7 +802,7 @@ end
 
 function U.secGeom(col, row, rows)
 	local gap = U.SEC_GAP
-	local topPad = 7 -- only section-tab overhang; no extra gap under title
+	local topPad = 11 -- breathing room below the main tab rail
 	local bottomPad = gap
 	local w = math.floor((U.BODY_W - gap * 3) / 2)
 	local x = (col == 1) and gap or (gap * 2 + w)
@@ -969,12 +969,10 @@ function U.section(parent, col, row, rows)
 				}, header)
 				btn:SetAttribute("FixedGray", not selected)
 				sec._buttons[t.name] = btn
-				if n > 1 then
-					local tabName = t.name
-					btn.MouseButton1Click:Connect(function()
-						sec:SelectTab(tabName)
-					end)
-				end
+				local tabName = t.name
+				btn.MouseButton1Click:Connect(function()
+					sec:SelectTab(tabName)
+				end)
 			end
 		end
 	end
@@ -990,7 +988,10 @@ sec.layoutTabs = layoutTabs
 		paintTabs()
 		if U.closeDropdown then U.closeDropdown() end
 		if U.closeColorPicker then U.closeColorPicker() end
-		task.defer(U.updateAllSubLines)
+		task.defer(function()
+			if sec._frame.Parent then U.layoutPage(sec._frame.Parent, false) end
+			U.updateAllSubLines()
+		end)
 	end
 
 	function sec:AddTab(name)
@@ -1015,17 +1016,22 @@ sec.layoutTabs = layoutTabs
 		}, pages)
 		local listLayout = U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
 		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, content)
+		local layoutPending = false
+		local function requestPageLayout()
+			if layoutPending then return end
+			layoutPending = true
+			task.defer(function()
+				layoutPending = false
+				if U._layoutBusy then requestPageLayout() return end
+				local pg = content.Parent and content.Parent.Parent
+				if pg and U.layoutPage then U.layoutPage(pg, false) end
+			end)
+		end
 		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
 		end)
-		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-			if U._layoutBusy or U._resizeMoving then return end
-			local pg = content.Parent and content.Parent.Parent
-			if pg and U.layoutPage then
-				task.defer(function() U.layoutPage(pg, false) end)
-			end
-		end)
+		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(requestPageLayout)
 
 		local api = { _content = content, _n = 0, Section = sec }
 		local function nextOrder()
@@ -2574,19 +2580,8 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
-	local gap = U.SEC_GAP
-	local page = U.pageFrames and U.pageFrames[U.currentTab]
-	if page then
-		local sw = math.floor((U.BODY_W - gap * 3) / 2)
-		for side = 1, 2 do
-			local x = (side == 1) and gap or (gap * 2 + sw)
-			for _, ch in ipairs(page:GetChildren()) do
-				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
-					ch.Size = UDim2.fromOffset(sw, ch.Size.Y.Offset)
-					ch.Position = UDim2.fromOffset(x, ch.Position.Y.Offset)
-				end
-			end
-		end
+	for _, page in pairs(U.pageFrames or {}) do
+		U.layoutPage(page, false)
 	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
 	if U.wmDocked then U.dock("wm") end
@@ -2642,7 +2637,7 @@ function U.layoutPage(page, full)
 	if U._layoutBusy then return end
 	U._layoutBusy = true
 	local gap = U.SEC_GAP
-	local topPad = 7
+	local topPad = 11
 	local bottomReserve = gap
 	if U.bottomBarOn then
 		bottomReserve = bottomReserve + (U.BOTTOM_BAR_H or 18) + gap
@@ -3246,22 +3241,12 @@ function U.buildExplorer()
 			local hasKids = #kids > 0
 			local open = expanded[inst] == true
 
-			local arrow = Instance.new("TextLabel")
-			arrow.BackgroundTransparency = 1
-			arrow.Size = UDim2.fromOffset(10, 16)
-			arrow.Position = UDim2.fromOffset(pad, 0)
-			arrow.FontFace = U.font
-			arrow.TextSize = 10
-			arrow.TextColor3 = U.theme.Text
-			arrow.Text = hasKids and (open and "-" or "+") or " "
-			arrow.Parent = btn
-
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundColor3 = Color3.new(1, 1, 1)
 			icon.BackgroundTransparency = 1
 			icon.BorderSizePixel = 0
 			icon.Size = UDim2.fromOffset(16, 16)
-			icon.Position = UDim2.fromOffset(pad + 10, 0)
+			icon.Position = UDim2.fromOffset(pad, 0)
 			icon.ScaleType = Enum.ScaleType.Fit
 			icon.ResampleMode = Enum.ResamplerMode.Pixelated
 			icon.Parent = btn
@@ -3269,8 +3254,8 @@ function U.buildExplorer()
 
 			local lab = Instance.new("TextLabel")
 			lab.BackgroundTransparency = 1
-			lab.Size = UDim2.new(1, -(pad + 28), 1, 0)
-			lab.Position = UDim2.fromOffset(pad + 28, 0)
+			lab.Size = UDim2.new(1, -(pad + 18), 1, 0)
+			lab.Position = UDim2.fromOffset(pad + 18, 0)
 			lab.FontFace = U.font
 			lab.TextSize = U.TEXT_SZ
 			lab.TextColor3 = U.theme.Text
@@ -3428,6 +3413,14 @@ function Library:CreateWindow(opts)
 	function win:Init()
 		U.buildTabs()
 		U.bindInput()
+		U.applyBodyLayout(true)
+		for name, page in pairs(U.pageFrames or {}) do
+			if name ~= U.currentTab then U.layoutPage(page, true) end
+		end
+		task.defer(function()
+			if not U.running then return end
+			for _, page in pairs(U.pageFrames or {}) do U.layoutPage(page, true) end
+		end)
 		U.layoutBottomBar()
 	end
 	function win:Unload() U.shutdown() end
