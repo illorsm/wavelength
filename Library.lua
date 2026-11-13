@@ -49,7 +49,10 @@ U.TEXT_SZ = 12
 U.LINE_H = 2 
 U.PAD = 6 
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 400, 520, 18, 8
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 400, 520, 28, 8
+U.BOTTOM_BAR_H = 18
+U.bottomBarOn = false
+U.bottomBarText = ""
 U.MIN_W, U.MIN_H = 320, 400
 U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
@@ -1000,11 +1003,18 @@ function U.section(parent, col, row, rows)
 			ClipsDescendants = true,
 			Visible = #sec._tabs == 0,
 		}, pages)
-		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
-		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 2) }, content)
+		local listLayout = U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
+		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, content)
 		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
+		end)
+		-- reflow section heights when items change
+		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			local pg = content.Parent and content.Parent.Parent
+			if pg and U.layoutPage then
+				task.defer(function() U.layoutPage(pg, false) end)
+			end
 		end)
 
 		local api = { _content = content, _n = 0, Section = sec }
@@ -1701,9 +1711,9 @@ function U.attachPicker(rowFrame, flagKey, defaultVal, showTransparency, title)
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
-	rowFrame:SetAttribute("RightPad", rightPad + 26 + 4 + 2)
+	rowFrame:SetAttribute("RightPad", rightPad + 24 + 4 + 2)
 	local sw = U.new("TextButton", {
-		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(26, 13), AnchorPoint = Vector2.new(1, 0.5),
+		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(24, 12), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -rightPad, 0.5, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12,
 	}, rowFrame)
 	U.controlStroke(sw)
@@ -1921,7 +1931,33 @@ end
 
 
 function U.shellHeight()
-	return U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
+	local h = U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
+	if U.bottomBarOn then
+		h = h + (U.BOTTOM_BAR_H or 18) + U.SEC_GAP
+	end
+	return h
+end
+
+function U.layoutBottomBar()
+	if not U.bottomBar then return end
+	local gap = U.SEC_GAP
+	U.bottomBar.Visible = U.bottomBarOn == true
+	if not U.bottomBarOn then return end
+	U.bottomBar.Size = UDim2.new(1, -gap * 2, 0, U.BOTTOM_BAR_H or 18)
+	U.bottomBar.Position = UDim2.new(0, gap, 1, -(gap + (U.BOTTOM_BAR_H or 18)))
+	if U.bottomBarLabel then
+		U.bottomBarLabel.Text = tostring(U.bottomBarText or "")
+	end
+end
+
+function U.setBottomBar(on, text)
+	U.bottomBarOn = on == true
+	if text ~= nil then U.bottomBarText = tostring(text) end
+	if U.shell then
+		U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
+		U.layoutBottomBar()
+		U.applyBodyLayout(true)
+	end
 end
 
 function U.buildShell()
@@ -1978,6 +2014,25 @@ function U.buildShell()
 		U.pageFrames[n] = U.new("Frame", { Name = n, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = i == 1 }, U.pages)
 	end
 	U.currentTab = U.TAB_NAMES[1]
+
+	-- bottom bar (optional, controlled via CreateWindow / SetBottomBar)
+	U.bottomBar = U.new("Frame", {
+		Name = "BottomBar",
+		BackgroundColor3 = U.theme.SectionBg,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 6,
+	}, U.shell)
+	table.insert(U.themeReg.sectionBgs, U.bottomBar)
+	U.stroke(U.bottomBar, "SectionBorder")
+	U.bottomBarLabel = U.label(U.bottomBar, "", {
+		Name = "BottomBarText",
+		Size = UDim2.new(1, -10, 1, 0),
+		Position = UDim2.fromOffset(5, 0),
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 7,
+	})
+	U.layoutBottomBar()
 end
 
 local function panelOf(kind)
@@ -2356,6 +2411,13 @@ function U.buildConfig()
 	U.mkKeybind(settingsContent, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
 	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
+	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
+	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
+	U.subOf(U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder()), "Watermark")
+	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
+	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
+	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
+
 	U.mkToggle(settingsContent, "explorer", "Explorer", nextOrder(), false)
 	U.onFlag("Explorer", function()
 		if U._setExplorerVisible then
@@ -2368,12 +2430,6 @@ function U.buildConfig()
 		end
 	end)
 
-	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
-	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
-	U.subOf(U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder()), "Watermark")
-	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
-	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
-	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
 	U.buildFloaters()
 	-- floating explorer window (settings toggle)
 	pcall(function() U.buildExplorer() end)
@@ -2424,14 +2480,14 @@ end
 
 function U.buildTabs()
 	local rail = U.new("Frame", {
-		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
+		Name = "TabRail", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
 		Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H),
 	}, U.shell)
+	table.insert(U.themeReg.bodyBgs, rail)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
 	local tabIndex, swiping = {}, false
 	for i, n in ipairs(U.TAB_NAMES) do tabIndex[n] = i end
-	local ON, OFF = Color3.fromRGB(22, 22, 22), Color3.fromRGB(12, 12, 12)
 
 	local function selectTab(name)
 		if name == U.currentTab or swiping then return end
@@ -2443,7 +2499,8 @@ function U.buildTabs()
 		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
 		U.syncFloatingVisibility()
 			for n, b in pairs(U.tabButtons) do
-			b.BackgroundColor3, b.TextColor3 = (n == name) and ON or OFF, U.theme.Text
+			b.BackgroundColor3 = U.theme.Background
+			b.TextColor3 = U.theme.Text
 			local acc = b:FindFirstChild("TabAccent")
 			if acc then acc.Visible = n == name end
 		end
@@ -2464,10 +2521,11 @@ function U.buildTabs()
 
 	for i, name in ipairs(U.TAB_NAMES) do
 		local b = U.new("TextButton", {
-			Name = name, AutoButtonColor = false, BackgroundColor3 = (name == U.currentTab) and ON or OFF, BorderSizePixel = 0,
+			Name = name, AutoButtonColor = false, BackgroundColor3 = U.theme.Background, BorderSizePixel = 0,
 			Size = UDim2.fromOffset((i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W, U.TAB_H), Position = UDim2.fromOffset((i - 1) * U.TAB_W, 0),
 			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = name,
 		}, rail)
+		table.insert(U.themeReg.bodyBgs, b)
 		local acc = U.new("Frame", {
 			Name = "TabAccent", BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2), BackgroundColor3 = U.theme.Accent1,
 			Visible = name == U.currentTab, ZIndex = 3,
@@ -2515,11 +2573,43 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
+	if U.layoutBottomBar then U.layoutBottomBar() end
+end
+
+function U.sectionContentHeight(ch)
+	local padY = 6 -- equal top/bottom padding inside section
+	local headerH = 14
+	local contentH = 8
+	local pages = ch:FindFirstChild("Pages")
+	if pages then
+		for _, p in ipairs(pages:GetChildren()) do
+			if p:IsA("ScrollingFrame") and p.Visible then
+				local layout = p:FindFirstChildOfClass("UIListLayout")
+				if layout then
+					contentH = math.max(contentH, layout.AbsoluteContentSize.Y)
+				else
+					local sum = 0
+					for _, c in ipairs(p:GetChildren()) do
+						if c:IsA("GuiObject") and c.Visible then
+							sum = sum + c.AbsoluteSize.Y
+						end
+					end
+					contentH = math.max(contentH, sum)
+				end
+			end
+		end
+	end
+	return headerH + padY * 2 + contentH
 end
 
 function U.layoutPage(page, full)
 	if not page then return end
-	-- direct section geometry (no deferred work while resizing)
+	local gap = U.SEC_GAP
+	local topPad = 7
+	local bottomReserve = gap
+	if U.bottomBarOn then
+		bottomReserve = bottomReserve + (U.BOTTOM_BAR_H or 18) + gap
+	end
 	for side = 1, 2 do
 		local frames = {}
 		for _, ch in ipairs(page:GetChildren()) do
@@ -2530,12 +2620,15 @@ function U.layoutPage(page, full)
 		table.sort(frames, function(a, b)
 			return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
 		end)
-		local n = #frames
+		local w = math.floor((U.BODY_W - gap * 3) / 2)
+		local x = (side == 1) and gap or (gap * 2 + w)
+		local y = topPad
 		for i, ch in ipairs(frames) do
-			local x, y, w, h = U.secGeom(side, i, n)
+			local h = U.sectionContentHeight(ch)
 			ch.Size = UDim2.fromOffset(w, h)
 			ch.Position = UDim2.fromOffset(x, y)
 			ch:SetAttribute("SectionRow", i)
+			y = y + h + gap
 		end
 	end
 	for _, sec in ipairs(U.sectionObjs or {}) do
@@ -2554,6 +2647,7 @@ function U.layoutPage(page, full)
 	if U.updateConfigListHeight then
 		U.updateConfigListHeight()
 	end
+	if U.layoutBottomBar then U.layoutBottomBar() end
 end
 
 function U.applyBodyLayout(full)
@@ -2569,7 +2663,7 @@ function U.applyBodySize(w, h, anchorRight, anchorBottom)
 end
 
 function U.bindResize()
-	U.MIN_W, U.MIN_H = 420, 280
+	U.MIN_W, U.MIN_H = U.MIN_W or 320, U.MIN_H or 400
 	if not U.shell then return end
 	local function handle(name, size, pos, cursor)
 		local h = U.new("Frame", {
@@ -2591,6 +2685,7 @@ function U.bindResize()
 			local startW, startH = U.BODY_W, U.BODY_H
 			local moving = true
 			local c1, c2
+			local lastLayout = 0
 			c1 = U.UIS.InputChanged:Connect(function(i)
 				if not moving then return end
 				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -2602,8 +2697,12 @@ function U.bindResize()
 				elseif mode == "bottom" then
 					U.applyShellSize(startW, startH + d.Y, false, false)
 				end
-				-- every move: current tab sections + docks + saved list height
-				U.applyBodyLayout(false)
+				-- throttle expensive layout while resizing
+				local now = os.clock()
+				if now - lastLayout >= 0.05 then
+					lastLayout = now
+					U.applyBodyLayout(false)
+				end
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -2662,7 +2761,11 @@ function U.bindInput()
 		U.closePopups()
 		dragging, ds, sp = true, input.Position, U.shell.Position
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+				if U.wmDocked then U.dock("wm") end
+				if U.kbDocked then U.dock("kb") end
+			end
 		end)
 	end
 	U.track(U.UIS.InputBegan:Connect(beginDrag))
@@ -2670,11 +2773,8 @@ function U.bindInput()
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-		U.hideSnapGhost("wm")
-		U.hideSnapGhost("kb")
-				if U.wmDocked then U.dock("wm") end
-		if U.kbDocked then U.dock("kb") end
-		end))
+	end))
+	-- snap docks once when drag ends (handled via input.Changed on beginDrag end)
 
 	U.menuOpen = true
 	task.defer(function()
@@ -2767,25 +2867,33 @@ function U.buildExplorer()
 	U.stroke(panel, "Border")
 	table.insert(U.themeReg.bodyBgs, panel)
 	U.explorerPanel = panel
+	-- accent bar like main UI
+	local expAccent = U.new("Frame", {
+		Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 42,
+	}, panel)
+	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, expAccent))
 	U.label(panel, "dex explorer", {
 		Name = "ExplorerTitle",
 		Size = UDim2.new(1, -12, 0, 18),
-		Position = UDim2.fromOffset(6, 4),
+		Position = UDim2.fromOffset(6, U.LINE_H + 2),
 		ZIndex = 41,
 	})
 	local page = U.new("Frame", {
 		Name = "explorer",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -24),
-		Position = UDim2.fromOffset(0, 22),
+		Size = UDim2.new(1, 0, 1, -(U.LINE_H + 22)),
+		Position = UDim2.fromOffset(0, U.LINE_H + 20),
 		ZIndex = 41,
 	}, panel)
-	-- drag explorer by title / panel background
+	-- drag explorer by panel
 	do
 		local dragging, ds, sp
 		local function begin(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+			local objs = U.objsAtMouse()
+			if objs[1] and (objs[1]:IsA("TextButton") or objs[1]:IsA("TextBox") or objs[1].Name == "ResizeHandle") then return end
 			dragging, ds, sp = true, input.Position, panel.Position
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then dragging = false end
@@ -2798,6 +2906,44 @@ function U.buildExplorer()
 			local d = input.Position - ds
 			panel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		end))
+	end
+	-- resize handles
+	do
+		local edge = 10
+		local function rh(sz, pos)
+			return U.new("Frame", {
+				Name = "ResizeHandle", BackgroundTransparency = 1, BorderSizePixel = 0,
+				Size = sz, Position = pos, ZIndex = 50, Active = true,
+			}, panel)
+		end
+		local right = rh(UDim2.new(0, edge, 1, 0), UDim2.new(1, -math.floor(edge / 2), 0, 0))
+		local bottom = rh(UDim2.new(1, 0, 0, edge), UDim2.new(0, 0, 1, -math.floor(edge / 2)))
+		local function bind(obj, mode)
+			obj.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+				local start, sw, sh = input.Position, panel.AbsoluteSize.X, panel.AbsoluteSize.Y
+				local moving = true
+				local c1, c2
+				c1 = U.UIS.InputChanged:Connect(function(i)
+					if not moving then return end
+					if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+					local d = i.Position - start
+					local nw, nh = sw, sh
+					if mode == "right" then nw = math.clamp(sw + d.X, 220, 700) end
+					if mode == "bottom" then nh = math.clamp(sh + d.Y, 280, 800) end
+					panel.Size = UDim2.fromOffset(math.floor(nw), math.floor(nh))
+				end)
+				c2 = U.UIS.InputEnded:Connect(function(i)
+					if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+						moving = false
+						c1:Disconnect()
+						c2:Disconnect()
+					end
+				end)
+			end)
+		end
+		bind(right, "right")
+		bind(bottom, "bottom")
 	end
 
 		local RMD={["Accessory"]={o=30,i=32},["AccessoryDescription"]={o=22,i=104},["Accoutrement"]={o=20,i=32},["Actor"]={o=10,i=113},["AdGui"]={o=200,i=145},["AdPlacement"]={o=200,i=0},["AdPortal"]={o=200,i=146},["AirController"]={o=20,i=0},["AlignOrientation"]={o=30,i=100},["AlignPosition"]={o=30,i=99},["AnalyticsService"]={o=9999,i=0},["AngularVelocity"]={o=30,i=103},["Animation"]={o=220,i=60},["AnimationConstraint"]={o=30,i=0},["AnimationController"]={o=220,i=60},["AnimationTrack"]={o=220,i=60},["Animator"]={o=220,i=60},["ArcHandles"]={o=200,i=56},["AssetService"]={o=9999,i=0},["Atmosphere"]={o=5,i=28},["AtmosphereSensor"]={o=20,i=0},["Attachment"]={o=30,i=81},["AudioAnalyzer"]={o=10,i=11},["AudioChannelMixer"]={o=10,i=11},["AudioChannelSplitter"]={o=10,i=11},["AudioChorus"]={o=10,i=11},["AudioCompressor"]={o=10,i=11},["AudioDeviceInput"]={o=10,i=11},["AudioDeviceOutput"]={o=10,i=11},["AudioDistortion"]={o=10,i=11},["AudioEcho"]={o=10,i=11},["AudioEmitter"]={o=10,i=11},["AudioEqualizer"]={o=10,i=11},["AudioFDNReverb"]={o=10,i=11},["AudioFader"]={o=10,i=11},["AudioFilter"]={o=10,i=11},["AudioFlanger"]={o=10,i=11},["AudioGate"]={o=10,i=11},["AudioLimiter"]={o=10,i=11},["AudioListener"]={o=10,i=11},["AudioPitchShifter"]={o=10,i=11},["AudioPlayer"]={o=10,i=11},["AudioRecorder"]={o=10,i=11},["AudioReverb"]={o=10,i=11},["AudioSpeechToText"]={o=10,i=11},["AudioStreamReader"]={o=10,i=11},["AudioStreamWriter"]={o=10,i=11},["AudioTextToSpeech"]={o=10,i=11},["AudioTremolo"]={o=10,i=11},["AudioWindSynthesizer"]={o=10,i=11},["AuroraScript"]={o=50,i=76},["AvatarAccessoryRules"]={o=20,i=0},["AvatarAnimationRules"]={o=20,i=0},["AvatarBodyRules"]={o=20,i=0},["AvatarClothingRules"]={o=20,i=0},["AvatarCollisionRules"]={o=20,i=0},["AvatarRules"]={o=20,i=0},["Backpack"]={o=30,i=20},["BackpackItem"]={o=20,i=0},["BadgeService"]={o=9999,i=0},["BallSocketConstraint"]={o=30,i=86},["BasePart"]={o=3,i=0},["Beam"]={o=30,i=96},["BevelMesh"]={o=9999,i=0},["BillboardGui"]={o=140,i=64},["BindableEvent"]={o=50,i=67},["BindableFunction"]={o=40,i=66},["BlockMesh"]={o=30,i=8},["BloomEffect"]={o=20,i=83},["BlurEffect"]={o=20,i=83},["BodyAngularVelocity"]={o=140,i=14},["BodyColors"]={o=20,i=0},["BodyForce"]={o=140,i=14},["BodyGyro"]={o=140,i=14},["BodyPartDescription"]={o=22,i=104},["BodyPosition"]={o=140,i=14},["BodyThrust"]={o=140,i=14},["BodyVelocity"]={o=140,i=14},["Bone"]={o=30,i=114},["BoolValue"]={o=30,i=4},["BoxHandleAdornment"]={o=205,i=111},["BrickColorValue"]={o=30,i=4},["BubbleChatConfiguration"]={o=13,i=0},["BuoyancySensor"]={o=20,i=0},["CFrameValue"]={o=30,i=4},["Camera"]={o=5,i=5},["CanvasGroup"]={o=200,i=48},["ChangeHistoryService"]={o=9999,i=0},["ChannelTabsConfiguration"]={o=12,i=141},["CharacterMesh"]={o=220,i=60},["Chat"]={o=510,i=33},["ChatInputBarConfiguration"]={o=11,i=142},["ChatService"]={o=510,i=33},["ChatWindowConfiguration"]={o=10,i=141},["ChorusSoundEffect"]={o=20,i=84},["ClickDetector"]={o=30,i=41},["ClimbController"]={o=20,i=0},["Clothing"]={o=20,i=0},["Clouds"]={o=5,i=28},["CollectionService"]={o=9999,i=0},["Color3Value"]={o=30,i=4},["ColorCorrectionEffect"]={o=20,i=83},["ColorGradingEffect"]={o=20,i=83},["CompressorSoundEffect"]={o=20,i=84},["ConeHandleAdornment"]={o=205,i=110},["Configuration"]={o=220,i=58},["Constraint"]={o=30,i=86},["ContextActionService"]={o=9999,i=0},["ControlState"]={o=31,i=0},["ControllerManager"]={o=20,i=0},["ControllerPartSensor"]={o=20,i=0},["CoreGui"]={o=30,i=46},["CorePackages"]={o=30,i=20},["CornerWedgePart"]={o=120,i=1},["CustomEvent"]={o=30,i=4},["CustomEventReceiver"]={o=30,i=4},["CylinderHandleAdornment"]={o=205,i=109},["CylinderMesh"]={o=30,i=8},["CylindricalConstraint"]={o=30,i=95},["DataModel"]={o=9999,i=0},["DataModelMesh"]={o=9999,i=0},["DataStoreService"]={o=9999,i=0},["Debris"]={o=9999,i=30},["DebugSettings"]={o=20,i=0},["DebuggerBreakpoint"]={o=9999,i=0},["DebuggerManager"]={o=9999,i=0},["DebuggerWatch"]={o=9999,i=0},["Decal"]={o=40,i=7},["DepthOfFieldEffect"]={o=20,i=83},["Dialog"]={o=220,i=62},["DialogChoice"]={o=220,i=63},["DistortionSoundEffect"]={o=20,i=84},["DoubleConstrainedValue"]={o=30,i=4},["DragDetector"]={o=30,i=41},["EchoSoundEffect"]={o=20,i=84},["EditableMesh"]={o=9999,i=0},["EqualizerSoundEffect"]={o=20,i=84},["Explosion"]={o=30,i=36},["FaceControls"]={o=105,i=129},["FaceInstance"]={o=9999,i=0},["Feature"]={o=20,i=0},["FileMesh"]={o=9999,i=0},["Fire"]={o=30,i=61},["Flag"]={o=30,i=38},["FlagStand"]={o=30,i=39},["FlangeSoundEffect"]={o=20,i=84},["FloorWire"]={o=30,i=4},["FluidForceSensor"]={o=20,i=0},["Folder"]={o=10,i=77},["ForceField"]={o=30,i=37},["Frame"]={o=150,i=48},["FunctionalTest"]={o=10,i=0},["GameSettings"]={o=20,i=0},["GeneratedFolder"]={o=10,i=77},["GlobalDataStore"]={o=-1,i=0},["GlobalSettings"]={o=20,i=0},["Glue"]={o=9999,i=0},["GroundController"]={o=20,i=0},["GuiBase2d"]={o=9999,i=0},["GuiButton"]={o=160,i=52},["GuiMain"]={o=140,i=47},["GuiObject"]={o=9999,i=0},["GuiService"]={o=9999,i=0},["HandRigDescription"]={o=222,i=53},["Handles"]={o=190,i=53},["HapticEffect"]={o=100,i=0},["Hat"]={o=30,i=45},["Highlight"]={o=20,i=133},["HingeConstraint"]={o=30,i=87},["Hint"]={o=110,i=33},["Hole"]={o=20,i=0},["Hopper"]={o=20,i=0},["HopperBin"]={o=240,i=22},["HttpService"]={o=9999,i=0},["Humanoid"]={o=30,i=9},["HumanoidDescription"]={o=22,i=104},["HumanoidRigDescription"]={o=220,i=53},["IKControl"]={o=220,i=53},["ImageButton"]={o=160,i=52},["ImageHandleAdornment"]={o=205,i=108},["ImageLabel"]={o=180,i=49},["InputAction"]={o=31,i=0},["InputActionLabel"]={o=185,i=0},["InputBinding"]={o=31,i=0},["InputContext"]={o=31,i=0},["InputObject"]={o=9999,i=0},["InsertService"]={o=9999,i=0},["Instance"]={o=9999,i=0},["IntConstrainedValue"]={o=30,i=4},["IntValue"]={o=30,i=4},["Item"]={o=20,i=0},["JointInstance"]={o=200,i=34},["JointsService"]={o=9999,i=0},["Keyframe"]={o=220,i=60},["KeyframeMarker"]={o=220,i=60},["LayerCollector"]={o=9999,i=0},["Light"]={o=30,i=13},["Lighting"]={o=30,i=13},["LineForce"]={o=30,i=101},["LineHandleAdornment"]={o=205,i=107},["LinearVelocity"]={o=30,i=132},["LocalBackpack"]={o=9999,i=0},["LocalBackpackItem"]={o=9999,i=0},["LocalScript"]={o=40,i=18},["LocalizationService"]={o=530,i=92},["LocalizationTable"]={o=30,i=97},["LogService"]={o=9999,i=0},["LuaSourceContainer"]={o=9999,i=0},["MakeupDescription"]={o=22,i=104},["MarketplaceService"]={o=9999,i=46},["MaterialService"]={o=30,i=131},["MaterialVariant"]={o=41,i=130},["MeshPart"]={o=105,i=73},["Message"]={o=110,i=33},["Model"]={o=100,i=2},["ModuleScript"]={o=50,i=76},["Motor"]={o=20,i=0},["Motor6D"]={o=200,i=106},["MotorFeature"]={o=9999,i=0},["Mouse"]={o=9999,i=0},["NegateOperation"]={o=104,i=72},["NetworkClient"]={o=30,i=16},["NetworkMarker"]={o=9999,i=0},["NetworkPeer"]={o=9999,i=0},["NetworkReplicator"]={o=30,i=29},["NetworkServer"]={o=30,i=15},["NetworkSettings"]={o=20,i=0},["NoCollisionConstraint"]={o=30,i=105},["NumberPose"]={o=220,i=60},["NumberValue"]={o=30,i=4},["ObjectValue"]={o=30,i=4},["OrderedDataStore"]={o=-1,i=0},["PVInstance"]={o=9999,i=0},["PackageLink"]={o=1,i=98},["Packages"]={o=9999,i=0},["Pants"]={o=20,i=44},["ParallelRampPart"]={o=120,i=1},["Part"]={o=110,i=1},["PartPairLasso"]={o=220,i=57},["ParticleEmitter"]={o=30,i=80},["ParticleEmitter2D"]={o=30,i=80},["Path2D"]={o=31,i=0},["PathfindingLink"]={o=210,i=137},["PathfindingModifier"]={o=210,i=128},["PhysicsActivitySensor"]={o=20,i=0},["PitchShiftSoundEffect"]={o=20,i=84},["Plane"]={o=30,i=134},["PlaneConstraint"]={o=30,i=134},["Platform"]={o=30,i=35},["PlatformLibraries"]={o=30,i=46},["Player"]={o=10,i=12},["PlayerGui"]={o=130,i=46},["PlayerScripts"]={o=130,i=78},["Players"]={o=20,i=21},["Plugin"]={o=30,i=86},["PluginCapabilities"]={o=30,i=0},["PluginDebugService"]={o=30,i=46},["PluginGuiService"]={o=30,i=46},["PluginManager"]={o=9999,i=0},["PluginManagerInterface"]={o=9999,i=0},["PluginMouse"]={o=9999,i=0},["PointLight"]={o=30,i=13},["PointsService"]={o=9999,i=0},["Pose"]={o=220,i=60},["PoseBase"]={o=220,i=60},["Preloaded"]={o=30,i=70},["PrismPart"]={o=120,i=1},["PrismaticConstraint"]={o=30,i=88},["ProceduralModel"]={o=100,i=0},["ProfilingItem"]={o=9999,i=0},["ProximityPrompt"]={o=30,i=124},["ProximityPromptService"]={o=9999,i=0},["PyramidHandleAdornment"]={o=205,i=0},["PyramidPart"]={o=120,i=1},["RayValue"]={o=30,i=4},["RemoteEvent"]={o=50,i=75},["RemoteFunction"]={o=40,i=74},["RenderSettings"]={o=20,i=0},["RenderingTest"]={o=40,i=5},["ReplicatedFirst"]={o=30,i=70},["ReplicatedStorage"]={o=30,i=70},["ReverbSoundEffect"]={o=20,i=84},["RightAngleRampPart"]={o=120,i=1},["RigidConstraint"]={o=30,i=135},["RobloxPluginGuiService"]={o=30,i=46},["RobloxReplicatedStorage"]={o=9999,i=0},["RocketPropulsion"]={o=140,i=14},["RodConstraint"]={o=30,i=90},["RootInstance"]={o=9999,i=0},["RopeConstraint"]={o=30,i=89},["RotateP"]={o=9999,i=0},["RotateV"]={o=9999,i=0},["RunService"]={o=9999,i=0},["ScreenGui"]={o=140,i=47},["Script"]={o=30,i=6},["ScriptContext"]={o=9999,i=0},["ScriptDebugger"]={o=9999,i=0},["ScrollingFrame"]={o=150,i=48},["Seat"]={o=30,i=35},["Selection"]={o=9999,i=0},["SelectionBox"]={o=210,i=54},["SelectionPartLasso"]={o=220,i=57},["SelectionPointLasso"]={o=220,i=57},["SelectionSphere"]={o=210,i=54},["ServerScriptService"]={o=30,i=71},["ServerStorage"]={o=30,i=69},["ServiceProvider"]={o=9999,i=0},["Shirt"]={o=20,i=43},["ShirtGraphic"]={o=20,i=40},["SkateboardPlatform"]={o=30,i=35},["Skin"]={o=20,i=0},["Sky"]={o=5,i=28},["SlidingBallConstraint"]={o=30,i=88},["Smoke"]={o=30,i=59},["Snap"]={o=200,i=34},["Sound"]={o=10,i=11},["SoundGroup"]={o=20,i=85},["SoundService"]={o=500,i=31},["Sparkles"]={o=30,i=42},["SpawnLocation"]={o=30,i=25},["SpecialMesh"]={o=30,i=8},["SphereHandleAdornment"]={o=205,i=112},["SpotLight"]={o=30,i=13},["SpringConstraint"]={o=30,i=91},["StandalonePluginScripts"]={o=130,i=78},["StarterCharacterScripts"]={o=130,i=78},["StarterGear"]={o=30,i=20},["StarterGui"]={o=30,i=46},["StarterPack"]={o=30,i=20},["StarterPlayer"]={o=30,i=79},["StarterPlayerScripts"]={o=130,i=78},["StatsItem"]={o=9999,i=0},["Status"]={o=100,i=2},["StockSound"]={o=-1,i=0},["StringValue"]={o=30,i=4},["Studio"]={o=9999,i=0},["StudioService"]={o=9999,i=0},["StyleBase"]={o=200,i=0},["StyleDerive"]={o=200,i=0},["StyleLink"]={o=200,i=0},["StyleQuery"]={o=200,i=0},["StyleRule"]={o=200,i=0},["StyleSheet"]={o=200,i=0},["SunRaysEffect"]={o=20,i=83},["SurfaceAppearance"]={o=40,i=10},["SurfaceGui"]={o=140,i=64},["SurfaceGuiBase"]={o=140,i=64},["SurfaceLight"]={o=30,i=13},["SurfaceSelection"]={o=210,i=55},["SwimController"]={o=20,i=0},["TaskScheduler"]={o=9999,i=0},["Team"]={o=10,i=24},["Teams"]={o=140,i=23},["TeleportService"]={o=9999,i=0},["Terrain"]={o=5,i=65},["TerrainDetail"]={o=42,i=144},["TerrainRegion"]={o=20,i=65},["TestService"]={o=1000,i=68},["TextBox"]={o=170,i=51},["TextButton"]={o=170,i=51},["TextChannel"]={o=14,i=140},["TextChannelWindow"]={o=16,i=0},["TextChatCommand"]={o=15,i=138},["TextChatService"]={o=511,i=143},["TextDocument"]={o=55,i=6},["TextLabel"]={o=190,i=50},["TextSource"]={o=10,i=139},["Texture"]={o=40,i=10},["Tool"]={o=30,i=17},["Torque"]={o=30,i=103},["TorsionSpringConstraint"]={o=30,i=125},["TouchTransmitter"]={o=30,i=37},["Trail"]={o=30,i=93},["TremoloSoundEffect"]={o=20,i=84},["TriangleMeshPart"]={o=9999,i=0},["TrussPart"]={o=120,i=1},["Tween"]={o=9999,i=0},["TweenBase"]={o=9999,i=0},["TweenService"]={o=9999,i=0},["UIAspectRatioConstraint"]={o=30,i=26},["UICorner"]={o=30,i=26},["UIDragDetector"]={o=30,i=41},["UIFlexItem"]={o=130,i=26},["UIGradient"]={o=30,i=26},["UIGridLayout"]={o=30,i=26},["UIGridStyleLayout"]={o=9999,i=0},["UIListLayout"]={o=30,i=26},["UIPadding"]={o=30,i=26},["UIPageLayout"]={o=30,i=26},["UIScale"]={o=30,i=26},["UIShadow"]={o=30,i=26},["UISizeConstraint"]={o=30,i=26},["UIStroke"]={o=30,i=26},["UITableLayout"]={o=30,i=26},["UITextSizeConstraint"]={o=30,i=26},["UnionOperation"]={o=105,i=73},["UniversalConstraint"]={o=30,i=123},["UnreliableRemoteEvent"]={o=51,i=75},["UserInputService"]={o=9999,i=0},["VRService"]={o=1000,i=0},["ValueBase"]={o=30,i=4},["Vector3Value"]={o=30,i=4},["VectorForce"]={o=30,i=102},["VehicleSeat"]={o=30,i=35},["VelocityMotor"]={o=9999,i=0},["VideoDisplay"]={o=10,i=11},["VideoFrame"]={o=18,i=120},["VideoPlayer"]={o=10,i=11},["ViewportCamera"]={o=5,i=0},["ViewportFrame"]={o=30,i=52},["VoiceChatInternal"]={o=9999,i=0},["VoiceChatService"]={o=520,i=136},["WedgePart"]={o=120,i=1},["Weld"]={o=200,i=34},["WeldConstraint"]={o=30,i=94},["Wire"]={o=10,i=11},["WireframeHandleAdornment"]={o=205,i=113},["Workspace"]={o=5,i=19},["WorldModel"]={o=22,i=19},["WrapDeformer"]={o=32,i=127},["WrapLayer"]={o=32,i=126},["WrapTarget"]={o=32,i=127},["WrapTextureTransfer"]={o=33,i=0},}
@@ -2857,12 +3003,43 @@ function U.buildExplorer()
 			return ch
 		end
 
-		local explList = U.section(page, 1, 1, 1):AddTab("explorer")._content
-		local propList = U.section(page, 2, 1, 1):AddTab("properties")._content
+		local explList = U.section(page, 1, 1, 2):AddTab("explorer")._content
+		local propList = U.section(page, 1, 2, 2):AddTab("properties")._content
 		explList.ScrollBarThickness = 0
 		explList.ScrollBarImageTransparency = 1
 		propList.ScrollBarThickness = 0
 		propList.ScrollBarImageTransparency = 1
+
+		local function layoutExplorer()
+			if not page or not page.Parent then return end
+			local gap = 8
+			local topPad = 4
+			local frames = {}
+			for _, ch in ipairs(page:GetChildren()) do
+				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") then
+					frames[#frames + 1] = ch
+				end
+			end
+			table.sort(frames, function(a, b)
+				return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
+			end)
+			local pw = math.max(page.AbsoluteSize.X, panel.AbsoluteSize.X - 4, 200)
+			local ph = math.max(page.AbsoluteSize.Y, panel.AbsoluteSize.Y - (U.LINE_H + 24), 200)
+			local n = math.max(1, #frames)
+			local usable = ph - topPad - gap - gap * (n - 1)
+			local h = math.floor(usable / n)
+			local y = topPad
+			local w = math.max(1, pw - gap * 2)
+			for i, ch in ipairs(frames) do
+				local hh = h
+				if i == n then hh = math.max(1, ph - gap - y) end
+				ch.Size = UDim2.fromOffset(w, hh)
+				ch.Position = UDim2.fromOffset(gap, y)
+				y = y + hh + gap
+			end
+		end
+		task.defer(layoutExplorer)
+		panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
 
 		-- clear default padding gap a bit
 		for _, list in ipairs({ explList, propList }) do
@@ -3132,6 +3309,10 @@ function Library:CreateWindow(opts)
 	U.windowTitle = name
 	if opts.Width then U.BODY_W = opts.Width end
 	if opts.Height then U.BODY_H = opts.Height end
+	U.bottomBarOn = opts.BottomBar == true
+	if opts.BottomBarText ~= nil then
+		U.bottomBarText = tostring(opts.BottomBarText)
+	end
 	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
 		U.TAB_NAMES = {}
 		for _, t in ipairs(opts.Tabs) do
@@ -3216,9 +3397,14 @@ function Library:CreateWindow(opts)
 		U.buildExplorer()
 		return self
 	end
+	function win:SetBottomBar(on, text)
+		U.setBottomBar(on, text)
+		return self
+	end
 	function win:Init()
 		U.buildTabs()
 		U.bindInput()
+		U.layoutBottomBar()
 	end
 	function win:Unload() U.shutdown() end
 	return win
