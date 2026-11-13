@@ -1,7 +1,7 @@
 local env = (typeof(getgenv) == "function" and getgenv()) or _G
 env._SM = env._SM or {}
 local U = env._SM
-U._ver = (U._ver or 0) + 1 
+U._ver = (U._ver or 0) + 1
 local ver = U._ver
 local function alive() return U._ver == ver end
 
@@ -46,8 +46,8 @@ U.running = true
 
 U.ELEMENT_BORDER = 1
 U.TEXT_SZ = 12
-U.LINE_H = 2 
-U.PAD = 6 
+U.LINE_H = 2
+U.PAD = 6
 U.dockGap = 6
 U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 480, 540, 22, 8
 U.BOTTOM_BAR_H = 18
@@ -95,7 +95,6 @@ function U.edges(parent, thick, outward, z, noTop)
 	end
 	if not noTop then edge("BTop", UDim2.new(1, o * 2, 0, thick), UDim2.fromOffset(-o, -o)) end
 	edge("BBottom", UDim2.new(1, o * 2, 0, thick), outward and UDim2.new(0, -o, 1, 0) or UDim2.new(0, 0, 1, -thick))
-	-- extend left/right through corners when outward so no missing pixels
 	if outward then
 		edge("BLeft", UDim2.new(0, thick, 1, o * 2), UDim2.fromOffset(-o, -o))
 		edge("BRight", UDim2.new(0, thick, 1, o * 2), UDim2.new(1, 0, 0, -o))
@@ -558,7 +557,6 @@ function U.updateSubLine(flag)
 	local line = g.line
 	local host = g.host or g.line.Parent
 	if not host then return end
-	-- hide when parent toggle / tab content is not visible (multi-tab sections)
 	if not U.isGuiShown(g.parentRow) then
 		line.Visible = false
 		return
@@ -597,7 +595,6 @@ function U.ensureSubGroup(flag, parentRow)
 	g = { parentRow = parentRow, children = {}, line = nil }
 	U.subGroups[flag] = g
 	if parentRow and parentRow.Parent then
-		-- MUST NOT parent under UIListLayout (would push rows down). Prefer Pages frame.
 		local host = parentRow.Parent
 		local climb = host
 		while climb do
@@ -623,7 +620,6 @@ function U.ensureSubGroup(flag, parentRow)
 		U.track(parentRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 			U.updateSubLine(flag)
 		end))
-		-- scroll moves AbsolutePosition of rows
 		local scroll = parentRow.Parent
 		if scroll and scroll:IsA("ScrollingFrame") then
 			U.track(scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -644,7 +640,6 @@ function U.subFullHeight(control)
 	return h
 end
 
--- Wrap a control so height animation clips/reveals without squashing children.
 function U.ensureSubWrap(control)
 	if control:GetAttribute("SubWrapped") then
 		return control.Parent or control
@@ -756,7 +751,6 @@ function U.subIf(control, keys, pred)
 	local fullH = control.Size.Y.Offset
 	if fullH < 2 then fullH = 16 end
 	control:SetAttribute("FullHeight", fullH)
-	-- capture visible fade goals once, before first hide
 	U.cacheSubFade(control)
 	local wrap = U.ensureSubWrap(control)
 	local parentFlag = keys and keys[1]
@@ -841,7 +835,6 @@ function U.updateConfigListHeight()
 	if pad then
 		used += (pad.PaddingTop.Offset or 0) + (pad.PaddingBottom.Offset or 0)
 	end
-	-- sit flush at bottom of section content with a small edge gap
 	local h = math.max(60, math.floor(viewH - used - 2))
 	if math.abs((box.Size.Y.Offset or 0) - h) > 0 then
 		box.Size = UDim2.new(1, 0, 0, h)
@@ -935,41 +928,58 @@ function U.section(parent, col, row, rows)
 	local function layoutTabs()
 		local n = #sec._tabs
 		if n == 0 then return end
-		for _, ch in ipairs(header:GetChildren()) do ch:Destroy() end
-		sec._buttons = {}
 		local gap = 6
 		local totalGap = gap * (n + 1)
 		local sw = sec._frame.Size.X.Offset
 		if sw < 2 then sw = sec._frame.AbsoluteSize.X end
 		if sw < 2 then sw = w end
 		local btnW = math.floor((sw - totalGap) / n)
+
+		local want = {}
+		for _, t in ipairs(sec._tabs) do want[t.name] = true end
+		for name, btn in pairs(sec._buttons) do
+			if not want[name] or not btn.Parent then
+				pcall(function() btn:Destroy() end)
+				sec._buttons[name] = nil
+			end
+		end
+
 		for i, t in ipairs(sec._tabs) do
 			local bx = gap + (i - 1) * (btnW + gap)
 			local selected = sec._current == t.name
-			local btn = U.new("TextButton", {
-				Name = "SectionTab",
-				AutoButtonColor = false,
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				Size = UDim2.fromOffset(btnW, 14),
-				Position = UDim2.fromOffset(bx, 0),
-				FontFace = U.font,
-				TextSize = U.TEXT_SZ,
-				TextColor3 = selected and U.theme.Text or U.GRAY_TEXT,
-				Text = t.name,
-				ZIndex = 6,
-			}, header)
-			btn:SetAttribute("FixedGray", not selected)
-			sec._buttons[t.name] = btn
-			if n > 1 then
-				local tabName = t.name
-				btn.MouseButton1Click:Connect(function()
-					sec:SelectTab(tabName)
-				end)
+			local btn = sec._buttons[t.name]
+			if btn and btn.Parent then
+				btn.Size = UDim2.fromOffset(btnW, 14)
+				btn.Position = UDim2.fromOffset(bx, 0)
+				btn.TextColor3 = selected and U.theme.Text or U.GRAY_TEXT
+				btn:SetAttribute("FixedGray", not selected)
+			else
+				btn = U.new("TextButton", {
+					Name = "SectionTab",
+					AutoButtonColor = false,
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Size = UDim2.fromOffset(btnW, 14),
+					Position = UDim2.fromOffset(bx, 0),
+					FontFace = U.font,
+					TextSize = U.TEXT_SZ,
+					TextColor3 = selected and U.theme.Text or U.GRAY_TEXT,
+					Text = t.name,
+					ZIndex = 6,
+				}, header)
+				btn:SetAttribute("FixedGray", not selected)
+				sec._buttons[t.name] = btn
+				if n > 1 then
+					local tabName = t.name
+					btn.MouseButton1Click:Connect(function()
+						sec:SelectTab(tabName)
+					end)
+				end
 			end
 		end
 	end
-	sec.layoutTabs = layoutTabs
+
+sec.layoutTabs = layoutTabs
 
 	function sec:SelectTab(name)
 		if sec._current == name then return end
@@ -1009,7 +1019,6 @@ function U.section(parent, col, row, rows)
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
 		end)
-		-- reflow section heights when items change
 		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 			if U._layoutBusy or U._resizeMoving then return end
 			local pg = content.Parent and content.Parent.Parent
@@ -1106,14 +1115,12 @@ function U.section(parent, col, row, rows)
 				fill()
 				if prune then prune() end
 				if display then display() end
-				-- keep open list; next open rebuilds from live names. avoid random closes on join/leave.
 			end
 			U.track(U.Players.PlayerAdded:Connect(onRoster))
 			U.track(U.Players.PlayerRemoving:Connect(function()
 				task.defer(onRoster)
 			end))
 			if parentFlag then
-				-- not used here; parentFlag only on nested dropdown helper
 			end
 			return { Row = row, Flag = flag }
 		end
@@ -1186,7 +1193,7 @@ function U.keyNameOf(k)
 	return type(k) == "string" and k or "none"
 end
 
-function U.refreshKeybindList() end 
+function U.refreshKeybindList() end
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	if not listText or listText == "" then return end
@@ -1304,16 +1311,16 @@ function U.sliderFrame(parent, text, order, tooltip, vw)
 	U.controlStroke(track)
 	local fill = U.new("Frame", { BackgroundColor3 = U.pulseColor(), BorderSizePixel = 0, ZIndex = 3 }, track)
 	U.registerPulse(fill, function() return true end)
-	local function cap(name)
-		return nil
-	end
-	return r, val, track, fill, cap
+	return r, val, track, fill
 end
 
 local function relX(track, x) return math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1) end
 
 function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt, tooltip)
-	step = step or 1
+	minV, maxV = tonumber(minV) or 0, tonumber(maxV) or 100
+	if minV > maxV then minV, maxV = maxV, minV end
+	step = math.max(1e-6, tonumber(step) or 1)
+	default = math.clamp(tonumber(default) or minV, minV, maxV)
 	local r, val, track, fill = U.sliderFrame(parent, text, order, tooltip, 52)
 	local span = math.max(1e-6, maxV - minV)
 	U.vflags[flag] = default
@@ -1405,7 +1412,11 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		if drag and i.UserInputType == Enum.UserInputType.MouseMovement then at(i.Position.X) end
 	end))
 	for _, f in ipairs({ flagMin, flagMax }) do
-		U.setters[f] = function(v) U.vflags[f] = v refresh() U.fireFlag(f) end
+		U.setters[f] = function(v)
+			U.vflags[f] = math.clamp(tonumber(v) or (f == flagMin and defMin or defMax), minV, maxV)
+			refresh()
+			U.fireFlag(f)
+		end
 	end
 	return r
 end
@@ -1417,7 +1428,6 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	U.bindTooltip(r, tooltip)
 	r.Size = UDim2.new(1, 0, 0, 30)
 	options = options or {}
-	-- Limit: 1 = single (closes on select), 0 = unlimited multi, >1 = multi with that cap
 	local lim = tonumber(limit)
 	if lim == nil then
 		if multi == true then lim = 0 else lim = 1 end
@@ -1502,7 +1512,6 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		local bb = box:FindFirstChild("BBottom")
 		if bb then bb.Visible = false end
 
-		-- list is fullH + bottom border so BBottom does not cover the last option
 		local listH = fullH + ebPx
 		local list = U.new("Frame", {
 			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = true,
@@ -1679,7 +1688,6 @@ function U.parseColorDefault(v)
 		if typeof(v.Color) == "Color3" then
 			return v.Color, math.clamp(tonumber(v.Transparency or v.a or v.A or v[2]) or 0, 0, 1)
 		end
-		-- Color3-like (0-1 components) with optional A
 		if typeof(v.R) == "number" and typeof(v.G) == "number" and typeof(v.B) == "number" then
 			local a = tonumber(v.A or v.a or v.Transparency or v[4]) or 0
 			return Color3.new(v.R, v.G, v.B), math.clamp(a, 0, 1)
@@ -1930,7 +1938,6 @@ function U.attachPicker(rowFrame, flagKey, defaultVal, showTransparency, title)
 	return sw
 end
 
-
 function U.shellHeight()
 	local h = U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
 	if U.bottomBarOn then
@@ -1983,8 +1990,6 @@ function U.buildShell()
 		Position = UDim2.fromOffset(0, U.LINE_H),
 		ZIndex = 6,
 	}, shell)
-	-- Center between UI top (y=0) and section border (LINE_H + TITLE_H + 7).
-	-- 7 matches section topPad (tab overhang only; section headers unchanged).
 	local bandBottom = U.LINE_H + U.TITLE_H + 7
 	local titleY = math.floor(bandBottom / 2 - U.TEXT_SZ / 2 + 0.5) - U.LINE_H
 	U.titleLabel = U.new("TextLabel", {
@@ -2016,7 +2021,6 @@ function U.buildShell()
 	end
 	U.currentTab = U.TAB_NAMES[1]
 
-	-- bottom bar (optional, controlled via CreateWindow / SetBottomBar)
 	U.bottomBar = U.new("Frame", {
 		Name = "BottomBar",
 		BackgroundColor3 = U.theme.SectionBg,
@@ -2153,7 +2157,6 @@ function U.buildFloaters()
 	local gen, P = U.gen, U.PAD
 	local textPos, textSize = UDim2.fromOffset(P, U.LINE_H + P), UDim2.new(1, -P * 2, 0, U.TEXT_SZ)
 
-	
 	local wm = U.mkPanel(U.gui, "Watermark", 50)
 	wm.Size, wm.Active, wm.Visible = U.panelSize(80, 1), true, false
 	U.wm, U.wmGui = wm, U.gui
@@ -2207,7 +2210,6 @@ function U.buildFloaters()
 	refreshWm()
 	U.dragPanel(wm, "wm")
 
-	
 	local kb = U.mkPanel(U.gui, "KeybindsPanel", 50)
 	kb.Size, kb.Active, kb.Visible = U.panelSize(40, 1), true, false
 	U.kbPanel = kb
@@ -2216,7 +2218,7 @@ function U.buildFloaters()
 
 	local function build()
 		if U.vflags.KeybindsList ~= true then kb.Visible = false return end
-		kb.Visible = true 
+		kb.Visible = true
 		for _, c in ipairs(list:GetChildren()) do
 			if c:IsA("TextLabel") then c:Destroy() end
 		end
@@ -2244,9 +2246,8 @@ function U.buildFloaters()
 		U._kbRefreshing = false
 	end
 	U.onFlag("KeybindsList", function() U.refreshKeybindList() end)
-	
-	U.dragPanel(kb, "kb")
 
+	U.dragPanel(kb, "kb")
 
 end
 function U.buildConfig()
@@ -2432,7 +2433,6 @@ function U.buildConfig()
 	end)
 
 	U.buildFloaters()
-	-- floating explorer window (settings toggle)
 	pcall(function() U.buildExplorer() end)
 
 	local function teleportTo(jobId)
@@ -2574,7 +2574,6 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 			end
 		end
 	end
-	-- section widths only (quickReflow is non-recursive)
 	local gap = U.SEC_GAP
 	local page = U.pageFrames and U.pageFrames[U.currentTab]
 	if page then
@@ -2590,10 +2589,11 @@ function U.applyShellSize(w, h, anchorRight, anchorBottom)
 		end
 	end
 	if U.layoutBottomBar then U.layoutBottomBar() end
+	if U.wmDocked then U.dock("wm") end
+	if U.kbDocked then U.dock("kb") end
 end
 
 function U.quickReflow()
-	-- cheap: widths / x only + bottom bar (never recurse)
 	local gap = U.SEC_GAP
 	local page = U.pageFrames and U.pageFrames[U.currentTab]
 	if page then
@@ -2735,7 +2735,6 @@ function U.bindResize()
 				elseif mode == "bottom" then
 					U.applyShellSize(startW, startH + d.Y, false, false)
 				end
-				-- applyShellSize already updates section widths; no extra work
 			end)
 			c2 = U.UIS.InputEnded:Connect(function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -2775,7 +2774,6 @@ function U.bindInput()
 	local dragging, ds, sp
 	local function isUiDragSurface(obj)
 		if not obj then return false end
-		-- header + true UI background only (not section frames / slider tracks / rows)
 		if obj == U.shell or obj == U.body or obj == U.titleBar or obj == U.accent or obj == U.titleLabel or obj == U.pages or obj == U.tabRail then
 			return true
 		end
@@ -2821,7 +2819,6 @@ function U.bindInput()
 		if gp or U.kbBinding then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
 			if U._kbModePopup and not input:IsDescendantOf(U._kbModePopup) then
-				-- close handled after click targets
 			end
 		end
 		if input.KeyCode == (U.vflags.MenuKeybind or Enum.KeyCode.RightShift) then
@@ -2882,9 +2879,7 @@ local function keybindOf(o, name)
 	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
 end
 
-
 function U.buildExplorer()
-	-- floating explorer window (not a main-tab page)
 	if U.explorerPanel and U.explorerPanel.Parent then
 		pcall(function() U.explorerPanel:Destroy() end)
 	end
@@ -2902,7 +2897,6 @@ function U.buildExplorer()
 	U.stroke(panel, "Border")
 	table.insert(U.themeReg.bodyBgs, panel)
 	U.explorerPanel = panel
-	-- accent bar like main UI
 	local expAccent = U.new("Frame", {
 		Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 42,
@@ -2922,7 +2916,6 @@ function U.buildExplorer()
 		Position = UDim2.fromOffset(0, U.LINE_H + 20),
 		ZIndex = 41,
 	}, panel)
-	-- drag explorer by panel
 	do
 		local dragging, ds, sp
 		local function begin(input)
@@ -2942,7 +2935,6 @@ function U.buildExplorer()
 			panel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		end))
 	end
-	-- resize handles
 	do
 		local edge = 10
 		local function rh(sz, pos)
@@ -2995,8 +2987,6 @@ function U.buildExplorer()
 			return e and e.o or 9999
 		end
 
-		-- class icons (rbxassetid://114851699900089)
-		-- 32x32 tiles, 25 columns. Icons dict is 1-based; Display uses 0-based index.
 		local ICON_MAP_ID = "rbxassetid://114851699900089"
 		local ICON_SIZE = 32
 		local ICON_COLS = 25
@@ -3004,7 +2994,6 @@ function U.buildExplorer()
 		local function applyClassIcon(imageLabel, className)
 			local raw = CLASS_ICONS[className]
 			if not raw then
-				-- try RMD explorer image index as linear fallback on ClassImages
 				local e = RMD[className]
 				if e and e.i then
 					imageLabel.Image = "rbxasset://textures/ClassImages.PNG"
@@ -3017,7 +3006,6 @@ function U.buildExplorer()
 			local index = math.max(0, (tonumber(raw) or 1) - 1)
 			local col = index % ICON_COLS
 			local row = math.floor(index / ICON_COLS)
-			-- set rect before and after image to avoid full-sheet flash
 			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
 			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
 			imageLabel.Image = ICON_MAP_ID
@@ -3081,7 +3069,6 @@ function U.buildExplorer()
 		task.defer(layoutExplorer)
 		panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
 
-		-- clear default padding gap a bit
 		for _, list in ipairs({ explList, propList }) do
 			for _, ch in ipairs(list:GetChildren()) do
 				if ch:IsA("UIPadding") then
@@ -3301,7 +3288,6 @@ function U.buildExplorer()
 				refreshProps()
 			end)
 
-			
 			if open and hasKids then
 				local conns = {}
 				conns[#conns + 1] = inst.ChildAdded:Connect(function()
@@ -3337,7 +3323,6 @@ function U.buildExplorer()
 				clearExplorer()
 			end
 		end
-		-- honor current flag if settings already created the toggle
 		if U.vflags and U.vflags.Explorer == true then
 			U._setExplorerVisible(true)
 		end
@@ -3433,7 +3418,6 @@ function Library:CreateWindow(opts)
 		return self
 	end
 	function win:AddExplorerTab()
-		-- explorer is a floating window toggled from settings; keep API for compatibility
 		U.buildExplorer()
 		return self
 	end
