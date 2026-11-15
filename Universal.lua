@@ -1,8 +1,7 @@
-local Library = (function()
 local env = (typeof(getgenv) == "function" and getgenv()) or _G
 env._SM = env._SM or {}
 local U = env._SM
-U._ver = (U._ver or 0) + 1 
+U._ver = (U._ver or 0) + 1
 local ver = U._ver
 local function alive() return U._ver == ver end
 
@@ -12,14 +11,14 @@ end
 U.lp = U.Players.LocalPlayer
 
 U.theme = U.theme or {
-	Text = Color3.fromRGB(235, 235, 235),
+	Text = Color3.fromRGB(220, 220, 220),
 	Border = Color3.fromRGB(0, 0, 0),
 	SectionBorder = Color3.fromRGB(0, 0, 0),
 	ElementBorder = Color3.fromRGB(0, 0, 0),
 	Accent1 = Color3.fromRGB(255, 255, 255),
 	Accent2 = Color3.fromRGB(0, 0, 0),
-	Background = Color3.fromRGB(36, 36, 36),
-	SectionBg = Color3.fromRGB(18, 18, 18),
+	Background = Color3.fromRGB(16, 16, 16),
+	SectionBg = Color3.fromRGB(10, 10, 10),
 }
 U.theme.ElementBorder = U.theme.ElementBorder or U.theme.SectionBorder
 U.THEME_KEYS = {
@@ -35,7 +34,6 @@ U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
-if U.vflags.ThemePreviewBg == nil then U.vflags.ThemePreviewBg = Color3.fromRGB(14, 14, 14) end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
 U.pulseReg = U.pulseReg or {}
@@ -43,16 +41,20 @@ U.activeNotifs = U.activeNotifs or {}
 U.keybindListEntries = U.keybindListEntries or {}
 U.keybindTargets = U.keybindTargets or {}
 U._kbListen = U._kbListen or {}
-U.wmDocked, U.kbDocked, U.pvDocked = true, true, true
+U.wmDocked, U.kbDocked = true, true
 U.running = true
 
 U.ELEMENT_BORDER = 1
 U.TEXT_SZ = 12
-U.LINE_H = 2 
-U.PAD = 6 
+U.LINE_H = 2
+U.PAD = 6
 U.dockGap = 6
-U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 560, 360, 22, 8
-U.TAB_NAMES = { "combat", "visuals", "misc", "config" }
+U.BODY_W, U.BODY_H, U.TITLE_H, U.SEC_GAP = 480, 540, 22, 8
+U.BOTTOM_BAR_H = 18
+U.bottomBarOn = false
+U.bottomBarText = ""
+U.MIN_W, U.MIN_H = 360, 400
+U.TAB_NAMES = { "main", "config" }
 U.GRAY_TEXT = Color3.fromRGB(90, 90, 90)
 U.OFF = Color3.fromRGB(55, 55, 55)
 
@@ -83,18 +85,23 @@ function U.stroke(parent, kind, noReg)
 end
 
 function U.edges(parent, thick, outward, z, noTop)
+	thick = math.max(1, math.floor(tonumber(thick) or 1))
 	local o = outward and thick or 0
 	local function edge(name, size, pos)
 		local e = U.new("Frame", {
 			Name = name, BorderSizePixel = 0, BackgroundColor3 = U.theme.ElementBorder, Size = size, Position = pos, ZIndex = z or (parent.ZIndex + 2),
 		}, parent)
-		local reg = U.themeReg.elementBorders
-		reg[#reg + 1] = e
+		U.themeReg.elementBorders[#U.themeReg.elementBorders + 1] = e
 	end
 	if not noTop then edge("BTop", UDim2.new(1, o * 2, 0, thick), UDim2.fromOffset(-o, -o)) end
 	edge("BBottom", UDim2.new(1, o * 2, 0, thick), outward and UDim2.new(0, -o, 1, 0) or UDim2.new(0, 0, 1, -thick))
-	edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(-o, 0))
-	edge("BRight", UDim2.new(0, thick, 1, 0), outward and UDim2.new(1, 0, 0, 0) or UDim2.new(1, -thick, 0, 0))
+	if outward then
+		edge("BLeft", UDim2.new(0, thick, 1, o * 2), UDim2.fromOffset(-o, -o))
+		edge("BRight", UDim2.new(0, thick, 1, o * 2), UDim2.new(1, 0, 0, -o))
+	else
+		edge("BLeft", UDim2.new(0, thick, 1, 0), UDim2.fromOffset(0, 0))
+		edge("BRight", UDim2.new(0, thick, 1, 0), UDim2.new(1, -thick, 0, 0))
+	end
 end
 
 function U.controlStroke(parent, thick)
@@ -253,7 +260,7 @@ function U.bindTooltipFollow()
 end
 U.bindTooltipFollow()
 
-U.cycle = U.cycle or { hue = 0, alpha = 0, colorFlags = {}, alphaFlags = {}, step = 0.01, alphaBreak = nil, alphaBreakMarkers = {} }
+U.cycle = U.cycle or { hue = 0, colorFlags = {}, step = 0.01 }
 
 function U.setCycleColor(flagKey, on)
 	if on then
@@ -274,36 +281,10 @@ function U.setCycleColor(flagKey, on)
 	U.vflags[flagKey .. "CycleColor"] = on and true or false
 end
 
-function U.setAlphaBreak(rel)
-	local c = U.cycle
-	c.alphaBreak = rel ~= nil and math.clamp(tonumber(rel) or 0, 0, 1) or nil
-	for i = #c.alphaBreakMarkers, 1, -1 do
-		local m = c.alphaBreakMarkers[i]
-		if not m.Parent then
-			table.remove(c.alphaBreakMarkers, i)
-		else
-			m.Visible = c.alphaBreak ~= nil
-			if m.Visible then m.Position = UDim2.new(c.alphaBreak, 0, 0.5, 0) end
-		end
-	end
-end
-
-function U.registerAlphaBreakMarker(marker)
-	table.insert(U.cycle.alphaBreakMarkers, marker)
-	U.setAlphaBreak(U.cycle.alphaBreak)
-end
-
-function U.setCycleAlpha(flagKey, on)
-	U.cycle.alphaFlags[flagKey] = on or nil
-	if on then U.vflags[flagKey .. "Transparency"] = U.cycle.alpha end
-	U.vflags[flagKey .. "CycleAlpha"] = on and true or false
-end
-
 task.spawn(function()
 	local c = U.cycle
 	while alive() do
-		local anyC, anyA = next(c.colorFlags) ~= nil, next(c.alphaFlags) ~= nil
-		if anyC then
+		if next(c.colorFlags) ~= nil then
 			c.hue = (c.hue + c.step) % 1
 			local needTheme = false
 			for flagKey in pairs(c.colorFlags) do
@@ -322,19 +303,6 @@ task.spawn(function()
 			end
 			if needTheme then U.applyTheme() end
 		end
-		if anyA then
-			c.alphaDir = c.alphaDir or 1
-			local maxA = math.clamp(typeof(c.alphaBreak) == "number" and c.alphaBreak or 1, 0.05, 1)
-			c.alpha += c.step * c.alphaDir
-			if c.alpha >= maxA then c.alpha, c.alphaDir = maxA, -1
-			elseif c.alpha <= 0 then c.alpha, c.alphaDir = 0, 1 end
-			for flagKey in pairs(c.alphaFlags) do
-				local k = flagKey .. "Transparency"
-				U.vflags[k] = c.alpha
-				if U.setters[k] then U.setters[k](c.alpha) end
-				if U.openPickerRefresh and U.openColorPicker and U.openColorPicker:GetAttribute("Flag") == flagKey then U.openPickerRefresh() end
-			end
-		end
 		task.wait(0.03)
 	end
 end)
@@ -349,12 +317,6 @@ function U.applyTheme()
 	for _, f in ipairs(R.sectionBgs) do if f.Parent then f.BackgroundColor3 = T.SectionBg end end
 	if U.wm and U.wm.Parent then U.wm.BackgroundColor3 = T.Background end
 	if U.kbPanel and U.kbPanel.Parent then U.kbPanel.BackgroundColor3 = T.Background end
-	if U.pvPanel and U.pvPanel.Parent then U.pvPanel.BackgroundColor3 = T.Background end
-	if U.pvViewport and U.pvViewport.Parent then
-		local col = U.vflags.ThemePreviewBg
-		if typeof(col) == "Color3" then U.pvViewport.BackgroundColor3 = col end
-		U.pvViewport.BackgroundTransparency = 0
-	end
 	for _, l in ipairs(R.labels or {}) do
 		if l and l.Parent then l.TextColor3 = T.Text end
 	end
@@ -371,7 +333,8 @@ function U.refreshMenuTextColors()
 	end
 	if U.gui then
 		for _, i in ipairs(U.gui:GetDescendants()) do
-			if i.Name == "WavelengthCredit" then i.TextColor3 = gray
+			if i.Name == "WavelengthCredit" or i:GetAttribute("FixedGray") == true then
+				i.TextColor3 = gray
 			elseif not (U.kbPanel and i:IsDescendantOf(U.kbPanel)) and (i:IsA("TextLabel") or i:IsA("TextButton") or i:IsA("TextBox")) then
 				i.TextColor3 = c
 			end
@@ -497,15 +460,12 @@ end
 function U.shutdown()
 	if U._shuttingDown then return end
 	U._shuttingDown, U.running = true, false
+	if U.bottomBarUpdateConn then U.bottomBarUpdateConn:Disconnect() U.bottomBarUpdateConn = nil end
 	for _, k in ipairs({
 		"VisualsEnabled", "NoRecoil", "NoSpread", "LeftArmEnabled", "RightArmEnabled", "LeftGloveEnabled", "RightGloveEnabled", "HideGloveSurfaces",
 		"RemoveSniperScope", "LightingAmbientEnabled", "LightingOutdoorAmbientEnabled", "LightingGlobalShadows", "LightingPrioritizeQuality", "Watermark",
 	}) do
 		U.vflags[k] = false
-	end
-	pcall(function() U.Run:UnbindFromRenderStep("SM_ESP") end)
-	for _, fn in ipairs({ "_cleanupVisuals", "_cleanupCombat", "_cleanupMisc" }) do
-		if type(U[fn]) == "function" then pcall(U[fn]) end
 	end
 	pcall(U.closePopups)
 	for _, c in ipairs(U._conns or {}) do pcall(function() c:Disconnect() end) end
@@ -523,7 +483,7 @@ function U.shutdown()
 	end)
 end
 
-function U.armPopupOpen() U.suppressPopupClose = tick() + 0.08 end
+function U.armPopupOpen() U.suppressPopupClose = tick() + 0.25 end
 
 function U.objsAtMouse()
 	local p = U.UIS:GetMouseLocation()
@@ -548,7 +508,7 @@ function U.clickHitsNamed(...)
 end
 
 function U.row(parent, order)
-	return U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order or 0 }, parent)
+	return U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order or 0 }, parent)
 end
 
 function U.indentRow(r, px)
@@ -557,20 +517,302 @@ function U.indentRow(r, px)
 	return r
 end
 
+U.subGroups = U.subGroups or {}
+U.toggleRows = U.toggleRows or {}
+U.subBusy = U.subBusy or {}
+U.subPending = U.subPending or {}
+U._layoutQueued = U._layoutQueued or setmetatable({}, { __mode = "k" })
+
+function U.queuePageLayout(page)
+	if not page or not page.Parent or U._layoutQueued[page] then return end
+	U._layoutQueued[page] = true
+	task.defer(function()
+		U._layoutQueued[page] = nil
+		if not page.Parent then return end
+		if U._layoutBusy then U.queuePageLayout(page) return end
+		U.layoutPage(page, false)
+	end)
+end
+
+function U.queueSectionLayout(inst)
+	local node = inst
+	while node and not (node:IsA("Frame") and node:GetAttribute("SectionCol")) do node = node.Parent end
+	if node and node.Parent then U.queuePageLayout(node.Parent) end
+end
+
+function U.hasSubItems(flag)
+	local g = U.subGroups[flag]
+	return g and g.children and #g.children > 0
+end
+
+function U.beginSubAnim(flag)
+	if not flag then return end
+	U.subBusy[flag] = true
+	U.subPending[flag] = (U.subPending[flag] or 0) + 1
+end
+
+function U.endSubAnim(flag)
+	if not flag then return end
+	local n = (U.subPending[flag] or 1) - 1
+	if n <= 0 then
+		U.subPending[flag] = 0
+		U.subBusy[flag] = false
+	else
+		U.subPending[flag] = n
+	end
+end
+
+function U.isGuiShown(inst)
+	while inst do
+		if inst:IsA("GuiObject") and inst.Visible == false then return false end
+		inst = inst.Parent
+	end
+	return true
+end
+
+function U.updateSubLine(flag)
+	local g = U.subGroups[flag]
+	if not g or not g.line or not g.parentRow or not g.parentRow.Parent then return end
+	local line = g.line
+	local host = g.host or g.line.Parent
+	if not host then return end
+	if not U.isGuiShown(g.parentRow) then
+		line.Visible = false
+		return
+	end
+	local kids = {}
+	for _, c in ipairs(g.children) do
+		if c.Parent and c.Visible and c.AbsoluteSize.Y > 0.5 and U.isGuiShown(c) then kids[#kids + 1] = c end
+	end
+	if #kids == 0 then
+		line.Visible = false
+		return
+	end
+	local last = kids[#kids]
+	local origin = host.AbsolutePosition
+	local y0 = g.parentRow.AbsolutePosition.Y + g.parentRow.AbsoluteSize.Y - origin.Y
+	local y1 = last.AbsolutePosition.Y + last.AbsoluteSize.Y - origin.Y
+	local x = g.parentRow.AbsolutePosition.X - origin.X + 5
+	line.Position = UDim2.fromOffset(x, y0)
+	line.Size = UDim2.fromOffset(1, math.max(0, y1 - y0))
+	line.Visible = y1 > y0
+	line.BackgroundColor3 = U.pulseColor()
+end
+
+function U.updateAllSubLines()
+	for flag in pairs(U.subGroups or {}) do
+		U.updateSubLine(flag)
+	end
+end
+
+function U.ensureSubGroup(flag, parentRow)
+	local g = U.subGroups[flag]
+	if g then
+		if parentRow then g.parentRow = parentRow end
+		return g
+	end
+	g = { parentRow = parentRow, children = {}, line = nil }
+	U.subGroups[flag] = g
+	if parentRow and parentRow.Parent then
+		local host = parentRow.Parent
+		local climb = host
+		while climb do
+			if climb.Name == "Pages" then
+				host = climb
+				break
+			end
+			climb = climb.Parent
+		end
+		local line = U.new("Frame", {
+			Name = "SubLine", BorderSizePixel = 0, BackgroundColor3 = U.pulseColor(),
+			Size = UDim2.fromOffset(1, 0), Position = UDim2.fromOffset(6, 0), ZIndex = 8, Visible = false,
+		}, host)
+		U.registerPulse(line, function()
+			local gg = U.subGroups[flag]
+			return gg and gg.line and gg.line.Visible
+		end)
+		g.line = line
+		g.host = host
+		U.track(parentRow:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+			U.updateSubLine(flag)
+		end))
+		U.track(parentRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			U.updateSubLine(flag)
+		end))
+		local scroll = parentRow.Parent
+		if scroll and scroll:IsA("ScrollingFrame") then
+			U.track(scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+				U.updateSubLine(flag)
+			end))
+		end
+	end
+	return g
+end
+
+function U.subFullHeight(control)
+	local h = control:GetAttribute("FullHeight")
+	if typeof(h) == "number" and h > 0 then return h end
+	h = control.Size.Y.Offset
+	if h < 2 then h = control.AbsoluteSize.Y end
+	if h < 2 then h = 16 end
+	control:SetAttribute("FullHeight", h)
+	return h
+end
+
+function U.ensureSubWrap(control)
+	if control:GetAttribute("SubWrapped") then
+		return control.Parent or control
+	end
+	local parent = control.Parent
+	if not parent then return control end
+	local fullH = U.subFullHeight(control)
+	local order = control.LayoutOrder
+	local wrap = U.new("Frame", {
+		Name = "SubWrap",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = false,
+		Size = UDim2.new(1, 0, 0, fullH),
+		LayoutOrder = order,
+	}, parent)
+	control.Parent = wrap
+	control.LayoutOrder = 0
+	control.Size = UDim2.new(1, 0, 0, fullH)
+	control.Position = UDim2.fromOffset(0, 0)
+	control:SetAttribute("SubWrapped", true)
+	control:SetAttribute("FullHeight", fullH)
+	wrap:SetAttribute("FullHeight", fullH)
+	return wrap
+end
+
+function U.cacheSubFade(control)
+	if control:GetAttribute("FadeCached") then return end
+	local list = {}
+	local function add(obj, prop)
+		if not obj then return end
+		list[#list + 1] = { obj = obj, prop = prop, goal = obj[prop] }
+	end
+	add(control, "BackgroundTransparency")
+	for _, d in ipairs(control:GetDescendants()) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			add(d, "TextTransparency")
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			add(d, "ImageTransparency")
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("Frame") then
+			add(d, "BackgroundTransparency")
+		elseif d:IsA("UIStroke") then
+			add(d, "Transparency")
+		end
+	end
+	U._subFade = U._subFade or {}
+	U._subFade[control] = list
+	control:SetAttribute("FadeCached", true)
+end
+
+function U.subFadeTargets(control)
+	U.cacheSubFade(control)
+	return (U._subFade and U._subFade[control]) or {}
+end
+
+function U.setFadeTargets(targets, value)
+	for _, t in ipairs(targets) do
+		pcall(function() t.obj[t.prop] = value end)
+	end
+end
+
+function U.tweenFadeTargets(targets, toHidden, duration)
+	local info = TweenInfo.new(duration or 0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local last
+	for _, t in ipairs(targets) do
+		local goal = toHidden and 1 or t.goal
+		local ok, tw = pcall(function()
+			return U.Tween:Create(t.obj, info, { [t.prop] = goal })
+		end)
+		if ok and tw then
+			tw:Play()
+			last = tw
+		end
+	end
+	return last
+end
+
+function U.animateSub(control, show)
+	local wrap = U.ensureSubWrap(control)
+	local fullH = wrap:GetAttribute("FullHeight") or U.subFullHeight(control)
+	local parentFlag = control:GetAttribute("ParentFlag")
+	local targets = U.subFadeTargets(control)
+
+	U.beginSubAnim(parentFlag)
+	if show then
+		wrap.Visible = true
+		control.Visible = true
+		wrap.Size = UDim2.new(1, 0, 0, fullH)
+		control.Size = UDim2.new(1, 0, 0, fullH)
+		control.Position = UDim2.fromOffset(0, 0)
+		for _, t in ipairs(targets) do
+			pcall(function() t.obj[t.prop] = t.goal end)
+		end
+	else
+		U.setFadeTargets(targets, 1)
+		control.Visible = false
+		wrap.Size = UDim2.new(1, 0, 0, 0)
+		wrap.Visible = false
+	end
+	if parentFlag then U.updateSubLine(parentFlag) end
+	U.endSubAnim(parentFlag)
+	U.queueSectionLayout(wrap)
+	task.defer(U.updateAllSubLines)
+end
+
 function U.subIf(control, keys, pred)
 	U.indentRow(control, 12)
+	local fullH = control.Size.Y.Offset
+	if fullH < 2 then fullH = 16 end
+	control:SetAttribute("FullHeight", fullH)
+	U.cacheSubFade(control)
+	local wrap = U.ensureSubWrap(control)
+	local parentFlag = keys and keys[1]
+	if parentFlag then
+		control:SetAttribute("ParentFlag", parentFlag)
+		wrap:SetAttribute("ParentFlag", parentFlag)
+		local g = U.ensureSubGroup(parentFlag, U.toggleRows[parentFlag])
+		g.children[#g.children + 1] = wrap
+	end
+	local function isOpen()
+		return wrap.Visible and wrap.Size.Y.Offset > 1
+	end
 	local function sync()
 		local vis = pred() and true or false
-		if control.Visible ~= vis then
-			control.Visible = vis
+		if vis and not isOpen() then
+			U.animateSub(control, true)
 			if U.closeDropdown then U.closeDropdown() end
 			if U.closeColorPicker then U.closeColorPicker() end
-		else
-			control.Visible = vis
+		elseif not vis and (wrap.Visible or isOpen() or wrap.Size.Y.Offset > 0) then
+			U.animateSub(control, false)
+			if U.closeDropdown then U.closeDropdown() end
+			if U.closeColorPicker then U.closeColorPicker() end
+		end
+		if parentFlag then
+			task.defer(function() U.updateSubLine(parentFlag) end)
 		end
 	end
 	for _, k in ipairs(keys) do U.onFlag(k, sync) end
-	sync()
+	local vis = pred() and true or false
+	control.Size = UDim2.new(1, 0, 0, fullH)
+	control.Position = UDim2.fromOffset(0, 0)
+	if vis then
+		wrap.Visible = true
+		control.Visible = true
+		wrap.Size = UDim2.new(1, 0, 0, fullH)
+		U.setFadeTargets(U.subFadeTargets(control), 0)
+	else
+		wrap.Visible = false
+		control.Visible = false
+		wrap.Size = UDim2.new(1, 0, 0, 0)
+		U.setFadeTargets(U.subFadeTargets(control), 1)
+	end
 	return control
 end
 
@@ -579,33 +821,381 @@ function U.subOf(control, parentFlag)
 end
 
 function U.secGeom(col, row, rows)
-	local w = math.floor((U.BODY_W - U.SEC_GAP * 3) / 2)
-	local x = (col == 1) and U.SEC_GAP or (U.SEC_GAP * 2 + w)
-	local h = math.floor((U.BODY_H - U.SEC_GAP * 2 - U.SEC_GAP * (rows - 1)) / rows)
-	return x, U.SEC_GAP + (row - 1) * (h + U.SEC_GAP), w, h
+	local gap = U.SEC_GAP
+	local topPad = 14 -- gap below the main tab rail
+	local bottomPad = gap
+	local w = math.floor((U.BODY_W - gap * 3) / 2)
+	local x = (col == 1) and gap or (gap * 2 + w)
+	rows = math.max(1, math.floor(tonumber(rows) or 1))
+	row = math.clamp(math.floor(tonumber(row) or 1), 1, rows)
+	local usable = U.BODY_H - topPad - bottomPad - gap * (rows - 1)
+	local h = math.floor(usable / rows)
+	local y = topPad + (row - 1) * (h + gap)
+	if row == rows then
+		h = math.max(1, U.BODY_H - bottomPad - y)
+	end
+	return x, y, w, h
 end
 
-function U.section(parent, title, col, row, rows)
+function U.updateConfigListHeight()
+	local box = U.configListBox
+	local scroll = U.configListScroll
+	if not box or not box.Parent or not scroll then return end
+	local viewH = scroll.AbsoluteSize.Y
+	if viewH < 2 then return end
+	local layout = scroll:FindFirstChildOfClass("UIListLayout")
+	local gap = layout and layout.Padding.Offset or 4
+	local used = 0
+	for _, ch in ipairs(scroll:GetChildren()) do
+		if ch:IsA("GuiObject") and ch ~= box and ch.Visible then
+			used += ch.AbsoluteSize.Y + gap
+		end
+	end
+	local pad = scroll:FindFirstChildOfClass("UIPadding")
+	if pad then
+		used += (pad.PaddingTop.Offset or 0) + (pad.PaddingBottom.Offset or 0)
+	end
+	local h = math.max(60, math.floor(viewH - used - 2))
+	if math.abs((box.Size.Y.Offset or 0) - h) > 0 then
+		box.Size = UDim2.new(1, 0, 0, h)
+	end
+end
+
+function U.relayoutColumn(page, side)
+	if not page then return end
+	side = side or 1
+	local frames = {}
+	for _, ch in ipairs(page:GetChildren()) do
+		if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+			frames[#frames + 1] = ch
+		end
+	end
+	table.sort(frames, function(a, b)
+		return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
+	end)
+	local n = #frames
+	for i, ch in ipairs(frames) do
+		local x, y, w, h = U.secGeom(side, i, n)
+		ch.Size = UDim2.fromOffset(w, h)
+		ch.Position = UDim2.fromOffset(x, y)
+		ch:SetAttribute("SectionRow", i)
+	end
+	for _, sec in ipairs(U.sectionObjs or {}) do
+		if sec._frame and sec._frame.Parent == page and sec.layoutTabs then
+			sec.layoutTabs()
+		end
+	end
+	task.defer(function()
+		for flag in pairs(U.subGroups or {}) do
+			U.updateSubLine(flag)
+		end
+		for _, fn in ipairs(U.sliderLayouts or {}) do
+			pcall(fn)
+		end
+	end)
+end
+
+function U.section(parent, col, row, rows)
+	local function lname(o, default)
+		if type(o) == "table" then return string.lower(tostring(o.Name or default)) end
+		return string.lower(tostring(default))
+	end
+	local function tip(o)
+		return o and (o.Tooltip or o.tooltip) or nil
+	end
+	local function keybindOf(o, name)
+		if not o or o.Keybind ~= true then return nil end
+		return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
+	end
+
 	local x, y, w, h = U.secGeom(col, row or 1, rows or 1)
 	local f = U.new("Frame", { BackgroundColor3 = U.theme.SectionBg, BorderSizePixel = 0, Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, y) }, parent)
+	f:SetAttribute("SectionCol", col or 1)
+	f:SetAttribute("SectionRow", row or 1)
 	table.insert(U.themeReg.sectionBgs, f)
 	U.stroke(f, "SectionBorder")
-	title = tostring(title)
-	U.label(f, title, {
-		TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(math.max(40, #title * 7 + 12), 14), ZIndex = 5,
-	})
-	local content = U.new("ScrollingFrame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -10, 1, -16), Position = UDim2.fromOffset(5, 12), ScrollBarThickness = 0,
-		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
+
+	local header = U.new("Frame", {
+		Name = "SectionTabs", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, -7), ZIndex = 30, Active = true,
 	}, f)
-	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
-	U.new("UIPadding", { PaddingLeft = UDim.new(0, 1), PaddingRight = UDim.new(0, 1), PaddingTop = UDim.new(0, 1), PaddingBottom = UDim.new(0, 2) }, content)
-	content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+
+	local pages = U.new("Frame", {
+		Name = "Pages", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, -10, 1, -12), Position = UDim2.fromOffset(5, 8), ClipsDescendants = true,
+	}, f)
+
+	local sec = {
+		_frame = f,
+		_header = header,
+		_pages = pages,
+		_tabs = {},
+		_buttons = {},
+		_current = nil,
+		_w = w,
+	}
+	U.sectionObjs = U.sectionObjs or {}
+	U.sectionObjs[#U.sectionObjs + 1] = sec
+
+	local function paintTabs()
+		for name, btn in pairs(sec._buttons) do
+			local selected = sec._current == name
+			btn.TextColor3 = selected and U.theme.Text or U.GRAY_TEXT
+			btn:SetAttribute("FixedGray", not selected)
+		end
+	end
+
+	local function layoutTabs()
+		local n = #sec._tabs
+		if n == 0 then return end
+		local gap = 6
+		local totalGap = gap * (n + 1)
+		local sw = sec._frame.Size.X.Offset
+		if sw < 2 then sw = sec._frame.AbsoluteSize.X end
+		if sw < 2 then sw = w end
+		local btnW = math.floor((sw - totalGap) / n)
+
+		local want = {}
+		for _, t in ipairs(sec._tabs) do want[t.name] = true end
+		for name, btn in pairs(sec._buttons) do
+			if not want[name] or not btn.Parent then
+				pcall(function() btn:Destroy() end)
+				sec._buttons[name] = nil
+			end
+		end
+
+		for i, t in ipairs(sec._tabs) do
+			local bx = gap + (i - 1) * (btnW + gap)
+			local selected = sec._current == t.name
+			local btn = sec._buttons[t.name]
+			if btn and btn.Parent then
+				btn.Size = UDim2.fromOffset(btnW, 14)
+				btn.Position = UDim2.fromOffset(bx, 0)
+				btn.TextColor3 = selected and U.theme.Text or U.GRAY_TEXT
+				btn:SetAttribute("FixedGray", not selected)
+			else
+				btn = U.new("TextButton", {
+					Name = "SectionTab",
+					AutoButtonColor = false,
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Size = UDim2.fromOffset(btnW, 14),
+					Position = UDim2.fromOffset(bx, 0),
+					FontFace = U.font,
+					TextSize = U.TEXT_SZ,
+					TextColor3 = selected and U.theme.Text or U.GRAY_TEXT,
+					Text = t.name,
+					ZIndex = 31,
+					Active = true,
+				}, header)
+				btn:SetAttribute("FixedGray", not selected)
+				sec._buttons[t.name] = btn
+				local tabName = t.name
+				btn.MouseButton1Click:Connect(function()
+					sec:SelectTab(tabName)
+				end)
+			end
+		end
+	end
+
+sec.layoutTabs = layoutTabs
+	f:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutTabs)
+
+	function sec:SelectTab(name)
+		if sec._current == name then return end
+		sec._current = name
+		for _, t in ipairs(sec._tabs) do
+			t.content.Visible = t.name == name
+		end
+		paintTabs()
 		if U.closeDropdown then U.closeDropdown() end
 		if U.closeColorPicker then U.closeColorPicker() end
-	end)
-	return content
+		task.defer(function()
+			if sec._frame.Parent then U.layoutPage(sec._frame.Parent, false) end
+			U.updateAllSubLines()
+		end)
+	end
+
+	function sec:AddTab(name)
+		name = string.lower(tostring(name or ("tab" .. (#sec._tabs + 1))))
+		if #sec._tabs >= 3 then
+			return sec._tabs[#sec._tabs].api
+		end
+		for _, t in ipairs(sec._tabs) do
+			if t.name == name then return t.api end
+		end
+
+		local content = U.new("ScrollingFrame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			ScrollBarThickness = 0,
+			CanvasSize = UDim2.new(),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ClipsDescendants = true,
+			Visible = #sec._tabs == 0,
+		}, pages)
+		local listLayout = U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, content)
+		U.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, content)
+		local function requestPageLayout()
+			local sectionFrame = content.Parent and content.Parent.Parent
+			local page = sectionFrame and sectionFrame.Parent
+			if page then U.queuePageLayout(page) end
+		end
+		content:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+			if U.closeDropdown then U.closeDropdown() end
+			if U.closeColorPicker then U.closeColorPicker() end
+		end)
+		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(requestPageLayout)
+
+		local api = { _content = content, _n = 0, Section = sec }
+		local function nextOrder()
+			api._n += 1
+			return api._n
+		end
+		local function slider(o, parentFlag)
+			o = o or {}
+			local c = U.mkSlider(content, lname(o, "slider"), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAtMax == true or o.InfAt == true, tip(o))
+			return parentFlag and U.subOf(c, parentFlag) or c
+		end
+		local function dropdown(o, parentFlag)
+			o = o or {}
+			local limit = o.Limit
+			if limit == nil then limit = o.Amount end
+			if limit == nil then limit = 1 end
+			local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, false, nextOrder(), limit, tip(o))
+			return parentFlag and U.subOf(c, parentFlag) or c
+		end
+		local function toggle(o)
+			o = o or {}
+			local flag = o.Flag or o.Name
+			local row = U.mkToggle(content, lname(o, "toggle"), flag, nextOrder(), o.Default == true, keybindOf(o, lname(o, "toggle")), tip(o))
+			if o.Callback then U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end) end
+			return row, flag
+		end
+
+		function api:AddToggle(o)
+			o = o or {}
+			local t, flag = toggle(o)
+			local obj = { Flag = flag, Row = t, _parent = content }
+			function obj:AddColorpicker(co)
+				co = co or {}
+				U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.Transparency == true, co.Name or "color")
+				return obj
+			end
+			function obj:AddToggle(so)
+				local child = toggle(so or {})
+				U.subOf(child, flag)
+				return api
+			end
+			function obj:AddSlider(so) slider(so or {}, flag) return obj end
+			function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
+			function obj:AddPlayerDropdown(so)
+				so = so or {}
+				so = table.clone(so)
+				local c = api:AddPlayerDropdown(so)
+				if c and c.Row then U.subOf(c.Row, flag) end
+				return obj
+			end
+			return obj
+		end
+		function api:AddSlider(o)
+			o = o or {}
+			return { Row = slider(o), Flag = o.Flag or o.Name }
+		end
+		function api:AddDoubleSlider(o)
+			o = o or {}
+			local r = U.mkDoubleSlider(content, lname(o, "range"), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", tip(o), o.InfAtMax == true or o.InfAt == true)
+			return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
+		end
+		function api:AddDropdown(o)
+			o = o or {}
+			return { Row = dropdown(o), Flag = o.Flag or o.Name }
+		end
+		function api:AddPlayerDropdown(o)
+			o = o or {}
+			local limit = o.Limit
+			if limit == nil then limit = o.Amount end
+			if limit == nil then limit = 1 end
+			local flag = o.Flag or o.Name
+			local excludeSelf = o.ExcludeSelf == true
+			local names = {}
+			local function fill()
+				for i = #names, 1, -1 do names[i] = nil end
+				local selfName = U.lp and U.lp.Name
+				for _, plr in ipairs(U.Players:GetPlayers()) do
+					if not (excludeSelf and selfName and plr.Name == selfName) then
+						names[#names + 1] = plr.Name
+					end
+				end
+				table.sort(names)
+			end
+			fill()
+			local row, _, prune, display = U.mkDropdown(content, lname(o, "players"), flag, names, o.Default, false, nextOrder(), limit, tip(o))
+			local function onRoster()
+				fill()
+				if prune then prune() end
+				if display then display() end
+			end
+			U.track(U.Players.PlayerAdded:Connect(onRoster))
+			U.track(U.Players.PlayerRemoving:Connect(function()
+				task.defer(onRoster)
+			end))
+			if parentFlag then
+			end
+			return { Row = row, Flag = flag }
+		end
+		function api:AddButton(o)
+			o = o or {}
+			local btn = U.mkButton(content, lname(o, "button"), nextOrder(), o.Confirm == true)
+			if o.Callback then U.bindButton(btn, o.Callback) end
+			U.bindTooltip(btn, tip(o))
+			return { Button = btn }
+		end
+		function api:AddColorpicker(o)
+			o = o or {}
+			local r = U.row(content, nextOrder())
+			U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
+			U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.Transparency == true, o.Name or "color")
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+		function api:AddLabel(o)
+			o = o or {}
+			local r = U.row(content, nextOrder())
+			local lab = U.label(r, lname(o, "label"), { Size = UDim2.fromScale(1, 1) })
+			local obj = { Row = r, Label = lab }
+			function obj:AddColorpicker(co)
+				co = co or {}
+				U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "Label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.Transparency == true, co.Name or "color")
+				return obj
+			end
+			return obj
+		end
+		function api:AddTextbox(o)
+			o = o or {}
+			local r = U.mkTextbox(content, lname(o, "textbox"), o.Flag or o.Name, o.Placeholder or "", nextOrder())
+			U.bindTooltip(r, tip(o))
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+		function api:AddKeybind(o)
+			o = o or {}
+			local r = U.mkKeybind(content, lname(o, "keybind"), o.Flag or o.Name, o.Default or Enum.KeyCode.Unknown, nextOrder())
+			U.bindTooltip(r, tip(o))
+			return { Row = r, Flag = o.Flag or o.Name }
+		end
+
+		sec._tabs[#sec._tabs + 1] = { name = name, content = content, api = api }
+		if not sec._current then
+			sec._current = name
+		else
+			content.Visible = false
+		end
+		layoutTabs()
+		return api
+	end
+
+	return sec
 end
 
 function U.parseKeyCode(v)
@@ -625,7 +1215,7 @@ function U.keyNameOf(k)
 	return type(k) == "string" and k or "none"
 end
 
-function U.refreshKeybindList() end 
+function U.refreshKeybindList() end
 
 function U.registerKeybindList(listText, keyFlag, toggleFlag)
 	if not listText or listText == "" then return end
@@ -692,21 +1282,29 @@ function U.mkToggle(parent, text, flag, order, default, kb, tooltip)
 	if flag then U.vflags[flag] = on end
 	local function col() return on and U.pulseColor() or U.OFF end
 
-	local box = U.new("Frame", { Size = UDim2.fromOffset(12, 12), Position = UDim2.fromOffset(0, 3), BackgroundColor3 = col(), BorderSizePixel = 0 }, r)
+	local box = U.new("Frame", { Size = UDim2.fromOffset(12, 12), Position = UDim2.fromOffset(0, 2), BackgroundColor3 = col(), BorderSizePixel = 0 }, r)
 	U.controlStroke(box)
 	U.registerPulse(box, function() return on end)
 	U.label(r, text, { Size = UDim2.new(1, -(20 + reserve), 1, 0), Position = UDim2.fromOffset(18, 0) })
 
 	local function set(v)
+		if flag and U.hasSubItems(flag) and U.subBusy[flag] then
+			return
+		end
 		on = v == true
 		box.BackgroundColor3 = col()
 		if flag then U.setFlag(flag, on) end
 	end
-	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function() set(not on) end)
+	U.new("TextButton", { BackgroundTransparency = 1, Size = UDim2.new(1, -reserve, 1, 0), Text = "", ZIndex = 2 }, r).MouseButton1Click:Connect(function()
+		if flag and U.hasSubItems(flag) and U.subBusy[flag] then return end
+		set(not on)
+	end)
 	if flag then
 		U.setters[flag] = set
 		if kb then U.attachKeybind(r, flag, kb.key, kb.text ~= "" and kb.text or text) end
 	end
+	U.toggleRows[flag] = r
+	U.ensureSubGroup(flag, r)
 	return r
 end
 
@@ -728,33 +1326,31 @@ end
 function U.sliderFrame(parent, text, order, tooltip, vw)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 30)
+	r.Size = UDim2.new(1, 0, 0, 20)
 	U.label(r, text, { Size = UDim2.new(1, -(vw + 4), 0, 12) })
 	local val = U.label(r, "", { Size = UDim2.fromOffset(vw, 12), Position = UDim2.new(1, -vw, 0, 0), TextXAlignment = Enum.TextXAlignment.Right })
 	local track = U.new("Frame", { BackgroundColor3 = U.OFF, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 6), Position = UDim2.fromOffset(0, 14) }, r)
 	U.controlStroke(track)
 	local fill = U.new("Frame", { BackgroundColor3 = U.pulseColor(), BorderSizePixel = 0, ZIndex = 3 }, track)
 	U.registerPulse(fill, function() return true end)
-	local function cap(name)
-		return nil
-	end
-	return r, val, track, fill, cap
+	return r, val, track, fill
 end
 
 local function relX(track, x) return math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1) end
 
 function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix, infAt, tooltip)
-	step = step or 1
+	minV, maxV = tonumber(minV) or 0, tonumber(maxV) or 100
+	if minV > maxV then minV, maxV = maxV, minV end
+	step = math.max(1e-6, tonumber(step) or 1)
+	default = math.clamp(tonumber(default) or minV, minV, maxV)
 	local r, val, track, fill = U.sliderFrame(parent, text, order, tooltip, 52)
 	local span = math.max(1e-6, maxV - minV)
 	U.vflags[flag] = default
 
 	local function layout(v)
 		local t = math.clamp((v - minV) / span, 0, 1)
-		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
-		local fw = math.floor(w * t + 0.5)
-		fill.Position = UDim2.fromOffset(0, 0)
-		fill.Size = UDim2.fromOffset(fw, h)
+		fill.Position = UDim2.new(0, 0, 0, 0)
+		fill.Size = UDim2.new(t, 0, 1, 0)
 	end
 	local function set(v)
 		v = math.clamp(v, minV, maxV)
@@ -766,6 +1362,8 @@ function U.mkSlider(parent, text, flag, minV, maxV, default, order, step, suffix
 	val.Text = U.formatSliderVal(default, step, suffix, maxV, infAt)
 	layout(default)
 	task.defer(function() layout(U.vflags[flag] or default) end)
+	U.sliderLayouts = U.sliderLayouts or {}
+	U.sliderLayouts[#U.sliderLayouts + 1] = function() layout(U.vflags[flag] or default) end
 
 	local function fromX(x)
 		local v = math.clamp(math.floor((minV + (maxV - minV) * relX(track, x)) / step + 0.5) * step, minV, maxV)
@@ -802,12 +1400,15 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		local a, b = math.clamp(U.vflags[flagMin] or minV, minV, maxV), math.clamp(U.vflags[flagMax] or maxV, minV, maxV)
 		if a > b then a, b = b, a end
 		U.vflags[flagMin], U.vflags[flagMax] = a, b
-		local w, h = math.max(2, track.AbsoluteSize.X), math.max(2, track.AbsoluteSize.Y)
-		local x0, x1 = math.floor(w * (a - minV) / span + 0.5), math.floor(w * (b - minV) / span + 0.5)
-		fill.Position, fill.Size = UDim2.fromOffset(x0, 0), UDim2.fromOffset(math.max(0, x1 - x0), h)
+		local t0 = (a - minV) / span
+		local t1 = (b - minV) / span
+		fill.Position = UDim2.new(t0, 0, 0, 0)
+		fill.Size = UDim2.new(math.max(0, t1 - t0), 0, 1, 0)
 		val.Text = U.formatSliderVal(a, step, "", maxV, false) .. " - " .. U.formatSliderVal(b, step, suffix, maxV, infAtMax)
 	end
 	refresh()
+	U.sliderLayouts = U.sliderLayouts or {}
+	U.sliderLayouts[#U.sliderLayouts + 1] = refresh
 
 	local drag
 	local function at(x)
@@ -833,7 +1434,11 @@ function U.mkDoubleSlider(parent, text, flagMin, flagMax, minV, maxV, defMin, de
 		if drag and i.UserInputType == Enum.UserInputType.MouseMovement then at(i.Position.X) end
 	end))
 	for _, f in ipairs({ flagMin, flagMax }) do
-		U.setters[f] = function(v) U.vflags[f] = v refresh() U.fireFlag(f) end
+		U.setters[f] = function(v)
+			U.vflags[f] = math.clamp(tonumber(v) or (f == flagMin and defMin or defMax), minV, maxV)
+			refresh()
+			U.fireFlag(f)
+		end
 	end
 	return r
 end
@@ -843,13 +1448,20 @@ local DD_BG, DD_SEL, DD_HOV = Color3.fromRGB(32, 32, 32), Color3.fromRGB(40, 40,
 function U.mkDropdown(parent, text, flag, options, default, multi, order, limit, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 36)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	options = options or {}
-	limit = math.max(1, math.floor(tonumber(limit or (multi and 999 or 1)) or 1))
-	multi = limit > 1
+	local lim = tonumber(limit)
+	if lim == nil then
+		if multi == true then lim = 0 else lim = 1 end
+	end
+	lim = math.floor(lim)
+	if lim < 0 then lim = 0 end
+	local unlimited = lim == 0
+	multi = unlimited or lim > 1
+	local maxCount = unlimited and 1e9 or lim
 	if multi then
 		local d = type(default) == "table" and default or (default ~= nil and { default } or {})
-		while #d > limit do table.remove(d, 1) end
+		while #d > maxCount do table.remove(d, 1) end
 		U.vflags[flag] = d
 	else
 		U.vflags[flag] = type(default) == "table" and default[1] or default
@@ -859,6 +1471,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 	local box = U.new("TextButton", {
 		Name = "DropBox", AutoButtonColor = false, BackgroundColor3 = DD_BG, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 16),
 		Position = UDim2.fromOffset(0, 14), FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 	}, r)
 	U.controlStroke(box)
 
@@ -876,6 +1489,28 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		return tostring(U.vflags[flag] or "") == tostring(opt)
 	end
 
+	local function pruneSelection()
+		if not multi then
+			local cur = U.vflags[flag]
+			if cur ~= nil and not table.find(options, cur) then
+				U.vflags[flag] = nil
+				display()
+				U.fireFlag(flag)
+			end
+			return
+		end
+		local cur = type(U.vflags[flag]) == "table" and U.vflags[flag] or {}
+		local kept = {}
+		for _, v in ipairs(cur) do
+			if table.find(options, v) then kept[#kept + 1] = v end
+		end
+		if #kept ~= #cur then
+			U.vflags[flag] = kept
+			display()
+			U.fireFlag(flag)
+		end
+	end
+
 	box.MouseButton1Click:Connect(function()
 		U.closeColorPicker()
 		U.closeSettings()
@@ -886,9 +1521,11 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		end
 		if #options == 0 then return end
 
-		
 		local eb = U.ELEMENT_BORDER
-		local fullH = math.min(#options * 18, 140)
+		local rowH = 18
+		local maxH = 144 -- exact multiple of rowH so nothing is half-clipped
+		local contentH = #options * rowH
+		local fullH = math.min(contentH, maxH)
 		local boxW = math.floor(box.AbsoluteSize.X + 0.5)
 		local ebPx = math.floor(eb + 0.5)
 		local width = boxW + ebPx * 2
@@ -897,22 +1534,31 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		local bb = box:FindFirstChild("BBottom")
 		if bb then bb.Visible = false end
 
+		local listH = fullH + ebPx
 		local list = U.new("Frame", {
 			Name = "DropdownList", BackgroundColor3 = DD_BG, BorderSizePixel = 0, ClipsDescendants = true,
 			Size = UDim2.fromOffset(width, 0), Position = UDim2.fromOffset(px, py), ZIndex = 220,
 		}, U.gui)
 		list:SetAttribute("Flag", flag)
+		U.edges(list, eb, false, 224, true)
+
+		local scroll = U.new("ScrollingFrame", {
+			Name = "DropScroll", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0),
+			CanvasSize = UDim2.fromOffset(0, contentH), AutomaticCanvasSize = Enum.AutomaticSize.None,
+			ScrollBarThickness = 0, ScrollBarImageTransparency = 1, ClipsDescendants = true,
+			ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 221,
+		}, list)
 		local holder = U.new("Frame", {
 			BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = false,
-			Size = UDim2.fromOffset(width, fullH), Position = UDim2.fromOffset(0, 0), ZIndex = 221,
-		}, list)
-		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-		U.edges(list, eb, false, 223, true)
+			Size = UDim2.fromOffset(width, contentH), Position = UDim2.fromOffset(0, 0), ZIndex = 222,
+		}, scroll)
+		U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 0) }, holder)
 
 		for _, opt in ipairs(options) do
 			local b = U.new("TextButton", {
-				AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), FontFace = U.font, TextSize = U.TEXT_SZ,
-				TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opt), ZIndex = 222,
+				AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, rowH), FontFace = U.font, TextSize = U.TEXT_SZ,
+				TextColor3 = U.theme.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opt), ZIndex = 223,
 			}, holder)
 			U.new("UIPadding", { PaddingLeft = UDim.new(0, 7) }, b)
 			b.BackgroundColor3 = isSelected(opt) and DD_SEL or DD_BG
@@ -926,7 +1572,7 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 						table.remove(cur, at)
 					else
 						table.insert(cur, opt)
-						while #cur > limit do table.remove(cur, 1) end
+						while #cur > maxCount do table.remove(cur, 1) end
 					end
 					U.vflags[flag] = cur
 					for _, ch in ipairs(holder:GetChildren()) do
@@ -943,24 +1589,25 @@ function U.mkDropdown(parent, text, flag, options, default, multi, order, limit,
 		U.openDropdown, U.openDropdownBox = list, box
 		U.armPopupOpen()
 		list.InputBegan:Connect(U.armPopupOpen)
-		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, fullH) }):Play()
+		scroll.InputBegan:Connect(U.armPopupOpen)
+		U.Tween:Create(list, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(width, listH) }):Play()
 	end)
 	U.setters[flag] = function(v)
 		if multi and type(v) == "table" then
 			v = table.clone(v)
-			while #v > limit do table.remove(v, 1) end
+			while #v > maxCount do table.remove(v, 1) end
 		end
 		U.vflags[flag] = v
 		display()
 		U.fireFlag(flag)
 	end
-	return r
+	return r, options, pruneSelection, display
 end
 
 function U.mkTextbox(parent, text, flag, placeholder, order, tooltip)
 	local r = U.row(parent, order)
 	U.bindTooltip(r, tooltip)
-	r.Size = UDim2.new(1, 0, 0, 36)
+	r.Size = UDim2.new(1, 0, 0, 30)
 	U.vflags[flag] = U.vflags[flag] or ""
 	U.label(r, text, { Size = UDim2.new(1, 0, 0, 12) })
 	local box = U.new("TextBox", {
@@ -1026,6 +1673,10 @@ function U.mkButton(parent, text, order, confirm)
 		TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = text,
 	}, r)
 	U.controlStroke(btn)
+	if order == 1 then
+		local top = btn:FindFirstChild("BTop")
+		if top then top.Position = UDim2.fromOffset(0, 0) end
+	end
 	btn:SetAttribute("Confirm", confirm == true)
 	btn:SetAttribute("Label", text)
 	return btn
@@ -1048,23 +1699,58 @@ function U.bindButton(btn, callback, delay)
 	end)
 end
 
-function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
+function U.parseColorDefault(v)
+	if typeof(v) == "Color3" then
+		return v, 0
+	end
+	if type(v) == "table" then
+		if typeof(v[1]) == "Color3" then
+			return v[1], math.clamp(tonumber(v[2] or v.a or v.A or v.Transparency) or 0, 0, 1)
+		end
+		if typeof(v.Color) == "Color3" then
+			return v.Color, math.clamp(tonumber(v.Transparency or v.a or v.A or v[2]) or 0, 0, 1)
+		end
+		if typeof(v.R) == "number" and typeof(v.G) == "number" and typeof(v.B) == "number" then
+			local a = tonumber(v.A or v.a or v.Transparency or v[4]) or 0
+			return Color3.new(v.R, v.G, v.B), math.clamp(a, 0, 1)
+		end
+		local r = tonumber(v[1] or v.r)
+		local g = tonumber(v[2] or v.g)
+		local b = tonumber(v[3] or v.b)
+		local a = tonumber(v[4] or v.a or v.A or v.Transparency) or 0
+		if r and g and b then
+			if r > 1 or g > 1 or b > 1 then
+				return Color3.fromRGB(r, g, b), math.clamp(a, 0, 1)
+			end
+			return Color3.new(r, g, b), math.clamp(a, 0, 1)
+		end
+	end
+	return Color3.new(1, 1, 1), 0
+end
+
+function U.attachPicker(rowFrame, flagKey, defaultVal, showTransparency, title)
 	title = string.lower(tostring(title or "color"))
+	showTransparency = showTransparency == true
 	local alphaKey = flagKey .. "Transparency"
+	local defaultColor, defaultAlpha = U.parseColorDefault(defaultVal)
 	U.vflags[flagKey] = defaultColor
-	if not noAlpha then U.vflags[alphaKey] = 0 end
+	if showTransparency then
+		U.vflags[alphaKey] = defaultAlpha
+	else
+		U.vflags[alphaKey] = 0
+	end
 	local h, sat, val = defaultColor:ToHSV()
 
 	local rightPad = rowFrame:GetAttribute("RightPad") or 2
-	rowFrame:SetAttribute("RightPad", rightPad + 26 + 4 + 2)
+	rowFrame:SetAttribute("RightPad", rightPad + 24 + 4 + 2)
 	local sw = U.new("TextButton", {
-		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(26, 13), AnchorPoint = Vector2.new(1, 0.5),
+		Name = "Swatch", AutoButtonColor = false, Text = "", Size = UDim2.fromOffset(24, 12), AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -rightPad, 0.5, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 12,
 	}, rowFrame)
 	U.controlStroke(sw)
 	local swFill = U.new("Frame", {
 		Name = "SwatchFill", BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), BackgroundColor3 = defaultColor, ZIndex = 13,
-		BackgroundTransparency = noAlpha and 0 or (U.vflags[alphaKey] or 0),
+		BackgroundTransparency = showTransparency and (U.vflags[alphaKey] or 0) or 0,
 	}, sw)
 
 	local function refreshOpen()
@@ -1073,7 +1759,7 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	local function paint()
 		local c = Color3.fromHSV(h, sat, val)
 		U.vflags[flagKey], swFill.BackgroundColor3 = c, c
-		swFill.BackgroundTransparency = noAlpha and 0 or (U.vflags[alphaKey] or 0)
+		swFill.BackgroundTransparency = showTransparency and (U.vflags[alphaKey] or 0) or 0
 		local tk = U.THEME_KEYS[flagKey]
 		if tk then U.theme[tk] = c U.applyTheme() end
 	end
@@ -1082,13 +1768,20 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		U.fireFlag(flagKey)
 	end
 	U.setters[flagKey] = function(v)
-		if typeof(v) ~= "Color3" then return end
-		h, sat, val = v:ToHSV()
+		local c, a = U.parseColorDefault(v)
+		if typeof(v) == "Color3" then
+			c = v
+		end
+		h, sat, val = c:ToHSV()
+		U.vflags[flagKey] = c
+		if showTransparency and type(v) == "table" then
+			U.vflags[alphaKey] = a
+		end
 		paint()
 		refreshOpen()
 		U.fireFlag(flagKey)
 	end
-	if not noAlpha then
+	if showTransparency then
 		U.setters[alphaKey] = function(a)
 			U.vflags[alphaKey] = a
 			swFill.BackgroundTransparency = a or 0
@@ -1105,13 +1798,17 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			if same then return end
 		end
 
-		local MAP, BAR_H, PAD, TITLE, TOG, GAP = 120, 12, 8, 16, 14, 6
+		local MAP, TOG, PAD, TITLE, GAP = 120, 14, 8, 16, 6
+		local BAR = TOG
 		local mapY = PAD + TITLE
-		local hueY = mapY + MAP + 6
-		local alphaY = hueY + BAR_H + 6
-		local POP_W = PAD + MAP + GAP + TOG + PAD
+		local hueY = mapY + MAP + GAP
+		local alphaX = PAD + MAP + GAP
+		local hasAlpha = showTransparency
+		local rightW = hasAlpha and BAR or TOG
+		local POP_W = PAD + MAP + GAP + rightW + PAD
 		local RGB_H = 16
-		local POP_H = PAD + TITLE + MAP + 6 + BAR_H + (noAlpha and 0 or (6 + BAR_H)) + 6 + RGB_H + PAD
+		local botY = hueY + BAR + GAP
+		local POP_H = botY + RGB_H + PAD
 
 		local pop = U.new("Frame", {
 			Name = "ColorPop", BackgroundColor3 = Color3.fromRGB(24, 24, 24), BorderSizePixel = 0, Size = UDim2.fromOffset(POP_W, POP_H), ZIndex = 220, Active = true,
@@ -1140,72 +1837,61 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		overlay(map, Color3.new(0, 0, 0), 223, 90, 1, 0)
 		local mapDot = marker(map, UDim2.fromOffset(8, 8), 224, UDim2.new())
 
-		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
+		local alphaBar, alphaDot
+		if hasAlpha then
+			alphaBar = btn("ImageButton", {
+				Size = UDim2.fromOffset(BAR, MAP), Position = UDim2.fromOffset(alphaX, mapY),
+				BackgroundColor3 = Color3.fromHSV(h, sat, val),
+			})
+			U.controlStroke(alphaBar)
+			U.new("UIGradient", {
+				Rotation = 90,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
+			}, alphaBar)
+			alphaDot = marker(alphaBar, UDim2.fromOffset(BAR + 4, 2), 223, UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0))
+		end
+
+		local hueBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR), Position = UDim2.fromOffset(PAD, hueY), BackgroundColor3 = Color3.new(1, 1, 1) })
 		U.controlStroke(hueBar)
 		local hueKeys = {}
 		for i, c in ipairs({ { 0, 0 }, { 0.17, 60 }, { 0.33, 120 }, { 0.5, 180 }, { 0.67, 240 }, { 0.83, 300 }, { 1, 0 } }) do
 			hueKeys[i] = ColorSequenceKeypoint.new(c[1], Color3.fromHSV(c[2] / 360, 1, 1))
 		end
 		U.new("UIGradient", { Color = ColorSequence.new(hueKeys) }, hueBar)
-		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(h, 0, 0.5, 0))
+		local hueDot = marker(hueBar, UDim2.fromOffset(2, BAR + 4), 223, UDim2.new(h, 0, 0.5, 0))
 
+		local cycleX = alphaX + math.floor((rightW - TOG) / 2)
+		local cycleY = hueY + math.floor((BAR - TOG) / 2)
 		local refreshUI
-		local function cycleBtn(name, key, y, onToggle)
-			local b = btn("TextButton", {
-				Name = name, Text = "", Size = UDim2.fromOffset(TOG, TOG), Position = UDim2.fromOffset(PAD + MAP + GAP, y + (BAR_H - TOG) / 2),
-				BackgroundColor3 = U.vflags[flagKey .. key] and U.pulseColor() or U.OFF,
-			})
-			U.controlStroke(b)
-			U.registerPulse(b, function() return U.vflags[flagKey .. key] == true end)
-			b.MouseButton1Click:Connect(function()
-				local on = U.vflags[flagKey .. key] ~= true
-				onToggle(on)
-				b.BackgroundColor3 = on and U.pulseColor() or U.OFF
-				refreshUI()
-			end)
-		end
-		cycleBtn("CycleColor", "CycleColor", hueY, function(on)
+		local cycleB = btn("TextButton", {
+			Name = "CycleColor", Text = "", Size = UDim2.fromOffset(TOG, TOG),
+			Position = UDim2.fromOffset(cycleX, cycleY),
+			BackgroundColor3 = U.vflags[flagKey .. "CycleColor"] and U.pulseColor() or U.OFF,
+		})
+		U.controlStroke(cycleB)
+		U.registerPulse(cycleB, function() return U.vflags[flagKey .. "CycleColor"] == true end)
+		cycleB.MouseButton1Click:Connect(function()
+			local on = U.vflags[flagKey .. "CycleColor"] ~= true
 			U.setCycleColor(flagKey, on)
 			if on then h = U.cycle.hue apply() end
+			cycleB.BackgroundColor3 = on and U.pulseColor() or U.OFF
+			refreshUI()
 		end)
 
-		local alphaBar, alphaDot
-		if not noAlpha then
-			alphaBar = btn("ImageButton", { Size = UDim2.fromOffset(MAP, BAR_H), Position = UDim2.fromOffset(PAD, alphaY), BackgroundColor3 = Color3.fromHSV(h, sat, val) })
-			U.controlStroke(alphaBar)
-			U.new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) }, alphaBar)
-			alphaDot = marker(alphaBar, UDim2.fromOffset(2, BAR_H + 4), 223, UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0))
-			local breakLine = U.new("Frame", {
-				Name = "AlphaBreak", Size = UDim2.fromOffset(2, BAR_H + 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(U.cycle.alphaBreak or 0, 0, 0.5, 0),
-				BackgroundColor3 = Color3.fromRGB(220, 40, 40), BorderSizePixel = 0, ZIndex = 224, Visible = U.cycle.alphaBreak ~= nil,
-			}, alphaBar)
-			U.registerAlphaBreakMarker(breakLine)
-			alphaBar.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					U.setAlphaBreak(U.cycle.alphaBreak == nil and relX(alphaBar, input.Position.X) or nil)
-				end
-			end)
-			cycleBtn("CycleAlpha", "CycleAlpha", alphaY, function(on)
-				U.setCycleAlpha(flagKey, on)
-				if on then U.vflags[alphaKey] = U.cycle.alpha end
-			end)
-		end
-
-		local rgbY = (noAlpha and hueY or alphaY) + BAR_H + 6
-		local rgbW = MAP + GAP + TOG
+		local rgbW = (cycleX + TOG) - PAD
 		local rgbBox = U.new("Frame", {
 			BackgroundColor3 = Color3.fromRGB(18, 18, 18), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, rgbY), ZIndex = 221,
+			Size = UDim2.fromOffset(rgbW, RGB_H), Position = UDim2.fromOffset(PAD, botY), ZIndex = 221,
 		}, pop)
 		U.controlStroke(rgbBox)
 		local rgbText = U.label(rgbBox, "", {
-			Position = UDim2.fromOffset(4, 0), Size = UDim2.new(1, -6, 1, 0),
+			Position = UDim2.fromOffset(3, 0), Size = UDim2.new(1, -6, 1, 0),
 			TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 222,
 		})
 		local function syncRgbText()
 			local c = Color3.fromHSV(h, sat, val)
 			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
-			if noAlpha then
+			if not hasAlpha then
 				rgbText.Text = string.format("%d, %d, %d", r, g, b)
 			else
 				local a = U.vflags[alphaKey] or 0
@@ -1218,8 +1904,9 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 			hueDot.Position = UDim2.new(h, 0, 0.5, 0)
 			if alphaBar then
 				alphaBar.BackgroundColor3 = Color3.fromHSV(h, sat, val)
-				alphaDot.Position = UDim2.new(U.vflags[alphaKey] or 0, 0, 0.5, 0)
+				alphaDot.Position = UDim2.new(0.5, 0, U.vflags[alphaKey] or 0, 0)
 			end
+			cycleB.BackgroundColor3 = U.vflags[flagKey .. "CycleColor"] and U.pulseColor() or U.OFF
 			syncRgbText()
 		end
 		U.openPickerRefresh = refreshUI
@@ -1230,12 +1917,12 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		local drag
 		local function move(pos)
 			if drag == "map" then
-				sat = relX(map, pos.X)
+				sat = math.clamp((pos.X - map.AbsolutePosition.X) / math.max(map.AbsoluteSize.X, 1), 0, 1)
 				val = 1 - math.clamp((pos.Y - map.AbsolutePosition.Y) / math.max(map.AbsoluteSize.Y, 1), 0, 1)
 			elseif drag == "hue" then
-				h = relX(hueBar, pos.X)
+				h = math.clamp((pos.X - hueBar.AbsolutePosition.X) / math.max(hueBar.AbsoluteSize.X, 1), 0, 1)
 			elseif drag == "alpha" and alphaBar then
-				U.vflags[alphaKey] = relX(alphaBar, pos.X)
+				U.vflags[alphaKey] = math.clamp((pos.Y - alphaBar.AbsolutePosition.Y) / math.max(alphaBar.AbsoluteSize.Y, 1), 0, 1)
 			else
 				return
 			end
@@ -1266,7 +1953,6 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 		if U.gui.AbsoluteSize.X > 0 and px + POP_W > U.gui.AbsoluteSize.X then px = a.X - origin.X - POP_W - 6 end
 		pop.Position = UDim2.fromOffset(px, a.Y - origin.Y)
 		if U.vflags[flagKey .. "CycleColor"] then h = U.cycle.hue apply() end
-		if U.vflags[flagKey .. "CycleAlpha"] then U.vflags[alphaKey] = U.cycle.alpha end
 		U.openColorPicker = pop
 		U.armPopupOpen()
 		refreshUI()
@@ -1274,14 +1960,102 @@ function U.attachPicker(rowFrame, flagKey, defaultColor, noAlpha, title)
 	return sw
 end
 
+function U.shellHeight()
+	local h = U.LINE_H + U.TITLE_H + U.BODY_H + U.TAB_H
+	if U.bottomBarOn then
+		h = h + (U.BOTTOM_BAR_H or 18) + U.SEC_GAP
+	end
+	return h
+end
+
+function U.refreshBottomBar()
+	if not U.bottomBarLabel then return end
+	local value = U.bottomBarText
+	if type(value) == "function" then
+		local ok, result = pcall(value)
+		value = ok and result or ""
+	end
+	value = tostring(value or "")
+	if U.bottomBarLabel.Text ~= value then U.bottomBarLabel.Text = value end
+end
+
+function U.bindBottomBarUpdater()
+	if U.bottomBarUpdateConn then
+		U.bottomBarUpdateConn:Disconnect()
+		U.bottomBarUpdateConn = nil
+	end
+	if U.bottomBarOn and U.bottomBarLabel and type(U.bottomBarText) == "function" then
+		local elapsed = 0
+		U.bottomBarUpdateConn = U.Run.Heartbeat:Connect(function(dt)
+			if not U.running or not U.bottomBarOn then return end
+			elapsed += dt
+			if elapsed >= 0.25 then
+				elapsed %= 0.25
+				U.refreshBottomBar()
+			end
+		end)
+	end
+end
+
+function U.createBottomBar()
+	if U.bottomBar or not U.shell then return end
+	U.bottomBar = U.new("Frame", {
+		Name = "BottomBar", BackgroundColor3 = U.theme.SectionBg,
+		BorderSizePixel = 0, Visible = true, ZIndex = 6,
+	}, U.shell)
+	table.insert(U.themeReg.sectionBgs, U.bottomBar)
+	U.stroke(U.bottomBar, "SectionBorder")
+	U.bottomBarLabel = U.label(U.bottomBar, "", {
+		Name = "BottomBarText", Size = UDim2.new(1, -10, 1, 0),
+		Position = UDim2.fromOffset(5, 0),
+		TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 7,
+	})
+end
+
+function U.layoutBottomBar()
+	if not U.bottomBar then return end
+	local gap = U.SEC_GAP
+	U.bottomBar.Visible = U.bottomBarOn == true
+	if not U.bottomBarOn then return end
+	U.bottomBar.Size = UDim2.new(1, -gap * 2, 0, U.BOTTOM_BAR_H or 18)
+	U.bottomBar.Position = UDim2.new(0, gap, 1, -(gap + (U.BOTTOM_BAR_H or 18)))
+	U.refreshBottomBar()
+end
+
+function U.setBottomBar(on, text)
+	if type(on) == "string" then
+		text, on = on, true
+	end
+	U.bottomBarOn = on == true
+	if text ~= nil then U.bottomBarText = text end
+	if U.bottomBarOn then
+		U.createBottomBar()
+	elseif U.bottomBar then
+		U.bottomBar:Destroy()
+		U.bottomBar, U.bottomBarLabel = nil, nil
+	end
+	U.bindBottomBarUpdater()
+	if U.shell then
+		U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
+		U.layoutBottomBar()
+		U.applyBodyLayout(true)
+	end
+end
+
+function U.setBottomBarText(text)
+	U.bottomBarText = text
+	U.bindBottomBarUpdater()
+	U.refreshBottomBar()
+end
+
 function U.buildShell()
 	local TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
-	U.TAB_W, U.TAB_H = TAB_W, 32
+	U.TAB_W, U.TAB_H = TAB_W, 26
 	U.gui = U.new("ScreenGui", { Name = "wavelength", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, U.guiParent())
 
 	local shell = U.new("Frame", {
 		Name = "Shell", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, ClipsDescendants = true, Active = true,
-		Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.BODY_H + U.LINE_H), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -(U.TITLE_H + U.BODY_H) / 2),
+		Size = UDim2.fromOffset(U.BODY_W, U.shellHeight()), Position = UDim2.new(0.5, -U.BODY_W / 2, 0.5, -U.shellHeight() / 2),
 	}, U.gui)
 	U.shell = shell
 	U.stroke(shell, "Border")
@@ -1290,24 +2064,28 @@ function U.buildShell()
 	U.accent = U.new("Frame", { Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 5 }, shell)
 	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, U.accent))
 
-	U.titleBar = U.new("Frame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-		Size = UDim2.new(1, 0, 0, U.TITLE_H + U.SEC_GAP),
-		Position = UDim2.fromOffset(0, U.LINE_H),
-	}, shell)
-	do
-		local titleLeft = U.label(U.titleBar, "wavelength", {
-			Size = UDim2.new(1, -16, 1, 0),
-			Position = UDim2.fromOffset(8, -1),
-			TextYAlignment = Enum.TextYAlignment.Center,
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		table.insert(U.themeReg.labels, titleLeft)
+	U.titleBar, U.titleLabel = nil, nil
+	if U.windowTitle ~= nil then
+		U.titleBar = U.new("Frame", {
+			BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
+			Size = UDim2.new(1, 0, 0, U.TITLE_H),
+			Position = UDim2.fromOffset(0, U.LINE_H), ZIndex = 6,
+		}, shell)
+		local bandBottom = U.LINE_H + U.TITLE_H + 7
+		local titleY = math.floor(bandBottom / 2 - U.TEXT_SZ / 2 + 0.5) - U.LINE_H
+		U.titleLabel = U.new("TextLabel", {
+			Name = "TitleLabel", BackgroundTransparency = 1, BorderSizePixel = 0,
+			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+			Text = U.windowTitle, Position = UDim2.fromOffset(6, titleY),
+			Size = UDim2.new(1, -12, 0, U.TEXT_SZ), ZIndex = 7,
+		}, U.titleBar)
+		table.insert(U.themeReg.labels, U.titleLabel)
 	end
 
 	U.body = U.new("Frame", {
 		Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromOffset(U.BODY_W, U.BODY_H),
-		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H), ClipsDescendants = true, Active = true,
+		Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H + U.TAB_H), ClipsDescendants = true, Active = true,
 	}, shell)
 	table.insert(U.themeReg.bodyBgs, U.body)
 	U.pages = U.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true }, U.body)
@@ -1317,27 +2095,27 @@ function U.buildShell()
 		U.pageFrames[n] = U.new("Frame", { Name = n, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = i == 1 }, U.pages)
 	end
 	U.currentTab = U.TAB_NAMES[1]
+
+	U.bottomBar, U.bottomBarLabel = nil, nil
+	if U.bottomBarOn then U.createBottomBar() end
+	U.layoutBottomBar()
+	U.bindBottomBarUpdater()
 end
 
 local function panelOf(kind)
 	if kind == "wm" then return U.wm end
 	if kind == "kb" then return U.kbPanel end
-	if kind == "pv" then return U.pvPanel end
 	return nil
 end
 local function flagOf(kind)
 	if kind == "wm" then return "Watermark" end
 	if kind == "kb" then return "KeybindsList" end
-	if kind == "pv" then return "Preview" end
 	return ""
 end
 
 function U.dockPos(kind, h)
 	local sp, sw = U.shell.Position, U.shell.Size.X.Offset
 	if sw < 2 then sw = U.BODY_W end
-	if kind == "pv" then
-		return Vector2.new(0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + sw + U.dockGap, sp.Y.Scale, sp.Y.Offset)
-	end
 	local right = kind == "kb"
 	return Vector2.new(right and 1 or 0, 0), UDim2.new(sp.X.Scale, sp.X.Offset + (right and sw or 0), sp.Y.Scale, sp.Y.Offset - h - U.dockGap)
 end
@@ -1359,7 +2137,7 @@ function U.dockKeybinds() U.dock("kb") end
 
 function U.ensureSnapGhosts()
 	if not U.gui then return end
-	for _, kind in ipairs({ "wm", "kb", "pv" }) do
+	for _, kind in ipairs({ "wm", "kb" }) do
 		local key = kind .. "SnapGhost"
 		if not U[key] or not U[key].Parent then
 			local g = U.new("Frame", { Name = (kind == "wm" and "Wm" or "Kb") .. "SnapGhost", BorderSizePixel = 0, Visible = false, ZIndex = 40 }, U.gui)
@@ -1373,14 +2151,13 @@ end
 
 function U.showSnapGhost(kind)
 	if U.menuOpen == false then
-		U.hideSnapGhost("wm"); U.hideSnapGhost("kb"); U.hideSnapGhost("pv")
+		U.hideSnapGhost("wm"); U.hideSnapGhost("kb")
 		return
 	end
 	U.ensureSnapGhosts()
 	local f, g = panelOf(kind), U[kind .. "SnapGhost"]
 	if not U.shell or not f then return end
 	local h = panelH(f)
-	if kind == "pv" then h = U.LINE_H + U.TITLE_H end
 	g.Size = UDim2.fromOffset(math.max(2, f.Size.X.Offset), h)
 	g.AnchorPoint, g.Position = U.dockPos(kind, h)
 	g.Visible = true
@@ -1397,10 +2174,6 @@ function U.overlapsSnap(kind, frame)
 	local gp, gs, fp, fs = g.AbsolutePosition, g.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
 	local cx = fp.X + fs.X * 0.5
 	local cy = fp.Y + fs.Y * 0.5
-	if kind == "pv" then
-		-- ghost is header-sized; test against header center so full panel can reattach
-		cy = fp.Y + math.min(fs.Y, (U.LINE_H + U.TITLE_H)) * 0.5
-	end
 	local pad = 12
 	return cx >= gp.X - pad and cx <= gp.X + gs.X + pad and cy >= gp.Y - pad and cy <= gp.Y + gs.Y + pad
 end
@@ -1408,11 +2181,10 @@ end
 function U.syncFloatingVisibility()
 	local menuOn = U.menuOpen ~= false
 	if U.shell then U.shell.Visible = menuOn end
-	for _, kind in ipairs({ "wm", "kb", "pv" }) do
+	for _, kind in ipairs({ "wm", "kb" }) do
 		local f = panelOf(kind)
 		if not f then continue end
 		local on = U.vflags[flagOf(kind)] == true and (menuOn or not U[kind .. "Docked"])
-		if kind == "pv" then on = on and U.currentTab == "visuals" end
 		f.Visible = on == true
 	end
 end
@@ -1421,10 +2193,6 @@ function U.dragPanel(f, kind)
 	local dragging, ds, sp
 	f.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		if kind == "pv" then
-			local relY = input.Position.Y - f.AbsolutePosition.Y
-			if relY > (U.LINE_H + U.TITLE_H + 2) then return end
-		end
 		dragging, ds, sp = true, input.Position, f.Position
 		U[kind .. "Docked"] = false
 		U.showSnapGhost(kind)
@@ -1448,24 +2216,26 @@ function U.dragPanel(f, kind)
 end
 
 function U.buildFloaters()
-	local gen, P = U.gen, U.PAD
+	local P = U.PAD
 	local textPos, textSize = UDim2.fromOffset(P, U.LINE_H + P), UDim2.new(1, -P * 2, 0, U.TEXT_SZ)
 
-	
 	local wm = U.mkPanel(U.gui, "Watermark", 50)
 	wm.Size, wm.Active, wm.Visible = U.panelSize(80, 1), true, false
 	U.wm, U.wmGui = wm, U.gui
 	local wtxt = U.label(wm, "", { Position = textPos, Size = textSize, TextYAlignment = Enum.TextYAlignment.Center })
 	U.wmText = wtxt
 
-	local frames, fps = 0, 60
-	U.track(U.Run.RenderStepped:Connect(function() frames += 1 end))
-	task.spawn(function()
-		while U.running and U.gen == gen do
-			task.wait(1)
-			fps, frames = frames, 0
+	local frames, fps, elapsed = 0, 60, 0
+	local refreshWm
+	U.track(U.Run.RenderStepped:Connect(function(dt)
+		frames += 1
+		elapsed += dt
+		if elapsed >= 1 then
+			fps = math.floor(frames / elapsed + 0.5)
+			frames, elapsed = 0, 0
+			if U.vflags.Watermark and refreshWm then refreshWm() end
 		end
-	end)
+	end))
 	local function ping()
 		local ok, v = pcall(function()
 			if U.lp and U.lp.GetNetworkPing then
@@ -1475,7 +2245,7 @@ function U.buildFloaters()
 		end)
 		return ok and v or 0
 	end
-	local function refreshWm()
+	refreshWm = function()
 		local on = U.vflags.Watermark == true
 		wm.Visible = on
 		if not on then return end
@@ -1490,22 +2260,14 @@ function U.buildFloaters()
 		wtxt.Text = #parts > 0 and table.concat(parts, " | ") or "wavelength"
 		wtxt.TextColor3 = U.theme.Text
 		wm.Size = U.panelSize(U.textW(wtxt), 1)
-		U.dock("wm")
 		U.syncFloatingVisibility()
 	end
 	U.onFlag("Watermark", function() refreshWm() U.syncFloatingVisibility() end)
 	U.onFlag("WatermarkItems", refreshWm)
 	U.onFlag("WatermarkMessage", refreshWm)
-	task.spawn(function()
-		while U.running and U.gen == gen do
-			task.wait(0.25)
-			if U.vflags.Watermark then refreshWm() end
-		end
-	end)
 	refreshWm()
 	U.dragPanel(wm, "wm")
 
-	
 	local kb = U.mkPanel(U.gui, "KeybindsPanel", 50)
 	kb.Size, kb.Active, kb.Visible = U.panelSize(40, 1), true, false
 	U.kbPanel = kb
@@ -1514,7 +2276,7 @@ function U.buildFloaters()
 
 	local function build()
 		if U.vflags.KeybindsList ~= true then kb.Visible = false return end
-		kb.Visible = true 
+		kb.Visible = true
 		for _, c in ipairs(list:GetChildren()) do
 			if c:IsA("TextLabel") then c:Destroy() end
 		end
@@ -1529,7 +2291,6 @@ function U.buildFloaters()
 			count += 1
 		end
 		kb.Size = U.panelSize(maxW, math.max(count, 1))
-		U.dock("kb")
 		U.syncFloatingVisibility()
 	end
 	function U.refreshKeybindList()
@@ -1542,86 +2303,19 @@ function U.buildFloaters()
 		U._kbRefreshing = false
 	end
 	U.onFlag("KeybindsList", function() U.refreshKeybindList() end)
-	
+
+	local function updateDockedPanels()
+		if U.wmDocked then U.dock("wm") end
+		if U.kbDocked then U.dock("kb") end
+	end
+	U.track(U.shell:GetPropertyChangedSignal("Position"):Connect(updateDockedPanels))
+	U.track(U.shell:GetPropertyChangedSignal("Size"):Connect(updateDockedPanels))
+	U.track(wm:GetPropertyChangedSignal("Size"):Connect(function() if U.wmDocked then U.dock("wm") end end))
+	U.track(kb:GetPropertyChangedSignal("Size"):Connect(function() if U.kbDocked then U.dock("kb") end end))
+
 	U.dragPanel(kb, "kb")
 
-	local PRE_W = math.floor(U.BODY_W / 2)
-	local shellH = U.TITLE_H + U.BODY_H + U.LINE_H
-	local pv = U.mkPanel(U.gui, "PreviewPanel", 50)
-	pv.Size = UDim2.fromOffset(PRE_W, shellH)
-	pv.BackgroundColor3 = U.theme.Background
-	pv.Active = true
-	pv.Visible = false
-	pv.ClipsDescendants = true
-	U.pvPanel = pv
-	U.pvDocked = true
-	table.insert(U.themeReg.bodyBgs, pv)
-	local pvTitleLbl = U.label(pv, "preview", {
-		Position = UDim2.fromOffset(6, U.LINE_H - 1),
-		Size = UDim2.new(1, -12, 0, U.TITLE_H + U.SEC_GAP),
-		TextYAlignment = Enum.TextYAlignment.Center,
-	})
-	table.insert(U.themeReg.labels, pvTitleLbl)
-	-- section top matches main UI: body starts at LINE_H+TITLE_H, sections at SEC_GAP
-	local secTop = U.LINE_H + U.TITLE_H + U.SEC_GAP
-	local pvSection = U.new("Frame", {
-		Name = "Section",
-		BackgroundColor3 = U.theme.SectionBg,
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		Position = UDim2.fromOffset(U.SEC_GAP, secTop),
-		Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(secTop + U.SEC_GAP)),
-	}, pv)
-	U.stroke(pvSection, "SectionBorder")
-	table.insert(U.themeReg.sectionBgs, pvSection)
-	local viewport = Instance.new("ViewportFrame")
-	viewport.Name = "View"
-	local pbg = U.vflags.ThemePreviewBg
-	viewport.BackgroundColor3 = typeof(pbg) == "Color3" and pbg or Color3.fromRGB(14, 14, 14)
-	viewport.BackgroundTransparency = 0
-	viewport.BorderSizePixel = 0
-	viewport.Size = UDim2.fromScale(1, 1)
-	viewport.Ambient = Color3.fromRGB(200, 200, 200)
-	viewport.LightColor = Color3.fromRGB(255, 255, 255)
-	viewport.LightDirection = Vector3.new(-1, -1, -1)
-	viewport.Parent = pvSection
-	U.pvViewport = viewport
-	local pvOverlay = U.new("Frame", {
-		Name = "ESPOverlay",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 10,
-		ClipsDescendants = true,
-	}, pvSection)
-	U.pvOverlay = pvOverlay
-	local world = Instance.new("WorldModel")
-	world.Parent = viewport
-	U.pvWorld = world
-	local vcam = Instance.new("Camera")
-	vcam.Parent = viewport
-	viewport.CurrentCamera = vcam
-	U.pvCamera = vcam
-	U.pvYaw, U.pvPitch, U.pvDistScale = 0, 0.05, 1.0
-	U.pvFocus = Vector3.new(0, 3, 0)
-	U.pvBaseDist = 7
-	function U.pvUpdateCam()
-		local d = (U.pvBaseDist or 7) * (U.pvDistScale or 1.35)
-		local focus = U.pvFocus or Vector3.new(0, 3, 0)
-		local cf = CFrame.new(focus)
-			* CFrame.Angles(0, U.pvYaw or math.pi, 0)
-			* CFrame.Angles(-(U.pvPitch or 0.12), 0, 0)
-			* CFrame.new(0, 0, d)
-		vcam.CFrame = CFrame.lookAt(cf.Position, focus)
-	end
-	U.pvUpdateCam()
-	U.onFlag("Preview", function()
-		U.dock("pv")
-		U.syncFloatingVisibility()
-	end)
-	U.dragPanel(pv, "pv")
 end
-
 function U.buildConfig()
 
 	local FOLDER, selected, listFrame = "zwavelength", nil, nil
@@ -1673,8 +2367,7 @@ function U.buildConfig()
 		data.__wmDocked, data.__kbDocked = U.wmDocked == true, U.kbDocked == true
 		if U.wm and U.wm.Parent then data.__wmPos = posOf(U.wm) end
 		if U.kbPanel and U.kbPanel.Parent then data.__kbPos = posOf(U.kbPanel) end
-		data.__alphaBreak = U.cycle.alphaBreak or false
-		return data
+			return data
 	end
 	local function applyData(data)
 		if type(data) ~= "table" then return end
@@ -1701,14 +2394,10 @@ function U.buildConfig()
 		if data.__kbDocked ~= nil then U.kbDocked = data.__kbDocked == true end
 		restorePos(U.wm, data.__wmPos)
 		restorePos(U.kbPanel, data.__kbPos)
-		if type(data.__alphaBreak) == "number" then U.setAlphaBreak(data.__alphaBreak)
-		elseif data.__alphaBreak == false then U.setAlphaBreak(nil) end
-
-		U.cycle.colorFlags, U.cycle.alphaFlags = {}, {}
+		U.cycle.colorFlags = {}
 		for k, v in pairs(U.vflags) do
-			if type(k) == "string" and v == true then
-				if k:sub(-10) == "CycleColor" then U.setCycleColor(k:sub(1, -11), true)
-				elseif k:sub(-10) == "CycleAlpha" then U.setCycleAlpha(k:sub(1, -11), true) end
+			if type(k) == "string" and v == true and k:sub(-10) == "CycleColor" then
+				U.setCycleColor(k:sub(1, -11), true)
 			end
 		end
 		U.applyTheme()
@@ -1719,12 +2408,14 @@ function U.buildConfig()
 	end
 
 	local p = U.pageFrames.config
-	local configsSec, settingsSec = U.section(p, "configs", 1), U.section(p, "settings", 2)
+	local configsSec = U.section(p, 1):AddTab("configs")
+	local settingsSec = U.section(p, 2):AddTab("settings")
+	local configsContent, settingsContent = configsSec._content, settingsSec._content
 	local function note(t) U.pushNotification({ text = t, time = 2 }) end
 	local path = function(n) return FOLDER .. "/" .. n .. ".json" end
 
-	U.mkTextbox(configsSec, "name", "ConfigName", "config name", 1)
-	U.mkButton(configsSec, "create / save", 2).MouseButton1Click:Connect(function()
+	U.mkTextbox(configsContent, "name", "ConfigName", "config name", 1)
+	U.mkButton(configsContent, "create / save", 2).MouseButton1Click:Connect(function()
 		local name = tostring(U.vflags.ConfigName or ""):gsub("[^%w%-%_ ]", "")
 		if name == "" then return note("enter a config name") end
 		ensureFolder()
@@ -1737,7 +2428,7 @@ function U.buildConfig()
 			U.pushNotification({ text = "save failed: " .. tostring(err), time = 3 })
 		end
 	end)
-	U.mkButton(configsSec, "load", 3).MouseButton1Click:Connect(function()
+	U.mkButton(configsContent, "load", 3).MouseButton1Click:Connect(function()
 		if not selected then return note("select a config first") end
 		local ok, data = pcall(function() return U.Http:JSONDecode(readfile(path(selected))) end)
 		if ok and type(data) == "table" then
@@ -1747,7 +2438,7 @@ function U.buildConfig()
 			note("load failed")
 		end
 	end)
-	U.mkButton(configsSec, "delete", 4).MouseButton1Click:Connect(function()
+	U.mkButton(configsContent, "delete", 4).MouseButton1Click:Connect(function()
 		if not selected then return note("select a config first") end
 		local name = selected
 		pcall(function() delfile(path(name)) end)
@@ -1756,20 +2447,25 @@ function U.buildConfig()
 		note('deleted "' .. name .. '" config')
 	end)
 
-	U.label(configsSec, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
-	local listBox = U.new("Frame", { BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsSec)
-	U.edges(listBox, U.ELEMENT_BORDER, false, 3)
+	U.label(configsContent, "saved", { Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 5 })
+	local listBox = U.new("Frame", { Name = "SavedList", BackgroundColor3 = Color3.fromRGB(14, 14, 14), BorderSizePixel = 0, ClipsDescendants = false, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 6 }, configsContent)
+	U.edges(listBox, U.ELEMENT_BORDER, true, 3)
 	listFrame = U.new("ScrollingFrame", {
 		Name = "Inner", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, -4, 1, -4), Position = UDim2.fromOffset(2, 2),
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
 	}, listBox)
 	U.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, listFrame)
+	U.configListBox = listBox
+	U.configListScroll = configsContent
 	refreshList()
+	task.defer(function()
+		if U.updateConfigListHeight then U.updateConfigListHeight() end
+	end)
 
 	local o = 0
 	local function nextOrder() o += 1 return o end
 	local function themeRow(label, flag, key, title)
-		return U.attachPicker(U.mkColorRow(settingsSec, label, nextOrder()), flag, U.theme[key], true, title or label)
+		return U.attachPicker(U.mkColorRow(settingsContent, label, nextOrder()), flag, U.theme[key], false, title or label)
 	end
 	themeRow("text", "ThemeText", "Text", "text color")
 	themeRow("border", "ThemeBorder", "Border", "border color")
@@ -1777,59 +2473,89 @@ function U.buildConfig()
 	themeRow("element border", "ThemeElementBorder", "ElementBorder")
 	themeRow("section background", "ThemeSectionBg", "SectionBg")
 	themeRow("background", "ThemeBackground", "Background")
-	do
-		local row = U.mkColorRow(settingsSec, "preview background", nextOrder())
-		U.attachPicker(row, "ThemePreviewBg", Color3.fromRGB(14, 14, 14), true, "preview background")
-		U.onFlag("ThemePreviewBg", function()
-			local vp = U.pvViewport
-			if vp then
-				local col = U.vflags.ThemePreviewBg
-				if typeof(col) == "Color3" then vp.BackgroundColor3 = col end
-			end
-		end)
-	end
-	local accentRow = U.mkColorRow(settingsSec, "accent", nextOrder())
-	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, true, "accent a")
-	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, true, "accent b")
-	U.mkKeybind(settingsSec, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
-	U.mkDropdown(settingsSec, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
+	local accentRow = U.mkColorRow(settingsContent, "accent", nextOrder())
+	U.attachPicker(accentRow, "ThemeAccent1", U.theme.Accent1, false, "accent a")
+	U.attachPicker(accentRow, "ThemeAccent2", U.theme.Accent2, false, "accent b")
+	U.mkKeybind(settingsContent, "menu keybind", "MenuKeybind", Enum.KeyCode.RightShift, nextOrder())
+	U.mkDropdown(settingsContent, "notification position", "NotificationPosition", { "top left", "top right", "bottom left", "bottom right", "center" }, "center", false, nextOrder())
 
-	U.mkToggle(settingsSec, "watermark", "Watermark", nextOrder(), false)
-	U.subOf(U.mkDropdown(settingsSec, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
-	local msgBox = U.mkTextbox(settingsSec, "message", "WatermarkMessage", "message", nextOrder())
-	U.indentRow(msgBox, 12)
-	local function syncMsg()
-		msgBox.Visible = U.vflags.Watermark == true and table.find(U.vflags.WatermarkItems or {}, "message") ~= nil
-	end
-	U.onFlag("Watermark", syncMsg)
-	U.onFlag("WatermarkItems", syncMsg)
-	syncMsg()
-	U.mkToggle(settingsSec, "keybinds", "KeybindsList", nextOrder(), false)
-	U.mkToggle(settingsSec, "tooltips", "Tooltips", nextOrder(), true)
+	U.mkToggle(settingsContent, "watermark", "Watermark", nextOrder(), false)
+	U.subOf(U.mkDropdown(settingsContent, "items", "WatermarkItems", { "ping", "fps", "message" }, { "ping", "fps" }, true, nextOrder()), "Watermark")
+	U.subOf(U.mkTextbox(settingsContent, "message", "WatermarkMessage", "message", nextOrder()), "Watermark")
+	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
+	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
-	U.mkToggle(settingsSec, "preview", "Preview", nextOrder(), true)
+
+	U.mkToggle(settingsContent, "explorer", "Explorer", nextOrder(), false)
+	U.onFlag("Explorer", function()
+		if U._setExplorerVisible then
+			U._setExplorerVisible(U.vflags.Explorer == true)
+		elseif U.vflags.Explorer == true then
+			U.buildExplorer()
+			if U._setExplorerVisible then U._setExplorerVisible(true) end
+		elseif U.explorerPanel then
+			U.explorerPanel.Visible = false
+		end
+	end)
 
 	U.buildFloaters()
+	pcall(function() U.buildExplorer() end)
+	U.queuePageLayout(p)
 
-	local unload = U.mkButton(settingsSec, "unload", nextOrder(), true)
+	local function teleportTo(jobId)
+		local ts = game:GetService("TeleportService")
+		pcall(function()
+			ts:TeleportToPlaceInstance(game.PlaceId, jobId, U.lp)
+		end)
+	end
+
+	local rejoin = U.mkButton(settingsContent, "rejoin", nextOrder(), true)
+	U.bindButton(rejoin, function()
+		teleportTo(game.JobId)
+	end, 2)
+
+	local hop = U.mkButton(settingsContent, "server hop", nextOrder(), true)
+	U.bindButton(hop, function()
+		local ok, body = pcall(function()
+			return game:HttpGet(("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(game.PlaceId))
+		end)
+		if not ok or type(body) ~= "string" then
+			U.pushNotification({ text = "server hop failed", time = 2 })
+			return
+		end
+		local decOk, data = pcall(function() return U.Http:JSONDecode(body) end)
+		if not decOk or type(data) ~= "table" or type(data.data) ~= "table" then
+			U.pushNotification({ text = "server hop failed", time = 2 })
+			return
+		end
+		local candidates = {}
+		for _, server in ipairs(data.data) do
+			if server.id and server.id ~= game.JobId and (server.playing or 0) < (server.maxPlayers or 0) then
+				candidates[#candidates + 1] = server.id
+			end
+		end
+		if #candidates == 0 then
+			U.pushNotification({ text = "no servers found", time = 2 })
+			return
+		end
+		teleportTo(candidates[math.random(1, #candidates)])
+	end, 2)
+
+	local unload = U.mkButton(settingsContent, "unload", nextOrder(), true)
 	U.bindButton(unload, U.shutdown, 2)
 
-	local credit = U.label(configsSec.Parent, "wavelength ui by @illorsm", {
-		Name = "WavelengthCredit", Size = UDim2.new(1, -8, 0, 14), Position = UDim2.new(0, 4, 1, -16), TextColor3 = U.GRAY_TEXT,
-		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
-	})
 end
 
 function U.buildTabs()
 	local rail = U.new("Frame", {
-		Name = "TabRail", BackgroundColor3 = Color3.fromRGB(28, 28, 28), BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
-		Position = UDim2.fromOffset(0, U.TITLE_H + U.LINE_H + U.BODY_H),
+		Name = "TabRail", BackgroundColor3 = U.theme.Background, BorderSizePixel = 0, Active = true, Size = UDim2.new(1, 0, 0, U.TAB_H),
+		Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H),
 	}, U.shell)
+	table.insert(U.themeReg.bodyBgs, rail)
 	U.tabRail, U.tabButtons = rail, {}
 	U.currentTab = U.TAB_NAMES[1] or "combat"
 	local tabIndex, swiping = {}, false
 	for i, n in ipairs(U.TAB_NAMES) do tabIndex[n] = i end
-	local ON, OFF = Color3.fromRGB(36, 36, 36), Color3.fromRGB(28, 28, 28)
 
 	local function selectTab(name)
 		if name == U.currentTab or swiping then return end
@@ -1838,11 +2564,12 @@ function U.buildTabs()
 		local dir = (tabIndex[name] or 0) > (tabIndex[from] or 0) and 1 or -1
 		local oldPage, newPage = U.pageFrames[from], U.pageFrames[name]
 		U.currentTab = name
+		if newPage and U.layoutPage then U.layoutPage(newPage, false) end
 		for _, fn in ipairs(U._tabListeners or {}) do pcall(fn, name) end
 		U.syncFloatingVisibility()
-		if U.pvDocked then U.dock("pv") end
-		for n, b in pairs(U.tabButtons) do
-			b.BackgroundColor3, b.TextColor3 = (n == name) and ON or OFF, U.theme.Text
+			for n, b in pairs(U.tabButtons) do
+			b.BackgroundColor3 = U.theme.Background
+			b.TextColor3 = U.theme.Text
 			local acc = b:FindFirstChild("TabAccent")
 			if acc then acc.Visible = n == name end
 		end
@@ -1863,10 +2590,11 @@ function U.buildTabs()
 
 	for i, name in ipairs(U.TAB_NAMES) do
 		local b = U.new("TextButton", {
-			Name = name, AutoButtonColor = false, BackgroundColor3 = (name == U.currentTab) and ON or OFF, BorderSizePixel = 0,
+			Name = name, AutoButtonColor = false, BackgroundColor3 = U.theme.Background, BorderSizePixel = 0,
 			Size = UDim2.fromOffset((i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W, U.TAB_H), Position = UDim2.fromOffset((i - 1) * U.TAB_W, 0),
 			FontFace = U.font, TextSize = U.TEXT_SZ, TextColor3 = U.theme.Text, Text = name,
 		}, rail)
+		table.insert(U.themeReg.bodyBgs, b)
 		local acc = U.new("Frame", {
 			Name = "TabAccent", BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2), BackgroundColor3 = U.theme.Accent1,
 			Visible = name == U.currentTab, ZIndex = 3,
@@ -1875,13 +2603,216 @@ function U.buildTabs()
 		U.tabButtons[name] = b
 		b.MouseButton1Click:Connect(function() selectTab(name) end)
 	end
-	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.TITLE_H + U.LINE_H + U.BODY_H + U.TAB_H)
+	U.shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
+	U.bindResize()
+end
+
+function U.applyShellSize(w, h, anchorRight, anchorBottom)
+	w = math.clamp(math.floor(w), U.MIN_W or 360, 1200)
+	h = math.clamp(math.floor(h), U.MIN_H or 400, 1000)
+	local oldW, oldH = U.BODY_W, U.BODY_H
+	local shell = U.shell
+	if not shell then
+		U.BODY_W, U.BODY_H = w, h
+		return
+	end
+	local pos = shell.Position
+	local dx = (anchorRight and (oldW - w) or 0)
+	local dy = (anchorBottom and (oldH - h) or 0)
+	U.BODY_W, U.BODY_H = w, h
+	U.TAB_W = math.floor(U.BODY_W / math.max(1, #U.TAB_NAMES))
+	shell.Size = UDim2.fromOffset(U.BODY_W, U.shellHeight())
+	shell.Position = UDim2.new(pos.X.Scale, pos.X.Offset + dx, pos.Y.Scale, pos.Y.Offset + dy)
+	if U.body then
+		U.body.Size = UDim2.fromOffset(U.BODY_W, U.BODY_H)
+		U.body.Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H + U.TAB_H)
+	end
+	if U.titleBar then
+		U.titleBar.Size = UDim2.new(1, 0, 0, U.TITLE_H)
+		U.titleBar.Position = UDim2.fromOffset(0, U.LINE_H)
+	end
+	if U.tabRail then
+		U.tabRail.Position = UDim2.fromOffset(0, U.LINE_H + U.TITLE_H)
+		U.tabRail.Size = UDim2.new(1, 0, 0, U.TAB_H)
+		for i, name in ipairs(U.TAB_NAMES) do
+			local b = U.tabButtons and U.tabButtons[name]
+			if b then
+				b.Size = UDim2.fromOffset((i == #U.TAB_NAMES) and (U.BODY_W - (i - 1) * U.TAB_W) or U.TAB_W, U.TAB_H)
+				b.Position = UDim2.fromOffset((i - 1) * U.TAB_W, 0)
+			end
+		end
+	end
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	if page then U.layoutPage(page, false) end
+	if U.layoutBottomBar then U.layoutBottomBar() end
+end
+
+function U.quickReflow()
+	local gap = U.SEC_GAP
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	if page then
+		local w = math.floor((U.BODY_W - gap * 3) / 2)
+		for side = 1, 2 do
+			local x = (side == 1) and gap or (gap * 2 + w)
+			for _, ch in ipairs(page:GetChildren()) do
+				if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+					ch.Position = UDim2.fromOffset(x, ch.Position.Y.Offset)
+				end
+			end
+		end
+	end
+	if U.layoutBottomBar then U.layoutBottomBar() end
+end
+
+function U.sectionContentHeight(ch)
+	local padY = 6 -- equal top/bottom padding inside section
+	local headerH = 14
+	local contentH = 8
+	local pages = ch:FindFirstChild("Pages")
+	if pages then
+		for _, p in ipairs(pages:GetChildren()) do
+			if p:IsA("ScrollingFrame") and p.Visible then
+				local layout = p:FindFirstChildOfClass("UIListLayout")
+				if layout then
+					contentH = math.max(contentH, layout.AbsoluteContentSize.Y)
+				else
+					local sum = 0
+					for _, c in ipairs(p:GetChildren()) do
+						if c:IsA("GuiObject") and c.Visible then
+							sum = sum + c.AbsoluteSize.Y
+						end
+					end
+					contentH = math.max(contentH, sum)
+				end
+			end
+		end
+	end
+	return headerH + padY * 2 + contentH
+end
+
+function U.layoutPage(page, full)
+	if not page then return end
+	if page == U.explorerPage then
+		if U.layoutExplorer then U.layoutExplorer() end
+		return
+	end
+	if U._layoutBusy then U.queuePageLayout(page) return end
+	U._layoutBusy = true
+	local gap = U.SEC_GAP
+	local topPad = 14
+	for side = 1, 2 do
+		local frames = {}
+		for _, ch in ipairs(page:GetChildren()) do
+			if ch:IsA("Frame") and ch:GetAttribute("SectionCol") == side then
+				frames[#frames + 1] = ch
+			end
+		end
+		table.sort(frames, function(a, b)
+			return (a:GetAttribute("SectionRow") or 0) < (b:GetAttribute("SectionRow") or 0)
+		end)
+		local w = math.floor((U.BODY_W - gap * 3) / 2)
+		local x = (side == 1) and gap or (gap * 2 + w)
+		local y = topPad
+		for i, ch in ipairs(frames) do
+			local h = U.sectionContentHeight(ch)
+			local size, position = UDim2.fromOffset(w, h), UDim2.fromOffset(x, y)
+			if ch.Size ~= size then ch.Size = size end
+			if ch.Position ~= position then ch.Position = position end
+			if ch:GetAttribute("SectionRow") ~= i then ch:SetAttribute("SectionRow", i) end
+			y = y + h + gap
+		end
+	end
+	if full then
+		for flag in pairs(U.subGroups or {}) do
+			U.updateSubLine(flag)
+		end
+		for _, fn in ipairs(U.sliderLayouts or {}) do
+			pcall(fn)
+		end
+	end
+	if U.updateConfigListHeight and page == U.pageFrames.config then
+		U.updateConfigListHeight()
+	end
+	if U.layoutBottomBar then U.layoutBottomBar() end
+	U._layoutBusy = false
+end
+
+function U.applyBodyLayout(full)
+	local page = U.pageFrames and U.pageFrames[U.currentTab]
+	U.layoutPage(page, full == true)
+	if U.wmDocked then U.dock("wm") end
+	if U.kbDocked then U.dock("kb") end
+end
+
+function U.applyBodySize(w, h, anchorRight, anchorBottom)
+	U.applyShellSize(w, h, anchorRight, anchorBottom)
+	U.applyBodyLayout(true)
+end
+
+function U.bindResize()
+	U.MIN_W, U.MIN_H = U.MIN_W or 360, U.MIN_H or 400
+	if not U.shell then return end
+	local function handle(name, size, pos, cursor)
+		local h = U.new("Frame", {
+			Name = "ResizeHandle", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = size, Position = pos, ZIndex = 50, Active = true,
+		}, U.shell)
+		h:SetAttribute("Cursor", cursor)
+		return h
+	end
+	local edge = 12
+	local right = handle("Right", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.new(1, -math.floor(edge / 2), 0, 0), "Right")
+	local left = handle("Left", UDim2.new(0, edge, 1, -U.TAB_H), UDim2.fromOffset(-math.floor(edge / 2), 0), "Left")
+	local bottom = handle("Bottom", UDim2.new(1, 0, 0, edge), UDim2.new(0, 0, 1, -math.floor(edge / 2)), "Bottom")
+	local function bind(edgeObj, mode)
+		edgeObj.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+			U.closePopups()
+			local start = input.Position
+			local startW, startH = U.BODY_W, U.BODY_H
+			local moving = true
+			U._resizeMoving = true
+			local c1, c2
+			c1 = U.UIS.InputChanged:Connect(function(i)
+				if not moving then return end
+				if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+				local d = i.Position - start
+				if mode == "right" then
+					U.applyShellSize(startW + d.X, startH, false, false)
+				elseif mode == "left" then
+					U.applyShellSize(startW - d.X, startH, true, false)
+				elseif mode == "bottom" then
+					U.applyShellSize(startW, startH + d.Y, false, false)
+				end
+			end)
+			c2 = U.UIS.InputEnded:Connect(function(i)
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					moving = false
+					U._resizeMoving = false
+					c1:Disconnect()
+					c2:Disconnect()
+					U.applyBodyLayout(true)
+					for name, p in pairs(U.pageFrames or {}) do
+						if name ~= U.currentTab then
+							U.layoutPage(p, true)
+						end
+					end
+				end
+			end)
+			U.track(c1)
+			U.track(c2)
+		end)
+	end
+	bind(right, "right")
+	bind(left, "left")
+	bind(bottom, "bottom")
 end
 
 function U.bindInput()
 	U.track(U.UIS.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "CycleAlpha", "KeybindBox") then return end
+		if U.clickHitsNamed("Swatch", "Gear", "DropBox", "CycleColor", "KeybindBox", "ResizeHandle", "DropdownList", "DropScroll") then return end
 		task.defer(function()
 			if tick() < (U.suppressPopupClose or 0) then return end
 			if U.openColorPicker and not U.clickHits(U.openColorPicker) then U.closeColorPicker() end
@@ -1891,37 +2822,49 @@ function U.bindInput()
 	end))
 
 	local dragging, ds, sp
+	local function isUiDragSurface(obj)
+		if not obj then return false end
+		if obj == U.shell or obj == U.body or obj == U.titleBar or obj == U.accent or obj == U.titleLabel or obj == U.pages or obj == U.tabRail then
+			return true
+		end
+		if U.pageFrames then
+			for _, pf in pairs(U.pageFrames) do
+				if obj == pf then return true end
+			end
+		end
+		return false
+	end
 	local function beginDrag(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		if not U.shell or not U.shell.Parent then return end
+		local objs = U.objsAtMouse()
+		if #objs == 0 then return end
+		if not isUiDragSurface(objs[1]) then return end
 		U.closePopups()
 		dragging, ds, sp = true, input.Position, U.shell.Position
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then dragging = false end
 		end)
 	end
-	U.track(U.titleBar.InputBegan:Connect(beginDrag))
-	U.track(U.accent.InputBegan:Connect(beginDrag))
+	U.track(U.UIS.InputBegan:Connect(beginDrag))
 	U.track(U.UIS.InputChanged:Connect(function(input)
 		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 		local d = input.Position - ds
 		U.shell.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-		U.hideSnapGhost("wm")
-		U.hideSnapGhost("kb")
-		U.hideSnapGhost("pv")
-		if U.wmDocked then U.dock("wm") end
-		if U.kbDocked then U.dock("kb") end
-		if U.pvDocked then U.dock("pv") end
 	end))
 
 	U.menuOpen = true
 	task.defer(function()
 		U.dock("wm")
 		U.dock("kb")
-		U.dock("pv")
-	end)
+		end)
 
 	U.track(U.UIS.InputBegan:Connect(function(input, gp)
 		if gp or U.kbBinding then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+			if U._kbModePopup and not input:IsDescendantOf(U._kbModePopup) then
+			end
+		end
 		if input.KeyCode == (U.vflags.MenuKeybind or Enum.KeyCode.RightShift) then
 			U.menuOpen = not U.menuOpen
 			if not U.menuOpen then
@@ -1936,7 +2879,7 @@ function U.bindInput()
 				U.dock("kb")
 			end
 		end
-		
+
 		for kFlag, tFlag in pairs(U.keybindTargets) do
 			local k = U.vflags[kFlag]
 			if typeof(k) == "EnumItem" and k ~= Enum.KeyCode.Unknown and input.KeyCode == k then
@@ -1966,9 +2909,6 @@ function Library:GetGui() return U.gui end
 function Library:GetTheme() return U.theme end
 function Library:IsMenuOpen() return U.menuOpen ~= false end
 function Library:GetCurrentTab() return U.currentTab end
-function Library:GetPreviewViewport() return U.pvViewport end
-function Library:GetPreviewWorld() return U.pvWorld end
-function Library:GetPreviewCamera() return U.pvCamera end
 function Library:OnTabChanged(fn)
 	U._tabListeners = U._tabListeners or {}
 	table.insert(U._tabListeners, fn)
@@ -1983,1026 +2923,104 @@ local function keybindOf(o, name)
 	return { key = o.Key or o.KeyCode, text = o.KeybindText or o.ListText or o.Text or name }
 end
 
-function Library:CreateWindow(opts)
-	opts = opts or {}
-	local name = tostring(opts.Name or "wavelength")
-	if opts.Width then U.BODY_W = opts.Width end
-	if opts.Height then U.BODY_H = opts.Height end
-	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
-		U.TAB_NAMES = {}
-		for _, t in ipairs(opts.Tabs) do U.TAB_NAMES[#U.TAB_NAMES + 1] = string.lower(tostring(t)) end
+function U.buildExplorer()
+	if U.explorerPanel and U.explorerPanel.Parent then
+		pcall(function() U.explorerPanel:Destroy() end)
 	end
-
-	U._shuttingDown, U.running, U.menuOpen = false, true, true
-	U.gen = (U.gen or 0) + 1
-	U.hideTooltip()
-	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui, U.tooltipFrame = nil, nil end
-	for _, c in ipairs(U._conns or {}) do pcall(function() c:Disconnect() end) end
-	U._conns = {}
-	if U.bindTooltipFollow then U.bindTooltipFollow() end
-	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
-	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
-	U.themeReg = U.newReg()
-	U.openColorPicker, U.openDropdown, U.openDropdownBox, U.openSettings = nil, nil, nil, nil
-	U.wm, U.kbPanel, U.wmSnapGhost, U.kbSnapGhost = nil, nil, nil, nil
-	U.wmDocked, U.kbDocked = true, true
-	Library.Setters = U.setters
-
-	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
-	U.buildShell()
-	for _, ch in ipairs(U.titleBar:GetChildren()) do
-		if ch:IsA("TextLabel") then ch.Text = string.lower(name) end
-	end
-
-	local win = setmetatable({ _pages = {}, _sections = {}, _order = {} }, { __index = Library })
-	for _, n in ipairs(U.TAB_NAMES) do
-		win._pages[n] = U.pageFrames[n]
-		win._order[n] = 0
-	end
-
-	function win:AddTab(tabName)
-		tabName = string.lower(tostring(tabName))
-		if not U.pageFrames[tabName] then
-			U.TAB_NAMES[#U.TAB_NAMES + 1] = tabName
-			U.pageFrames[tabName] = U.new("Frame", { Name = tabName, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = not U.currentTab }, U.pages)
-			U.currentTab = U.currentTab or tabName
-		end
-		self._pages[tabName] = U.pageFrames[tabName]
-		self._order[tabName] = self._order[tabName] or 0
-
-		local tab = { Name = tabName, Window = self }
-		function tab:AddSection(sectionName, side, row, rows)
-			side = side or 1
-			self._colCount = self._colCount or { [1] = 0, [2] = 0 }
-			if not row then
-				self._colCount[side] = (self._colCount[side] or 0) + 1
-				row = self._colCount[side]
-			else
-				self._colCount[side] = math.max(self._colCount[side] or 0, row)
-			end
-			rows = rows or self._colCount[side]
-
-			local parent = U.pageFrames[tabName]
-			local content = U.section(parent, string.lower(tostring(sectionName)), side, row, rows)
-			if rows > 1 then 
-				local x, _, w, h = U.secGeom(side, 1, rows)
-				local idx = 0
-				for _, ch in ipairs(parent:GetChildren()) do
-					if ch:IsA("Frame") and ch.BackgroundTransparency < 1 and ch.Position.X.Offset == x then
-						idx += 1
-						ch.Size = UDim2.fromOffset(w, h)
-						ch.Position = UDim2.fromOffset(x, U.SEC_GAP + (idx - 1) * (h + U.SEC_GAP))
-					end
-				end
-			end
-
-			local sec = { _content = content, _n = 0, Tab = tab }
-			local function nextOrder()
-				sec._n += 1
-				return sec._n
-			end
-			local function slider(o, parentFlag)
-				local c = U.mkSlider(content, lname(o, "slider"), o.Flag or o.Name, o.Min or 0, o.Max or 100, o.Default or 0, nextOrder(), o.Increment or 1, o.Suffix or "", o.InfAtMax == true or o.InfAt == true, tip(o))
-				return parentFlag and U.subOf(c, parentFlag) or c
-			end
-			local function dropdown(o, parentFlag)
-				local limit = o.Limit or o.Amount
-				if limit == nil then limit = (o.Multi == true) and 999 or 1 end
-				local c = U.mkDropdown(content, lname(o, "dropdown"), o.Flag or o.Name, o.Items or {}, o.Default, o.Multi == true or (tonumber(limit) or 1) > 1, nextOrder(), limit, tip(o))
-				return parentFlag and U.subOf(c, parentFlag) or c
-			end
-			local function toggle(o)
-				local flag = o.Flag or o.Name
-				local row = U.mkToggle(content, lname(o, "toggle"), flag, nextOrder(), o.Default == true, keybindOf(o, lname(o, "toggle")), tip(o))
-				if o.Callback then U.onFlag(flag, function() pcall(o.Callback, U.vflags[flag]) end) end
-				return row, flag
-			end
-
-			function sec:AddToggle(o)
-				o = o or {}
-				local t, flag = toggle(o)
-				local obj = { Flag = flag, Row = t, _parent = content }
-				function obj:AddColorpicker(co)
-					co = co or {}
-					U.attachPicker(t, co.Flag or (flag .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
-					return obj
-				end
-				function obj:AddToggle(so)
-					local child = toggle(so or {})
-					U.subOf(child, flag)
-					return sec
-				end
-				function obj:AddSlider(so) slider(so or {}, flag) return obj end
-				function obj:AddDropdown(so) dropdown(so or {}, flag) return obj end
-				return obj
-			end
-			function sec:AddSlider(o)
-				o = o or {}
-				return { Row = slider(o), Flag = o.Flag or o.Name }
-			end
-			function sec:AddDoubleSlider(o)
-				o = o or {}
-				local r = U.mkDoubleSlider(content, lname(o, "range"), o.FlagMin or (o.Flag or "Min"), o.FlagMax or "Max", o.Min or 0, o.Max or 100, o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 100, nextOrder(), o.Increment or 1, o.Suffix or "", tip(o), o.InfAtMax == true or o.InfAt == true)
-				return { Row = r, FlagMin = o.FlagMin, FlagMax = o.FlagMax }
-			end
-			function sec:AddDropdown(o)
-				o = o or {}
-				return { Row = dropdown(o), Flag = o.Flag or o.Name }
-			end
-			function sec:AddButton(o)
-				o = o or {}
-				local btn = U.mkButton(content, lname(o, "button"), nextOrder(), o.Confirm == true)
-				if o.Callback then U.bindButton(btn, o.Callback) end
-				U.bindTooltip(btn, tip(o))
-				return { Button = btn }
-			end
-			function sec:AddColorpicker(o)
-				o = o or {}
-				local r = U.row(content, nextOrder())
-				U.label(r, lname(o, "color"), { Size = UDim2.new(1, -36, 1, 0) })
-				U.attachPicker(r, o.Flag or o.Name, o.Default or Color3.new(1, 1, 1), o.NoAlpha == true, o.Name or "color")
-				U.bindTooltip(r, tip(o))
-				return { Row = r }
-			end
-			function sec:AddLabel(o)
-				o = o or {}
-				local r = U.row(content, nextOrder())
-				U.label(r, string.lower(tostring(o.Name or "")), { Size = UDim2.new(1, -36, 1, 0) })
-				U.bindTooltip(r, tip(o))
-				local obj = { Row = r }
-				function obj:AddColorpicker(co)
-					co = co or {}
-					U.attachPicker(r, co.Flag or ((o.Flag or o.Name or "label") .. "Color"), co.Default or Color3.new(1, 1, 1), co.NoAlpha == true, co.Name or "color")
-					return obj
-				end
-				return obj
-			end
-			function sec:AddTextbox(o)
-				o = o or {}
-				return { Row = U.mkTextbox(content, lname(o, "text"), o.Flag or o.Name, o.Placeholder or "", nextOrder(), tip(o)), Flag = o.Flag or o.Name }
-			end
-			return sec
-		end
-		return tab
-	end
-
-	function win:AddSettingsTab()
-		if not U.pageFrames.config then self:AddTab("config") end
-		U.buildConfig()
-		return self
-	end
-	function win:Init()
-		U.buildTabs()
-		U.bindInput()
-	end
-	function win:Unload() U.shutdown() end
-	return win
-end
-	return Library
-
-end)()
-
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local lp = Players.LocalPlayer
-local camera = workspace.CurrentCamera
-
-local Window = Library:CreateWindow({
-	Name = "wavelength",
-	Tabs = { "visuals", "dex", "config" },
-})
-
-do
-	local tab = Window:AddTab("visuals")
-	local control = tab:AddSection("control", 1)
-	control:AddToggle({ Name = "enable", Flag = "VisualsEnabled", Default = false, Keybind = true, Key = "RightAlt", KeybindText = "Visuals" })
-	control:AddToggle({ Name = "ignore self", Flag = "IgnoreSelf", Default = true })
-	control:AddDropdown({
-		Name = "parent",
-		Flag = "VisParent",
-		Items = { "gethui", "PlayerGui", "CoreGui", "RobloxGui" },
-		Default = "gethui",
-		Limit = 1,
+	local panel = U.new("Frame", {
+		Name = "ExplorerPanel",
+		BackgroundColor3 = U.theme.Background,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Active = true,
+		Size = UDim2.fromOffset(300, 420),
+		Position = UDim2.fromOffset(24, 80),
+		Visible = false,
+		ZIndex = 40,
+	}, U.gui)
+	U.stroke(panel, "Border")
+	table.insert(U.themeReg.bodyBgs, panel)
+	U.explorerPanel = panel
+	local expAccent = U.new("Frame", {
+		Name = "Accent", BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, U.LINE_H), ZIndex = 42,
+	}, panel)
+	table.insert(U.themeReg.accents, U.new("UIGradient", { Color = U.accentSequence() }, expAccent))
+	U.label(panel, "explorer", {
+		Name = "ExplorerTitle",
+		Size = UDim2.new(1, -12, 0, 18),
+		Position = UDim2.fromOffset(6, U.LINE_H + 2),
+		ZIndex = 41,
 	})
-	control:AddSlider({ Name = "render distance", Flag = "RenderDistance", Min = 0, Max = 250, Default = 250, Increment = 1, Suffix = "st", InfAtMax = true })
-
-	local players = tab:AddSection("players", 2)
-	local box = players:AddToggle({ Name = "box", Flag = "Box", Default = false })
-	box:AddColorpicker({ Flag = "BoxColor", Default = Color3.fromRGB(255, 255, 255), Name = "box" })
-	box:AddDropdown({ Name = "type", Flag = "BoxType", Items = { "square", "corner" }, Default = "square" })
-	box:AddSlider({ Name = "length", Flag = "BoxCornerLength", Min = 0, Max = 100, Default = 33, Increment = 1, Suffix = "%" })
-
-	local boxFill = players:AddToggle({ Name = "box fill", Flag = "BoxFill", Default = false })
-	boxFill:AddColorpicker({ Flag = "BoxFillColor", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
-
-	local hbar = players:AddToggle({ Name = "health bar", Flag = "HealthBar", Default = false })
-	hbar:AddColorpicker({ Flag = "HealthBarColor1", Default = Color3.fromRGB(0, 255, 0), Name = "high" })
-	hbar:AddColorpicker({ Flag = "HealthBarColor2", Default = Color3.fromRGB(255, 0, 0), Name = "low" })
-	hbar:AddToggle({ Name = "dynamic color", Flag = "HealthBarDynamic", Default = true })
-
-	local htxt = players:AddToggle({ Name = "health", Flag = "HealthText", Default = false })
-	htxt:AddColorpicker({ Flag = "HealthTextColor1", Default = Color3.fromRGB(0, 255, 0), Name = "high" })
-	htxt:AddColorpicker({ Flag = "HealthTextColor2", Default = Color3.fromRGB(255, 0, 0), Name = "low" })
-	htxt:AddToggle({ Name = "dynamic color", Flag = "HealthTextDynamic", Default = true })
-
-	local nameT = players:AddToggle({ Name = "name", Flag = "NameESP", Default = false })
-	nameT:AddColorpicker({ Flag = "NameColor", Default = Color3.fromRGB(255, 255, 255), Name = "name" })
-	nameT:AddDropdown({ Name = "type", Flag = "NameType", Items = { "username", "display", "both" }, Default = "display", Limit = 1 })
-
-	local dist = players:AddToggle({ Name = "distance", Flag = "DistanceESP", Default = false })
-	dist:AddColorpicker({ Flag = "DistanceColor", Default = Color3.fromRGB(255, 255, 255), Name = "distance" })
-
-	local sk = players:AddToggle({ Name = "skeleton", Flag = "Skeleton", Default = false })
-	sk:AddColorpicker({ Flag = "SkeletonColor", Default = Color3.fromRGB(255, 255, 255), Name = "skeleton" })
-	sk:AddSlider({ Name = "thickness", Flag = "SkeletonThickness", Min = 1, Max = 3, Default = 1, Increment = 0.1, Suffix = "px" })
-
-	local hl = players:AddToggle({ Name = "highlight", Flag = "Highlight", Default = false })
-	hl:AddColorpicker({ Flag = "HighlightFill", Default = Color3.fromRGB(255, 255, 255), Name = "fill" })
-	hl:AddColorpicker({ Flag = "HighlightOutline", Default = Color3.fromRGB(0, 0, 0), Name = "outline" })
-	hl:AddDropdown({ Name = "type", Flag = "HighlightType", Items = { "always", "occluded" }, Default = "always", Limit = 1 })
-end
-
-Window:AddTab("dex")
-Window:AddSettingsTab()
-Window:Init()
-
-local U = Library:_U()
-local F = U.vflags
-local camera = workspace.CurrentCamera
-
-local function resolveParent(name)
-	name = string.lower(tostring(name or "gethui"))
-	if name == "gethui" then
-		if typeof(gethui) == "function" then
-			local ok, g = pcall(gethui)
-			if ok and g then return g end
-		end
-		return lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui")
-	elseif name == "playergui" then
-		return lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui")
-	elseif name == "coregui" then
-		return CoreGui
-	elseif name == "robloxgui" then
-		return CoreGui:FindFirstChild("RobloxGui") or CoreGui
-	end
-	return lp:FindFirstChild("PlayerGui")
-end
-
-local espGui = Instance.new("ScreenGui")
-espGui.Name = "SM_ESP"
-espGui.IgnoreGuiInset = true
-espGui.ResetOnSpawn = false
-espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-espGui.Parent = resolveParent(F.VisParent or "gethui")
-
-U.onFlag("VisParent", function()
-	local p = resolveParent(F.VisParent)
-	if p and espGui.Parent ~= p then
-		pcall(function() espGui.Parent = p end)
-	end
-end)
-
-local objects, lastHP, dmgStart, healStart, highlights = {}, {}, {}, {}, {}
-local BONES_R15 = {
-	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
-	{"UpperTorso","LeftUpperArm"},{"UpperTorso","RightUpperArm"},
-	{"LeftUpperArm","LeftLowerArm"},{"RightUpperArm","RightLowerArm"},
-	{"LeftLowerArm","LeftHand"},{"RightLowerArm","RightHand"},
-	{"LowerTorso","LeftUpperLeg"},{"LowerTorso","RightUpperLeg"},
-	{"LeftUpperLeg","LeftLowerLeg"},{"RightUpperLeg","RightLowerLeg"},
-	{"LeftLowerLeg","LeftFoot"},{"RightLowerLeg","RightFoot"},
-}
-local BONES_R6 = {
-	{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"},
-}
-local BOX_R15 = { "Head", "LeftHand", "RightHand", "RightFoot", "LeftFoot", "UpperTorso" }
-local BOX_R6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
-
-local FONT, FONT_SZ, FONT_Y = U.font, 12, -1
-local rgb = Color3.fromRGB
-local dim2, dim_offset = UDim2.new, UDim2.fromOffset
-local vec2 = Vector2.new
-
-local function isR15(model) return model:FindFirstChild("UpperTorso") ~= nil end
-local function boxParts(model) return isR15(model) and BOX_R15 or BOX_R6 end
-local function boneList(model) return isR15(model) and BONES_R15 or BONES_R6 end
-
-local function C(key, fb)
-	local v = F[key]
-	return typeof(v) == "Color3" and v or (fb or Color3.new(1,1,1))
-end
-local function A(key)
-	local v = F[key .. "Transparency"]
-	return type(v) == "number" and v or 0
-end
-local function on() return F.VisualsEnabled == true end
-local function maxDist()
-	local v = tonumber(F.RenderDistance) or 250
-	return v >= 250 and 1e9 or v
-end
-local function w2s(p, cam)
-	cam = cam or camera
-	local v, vis = cam:WorldToViewportPoint(p)
-	return vec2(v.X, v.Y), vis and v.Z > 0
-end
-local function healthOf(char)
-	for _, key in ipairs({ "Health", "health", "HP", "hp" }) do
-		local a = char:GetAttribute(key)
-		if typeof(a) == "number" then return a end
-		if type(a) == "string" then local n = tonumber(a); if n then return n end end
-	end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then return hum.Health end
-	return 100
-end
-local function maxHealthOf(char)
-	local a = char:GetAttribute("MaxHealth") or char:GetAttribute("maxHealth")
-	if typeof(a) == "number" then return a end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then return hum.MaxHealth end
-	return 100
-end
-local function nameText(p)
-	local t = string.lower(tostring(F.NameType or "display"))
-	if t == "username" then return p.Name end
-	if t == "both" then return p.Name .. " (" .. (p.DisplayName or p.Name) .. ")" end
-	return p.DisplayName or p.Name
-end
-local function create(class, props)
-	local o = Instance.new(class)
-	if props then for k,v in pairs(props) do o[k]=v end end
-	return o
-end
-local function addOutline(label)
-	for _, c in ipairs(label:GetChildren()) do if c:IsA("UIStroke") then c:Destroy() end end
-	local s = Instance.new("UIStroke")
-	s.Name = "Outline"; s.Color = rgb(0,0,0); s.Thickness = 1; s.Transparency = 0
-	s.LineJoinMode = Enum.LineJoinMode.Round; s.Parent = label
-end
-local function mkLine()
-	local ok, ln = pcall(function()
-		local d = Drawing.new("Line"); d.Visible = false; d.ZIndex = 10; d.Thickness = 1; return d
-	end)
-	return ok and ln or nil
-end
-local function projectPoint(cam, worldPos, viewportFrame)
-	if not viewportFrame then
-		local sp, vis = cam:WorldToViewportPoint(worldPos)
-		if not vis or sp.Z <= 0 then return nil, false end
-		return Vector2.new(sp.X, sp.Y), true
-	end
-	-- manual projection into ViewportFrame local pixels (ViewportSize is read-only)
-	local size = viewportFrame.AbsoluteSize
-	if size.X <= 0 or size.Y <= 0 then return nil, false end
-	local rel = cam.CFrame:PointToObjectSpace(worldPos)
-	local depth = -rel.Z
-	if depth <= 0.05 then return nil, false end
-	local halfH = math.tan(math.rad(cam.FieldOfView) * 0.5)
-	local halfW = halfH * (size.X / size.Y)
-	local ndcX = rel.X / (depth * halfW)
-	local ndcY = rel.Y / (depth * halfH)
-	local x = (ndcX + 1) * 0.5 * size.X
-	local y = (1 - ndcY) * 0.5 * size.Y
-	return Vector2.new(x, y), true
-end
-local function boxSolve(model, camOverride, viewportFrame)
-	camOverride = camOverride or camera
-	local parts = boxParts(model)
-	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
-	local any = false
-	for i = 1, #parts do
-		local part = model:FindFirstChild(parts[i])
-		if part and part:IsA("BasePart") then
-			local cf = part.CFrame
-			-- use true half-extents so top-down / angled views still cover limbs
-			local sx, sy, sz = part.Size.X * 0.5, part.Size.Y * 0.5, part.Size.Z * 0.5
-			for _, ox in ipairs({-1,1}) do
-				for _, oy in ipairs({-1,1}) do
-					for _, oz in ipairs({-1,1}) do
-						local pt, ok = projectPoint(camOverride, (cf * CFrame.new(ox*sx, oy*sy, oz*sz)).Position, viewportFrame)
-						if ok then
-							any = true
-							minX = math.min(minX, pt.X); minY = math.min(minY, pt.Y)
-							maxX = math.max(maxX, pt.X); maxY = math.max(maxY, pt.Y)
-						end
-					end
-				end
-			end
-		end
-	end
-	if not any then return end
-	local padX, padY = 3, 3
-	if viewportFrame then
-		-- slight expand + push box down so preview matches on-screen ESP framing
-		padX, padY = 4, 4
-		local h = maxY - minY
-		minY = minY + h * 0.02
-		maxY = maxY + h * 0.02
-		local cx = (minX + maxX) * 0.5
-		local halfW = (maxX - minX) * 0.5 * 1.06
-		minX, maxX = cx - halfW, cx + halfW
-	end
-	minX -= padX; minY -= padY; maxX += padX; maxY += padY
-	return minX, minY, maxX - minX, maxY - minY
-end
-local function healthbarWidth() return 2 end
-local function healthTextXOff()
-	if F.HealthBar then return -((0 + 1) + (healthbarWidth() + 2)) end
-	return -2
-end
-local function lerpColor(a, b, t) return a:Lerp(b, math.clamp(t, 0, 1)) end
-
-local function buildBoxes(d)
-	if d.box_handler or (d.corners and #d.corners > 0) then return end
-	if F.BoxType == "corner" then
-		d.corners = {}
-		for i = 1, 16 do
-			d.corners[i] = create("Frame", {
-				Parent = d.holder, BorderSizePixel = 0,
-				BackgroundColor3 = (i <= 8) and rgb(0,0,0) or C("BoxColor"),
-				ZIndex = (i <= 8) and 1 or 2,
-			})
-		end
-	else
-		d.box_outline = create("UIStroke", { Parent = d.holder, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
-		d.box_handler = create("Frame", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 3 })
-		d.box_color = create("UIStroke", { Parent = d.box_handler, Color = C("BoxColor"), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
-		d.outline = create("Frame", { Parent = d.box_handler, BackgroundTransparency = 1, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), ZIndex = 2 })
-		d.outline_stroke = create("UIStroke", { Parent = d.outline, Color = rgb(0,0,0), Thickness = 1, LineJoinMode = Enum.LineJoinMode.Miter })
-	end
-end
-local function destroyBoxes(d)
-	if d.box_outline then d.box_outline:Destroy() end
-	if d.box_handler then d.box_handler:Destroy() end
-	d.box_outline, d.box_handler, d.box_color, d.outline, d.outline_stroke = nil,nil,nil,nil,nil
-	if d.corners then for _, s in ipairs(d.corners) do s:Destroy() end; d.corners = nil end
-end
-
-local function setHighlight(model, on, dt)
-	local h = highlights[model]
-	if not on then
-		if h then pcall(function() h:Destroy() end); highlights[model] = nil end
-		return
-	end
-	if not h or not h.Parent then
-		h = model:FindFirstChildOfClass("Highlight")
-		if not h then
-			h = Instance.new("Highlight")
-			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			h.Parent = model
-		end
-		highlights[model] = h
-	end
-	local fill, outline = C("HighlightFill"), C("HighlightOutline")
-	local dtDmg = type(dt) == "table" and (dt.dmg or 0) or (dt or 0)
-	local dtHeal = type(dt) == "table" and (dt.heal or 0) or 0
-	if dtDmg > 0 and F.HighlightVisDmg then
-		local dmg = C("HighlightDamage", rgb(255,0,0))
-		fill = lerpColor(fill, dmg, dtDmg)
-		outline = lerpColor(outline, dmg, dtDmg)
-	elseif dtHeal > 0 and F.HighlightVisHeal then
-		local heal = C("HighlightHealColor", rgb(0,255,0))
-		fill = lerpColor(fill, heal, dtHeal)
-		outline = lerpColor(outline, heal, dtHeal)
-	end
-	h.FillColor = fill
-	h.OutlineColor = outline
-	h.FillTransparency = A("HighlightFill")
-	h.OutlineTransparency = A("HighlightOutline")
-	local ht = string.lower(tostring(F.HighlightType or "always"))
-	h.DepthMode = (ht == "occluded") and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
-	h.Enabled = true
-end
-
-local function ensure(model, parentGui)
-	local d = objects[model]
-	if d then return d end
-	d = { holder = create("Frame", { Parent = parentGui or espGui, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
-	d.holder.Name = model.Name
-	d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
-	local function mkTxt()
-		local t = create("TextLabel", {
-			Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0,
-			FontFace = FONT, TextSize = FONT_SZ, TextStrokeTransparency = 1, TextScaled = false, Visible = false,
-		})
-		addOutline(t); return t
-	end
-	d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
-	d.dist = mkTxt(); d.dist.TextXAlignment = Enum.TextXAlignment.Center
-	d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
-	local w = healthbarWidth()
-	d.healthbar_holder = create("Frame", {
-		Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false,
-		Position = dim2(0, 0, 0, -1), Size = dim2(0, w + 2, 1, 2),
-	})
-	d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
-	d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
-	for i = 1, 16 do d.lines[i] = mkLine() end
-	objects[model] = d
-	return d
-end
-local function destroy(model)
-	local d = objects[model]
-	if not d then return end
-	if d.holder then d.holder:Destroy() end
-	setHighlight(model, false)
-	for _, ln in pairs(d.lines) do pcall(function() ln.Visible=false; ln:Remove() end) end
-	objects[model] = nil; lastHP[model] = nil; dmgStart[model] = nil; healStart[model] = nil
-end
-local function flashT(map, model)
-	local s = map[model]
-	if not s then return 0 end
-	local e = tick() - s
-	if e >= 2 then map[model] = nil; return 0 end
-	return 1 - (e / 2)
-end
-local function dmgT(model) return flashT(dmgStart, model) end
-local function healT(model) return flashT(healStart, model) end
-local function drawOK(p, char)
-	if not on() or not char then return false end
-	if F.IgnoreSelf and p == lp then return false end
-	if healthOf(char) <= 0 then return false end
-	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char.PrimaryPart
-	if not hrp then return false end
-	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
-	if root and (hrp.Position - root.Position).Magnitude > maxDist() then return false end
-	return true
-end
-
-local function paintESP(d, model, bx, by, bw, bh, opts)
-	opts = opts or {}
-	local frac = opts.frac or 1
-	local hpText = opts.hpText
-	local nameStr = opts.nameStr
-	local distStr = opts.distStr
-	local cam = opts.cam
-	local screenOffset = opts.screenOffset -- for Drawing lines if coords are local
-	local localCoords = opts.localCoords -- holder uses local offset
-
-	d.holder.Visible = true
-	if localCoords then
-		d.holder.Position = dim_offset(bx, by)
-	else
-		d.holder.Position = dim_offset(bx, by)
-	end
-	d.holder.Size = dim_offset(math.max(1, bw), math.max(1, bh))
-	local dt = opts.dt or 0
-
-	if F.Box then
-		local isCorner = F.BoxType == "corner"
-		if (isCorner and d.box_handler) or (not isCorner and d.corners) then destroyBoxes(d) end
-		buildBoxes(d)
-		local boxColor, boxT = C("BoxColor"), A("BoxColor")
-		if isCorner and d.corners then
-			local w, h = bw, bh
-			local pct = math.clamp(tonumber(F.BoxCornerLength) or 50, 0, 100) / 100
-			local t, bt = 1, 1
-			local lenX = math.max(math.floor(w * pct * 0.5), 2)
-			local lenY = math.max(math.floor(h * pct * 0.5), 2)
-			local segs = d.corners
-			local function set_pair(bi, ci, x, y, sw, sh)
-				local b = segs[bi]; b.Visible = true; b.BackgroundColor3 = rgb(0,0,0); b.BackgroundTransparency = boxT
-				b.Position = dim_offset(x - bt, y - bt); b.Size = dim_offset(sw + bt * 2, sh + bt * 2)
-				local c = segs[ci]; c.Visible = true; c.BackgroundColor3 = boxColor; c.BackgroundTransparency = boxT
-				c.Position = dim_offset(x, y); c.Size = dim_offset(sw, sh)
-			end
-			set_pair(1,9, 0,0, lenX,t); set_pair(2,10, 0,t, t,lenY-t)
-			set_pair(3,11, w-lenX,0, lenX,t); set_pair(4,12, w-t,t, t,lenY-t)
-			set_pair(5,13, 0,h-t, lenX,t); set_pair(6,14, 0,h-lenY, t,lenY-t)
-			set_pair(7,15, w-lenX,h-t, lenX,t); set_pair(8,16, w-t,h-lenY, t,lenY-t)
-		elseif d.box_color then
-			d.box_color.Color = boxColor; d.box_color.Transparency = boxT
-			if d.box_outline then d.box_outline.Transparency = boxT end
-			if d.outline_stroke then d.outline_stroke.Transparency = boxT end
-		end
-	else destroyBoxes(d) end
-
-	if F.BoxFill then
-		-- outer size matches box including border; drawn behind strokes
-		d.fill.Visible = true
-		d.fill.ZIndex = 0
-		d.fill.Size = dim2(1, 2, 1, 2)
-		d.fill.Position = dim2(0, -1, 0, -1)
-		d.fill.BackgroundColor3 = C("BoxFillColor")
-		d.fill.BackgroundTransparency = A("BoxFillColor")
-	else d.fill.Visible = false end
-
-	if F.HealthBar then
-		d.healthbar_holder.Visible = true
-		d.healthbar_holder.Size = dim2(0, healthbarWidth() + 2, 1, 2)
-		d.healthbar_holder.Position = dim2(0, 0, 0, -1)
-		local col = (F.HealthBarDynamic ~= false) and lerpColor(C("HealthBarColor2", rgb(255,0,0)), C("HealthBarColor1", rgb(0,255,0)), frac) or C("HealthBarColor1", rgb(0,255,0))
-		local ht = A("HealthBarColor1")
-		d.healthbar_holder.BackgroundTransparency = ht
-		d.healthbar.BackgroundTransparency = ht
-		d.healthbar_fill.BackgroundColor3 = col
-		d.healthbar_fill.BackgroundTransparency = ht
-		d.healthbar_fill.Size = dim2(1, 0, frac, 0)
-		d.healthbar_fill.Position = dim2(0, 0, 1 - frac, 0)
-	else d.healthbar_holder.Visible = false end
-
-	if F.HealthText then
-		d.hpTxt.Visible = true
-		local col = (F.HealthTextDynamic ~= false) and lerpColor(C("HealthTextColor2", rgb(255,0,0)), C("HealthTextColor1", rgb(0,255,0)), frac) or C("HealthTextColor1")
-		d.hpTxt.TextColor3 = col
-		d.hpTxt.TextTransparency = A("HealthTextColor1")
-		d.hpTxt.Text = tostring(hpText or math.floor((opts.hp or 0) + 0.5))
-		d.hpTxt.TextSize = FONT_SZ
-		if F.HealthBar then d.hpTxt.Position = dim2(0, healthTextXOff(), 1 - frac, -1 + FONT_Y)
-		else d.hpTxt.Position = dim2(0, healthTextXOff(), 0, -1 + FONT_Y) end
-	else d.hpTxt.Visible = false end
-
-	if F.NameESP and nameStr then
-		d.name.Visible = true; d.name.Text = nameStr
-		d.name.TextColor3 = C("NameColor"); d.name.TextTransparency = A("NameColor"); d.name.TextSize = FONT_SZ
-		d.name.Position = dim2(0.5, 0, 0, -8); d.name.Size = dim2(1, 0, 0, 0); d.name.AnchorPoint = vec2(0.5, 1)
-	else d.name.Visible = false end
-
-	if F.DistanceESP and distStr then
-		d.dist.Visible = true; d.dist.Text = distStr
-		d.dist.TextColor3 = C("DistanceColor"); d.dist.TextTransparency = A("DistanceColor"); d.dist.TextSize = FONT_SZ
-		d.dist.Position = dim2(0, 0, 1, 1); d.dist.Size = dim2(1, 0, 0, 12)
-	else d.dist.Visible = false end
-
-	if F.Skeleton and cam then
-		local sk = C("SkeletonColor")
-		local dtDmg = opts.dtDmg or dt or 0
-		local dtHeal = opts.dtHeal or 0
-		if dtDmg > 0 and F.SkeletonVisDmg then
-			sk = lerpColor(sk, C("SkeletonColor2", rgb(255,0,0)), dtDmg)
-		elseif dtHeal > 0 and F.SkeletonVisHeal then
-			sk = lerpColor(sk, C("SkeletonHealColor", rgb(0,255,0)), dtHeal)
-		end
-		local th = math.max(1, tonumber(F.SkeletonThickness) or 1)
-		local alpha = 1 - A("SkeletonColor")
-		local off = screenOffset or vec2(0, 0)
-		local vf = opts.viewportFrame
-		local insetY = 0
-		if vf then
-			-- Drawing API often uses inset space while AbsolutePosition is full-screen with IgnoreGuiInset
-			local ok, inset = pcall(function() return game:GetService("GuiService"):GetGuiInset() end)
-			if ok and inset then insetY = inset.Y end
-		end
-		local idx = 0
-		for _, pair in ipairs(boneList(model)) do
-			local a, b = model:FindFirstChild(pair[1]), model:FindFirstChild(pair[2])
-			if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
-				local sa, oa = projectPoint(cam, a.Position, vf)
-				local sb, ob = projectPoint(cam, b.Position, vf)
-				if oa and ob then
-					idx += 1; local ln = d.lines[idx]
-					if ln then
-						ln.From = Vector2.new(sa.X + off.X, sa.Y + off.Y + insetY)
-						ln.To = Vector2.new(sb.X + off.X, sb.Y + off.Y + insetY)
-						ln.Color, ln.Thickness, ln.Transparency = sk, th, alpha
-						ln.Visible = true
-					end
-				end
-			end
-		end
-		for i = idx + 1, #d.lines do if d.lines[i] then d.lines[i].Visible = false end end
-	else
-		for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
-	end
-end
-
-local function updateModel(p, model)
-	if not drawOK(p, model) then
-		local d = objects[model]
-		if d then
-			d.holder.Visible = false
-			for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end
-		end
-		setHighlight(model, false)
-		return
-	end
-	local bx, by, bw, bh = boxSolve(model)
-	if not bx then
-		local d = objects[model]
-		if d then d.holder.Visible = false; for _, ln in pairs(d.lines) do if ln then ln.Visible = false end end end
-		return
-	end
-	local d = ensure(model, espGui)
-	local hp = healthOf(model)
-	local maxH = maxHealthOf(model)
-	local frac = math.clamp(hp / math.max(maxH, 1), 0, 1)
-	local prev = lastHP[model]
-	if prev ~= nil then
-		if hp < prev - 0.5 then
-			if F.SkeletonVisDmg or F.HighlightVisDmg then dmgStart[model] = tick(); healStart[model] = nil end
-		elseif hp > prev + 0.5 then
-			if F.SkeletonVisHeal or F.HighlightVisHeal then healStart[model] = tick(); dmgStart[model] = nil end
-		end
-	end
-	lastHP[model] = hp
-	local dt = dmgT(model)
-	local ht = healT(model)
-	local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
-	local root = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso") or lp.Character.PrimaryPart)
-	local distv = (hrp and root) and (hrp.Position - root.Position).Magnitude or 0
-	paintESP(d, model, bx, by, bw, bh, {
-		frac = frac, hp = hp, hpText = tostring(math.floor(hp + 0.5)),
-		nameStr = nameText(p), distStr = math.floor(distv + 0.5) .. "st",
-		cam = camera, dt = dt, dtDmg = dt, dtHeal = ht, screenOffset = vec2(0, 0),
-	})
-	setHighlight(model, F.Highlight == true, { dmg = dt, heal = ht })
-end
-
-local function clearAll()
-	for m in pairs(objects) do destroy(m) end
-end
-U.onFlag("VisualsEnabled", function() if not on() then clearAll() end end)
-
-local wasOn = false
-RunService:BindToRenderStep("SM_ESP", Enum.RenderPriority.Camera.Value + 1, function()
-	if not U.running then return end
-	camera = workspace.CurrentCamera
-	if not on() then
-		if wasOn then clearAll(); wasOn = false end
-		return
-	end
-	wasOn = true
-	local seen = {}
-	for _, p in ipairs(Players:GetPlayers()) do
-		local char = p.Character
-		if char then seen[char] = true; updateModel(p, char) end
-	end
-	for m in pairs(objects) do
-		if not seen[m] or not m.Parent then destroy(m) end
-	end
-end)
-
-do
-	local world = Library:GetPreviewWorld()
-	local viewport = Library:GetPreviewViewport()
-	local vcam = Library:GetPreviewCamera()
-	local overlay = U.pvOverlay
-	if world and viewport and vcam then
-		local desc = Instance.new("HumanoidDescription")
-		local white = Color3.fromRGB(255, 255, 255)
-		desc.HeadColor, desc.TorsoColor = white, white
-		desc.LeftArmColor, desc.RightArmColor = white, white
-		desc.LeftLegColor, desc.RightLegColor = white, white
-		desc.Shirt, desc.Pants, desc.GraphicTShirt = 0, 0, 0
-		pcall(function() desc.Face = 0 end)
-		local ok, model = pcall(function()
-			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
-		end)
-		if ok and model then
-			for _, d in ipairs(model:GetDescendants()) do
-				if d:IsA("BasePart") then
-					d.Anchored = true; d.CanCollide = false; d.Color = white; d.Material = Enum.Material.SmoothPlastic
-				elseif d:IsA("Decal") or d:IsA("Texture") then
-					d:Destroy()
-				elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Clothing") or d:IsA("Accessory") or d:IsA("ShirtGraphic") or d:IsA("CharacterMesh") then
-					d:Destroy()
-				end
-			end
-			-- strip face / textures / clothing leftovers and smooth materials
-			for _, d in ipairs(model:GetDescendants()) do
-				if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") or d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") then
-					d:Destroy()
-				elseif d:IsA("BasePart") then
-					d.Material = Enum.Material.SmoothPlastic
-					d.Color = Color3.fromRGB(245, 245, 245)
-					d.Reflectance = 0
-					d.CastShadow = false
-					if d:IsA("MeshPart") then
-						pcall(function() d.TextureID = "" end)
-					end
-				end
-			end
-			local head = model:FindFirstChild("Head")
-			if head and head:IsA("BasePart") then
-				-- replace sharp mesh head with a clean sphere when possible
-				for _, ch in ipairs(head:GetChildren()) do
-					if ch:IsA("SpecialMesh") or ch:IsA("BlockMesh") or ch:IsA("CylinderMesh") then
-						ch:Destroy()
-					end
-				end
-				if not head:FindFirstChildOfClass("SpecialMesh") and not head:IsA("MeshPart") then
-					local sm = Instance.new("SpecialMesh")
-					sm.MeshType = Enum.MeshType.Head
-					sm.Scale = Vector3.new(1.25, 1.25, 1.25)
-					sm.Parent = head
-				end
-				head.Material = Enum.Material.SmoothPlastic
-				head.Color = Color3.fromRGB(245, 245, 245)
-			end
-			local hrp = model:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				model.PrimaryPart = hrp
-				hrp.Transparency = 1
-				-- face the camera (front)
-				model:PivotTo(CFrame.new(0, 3, 0))
-			end
-			model.Name = "PreviewCharacter"
-			model.Parent = world
-			U.pvModel = model
-			local ok2, cf, size = pcall(function() return model:GetBoundingBox() end)
-			if ok2 and cf then
-				U.pvFocus = cf.Position
-				U.pvBaseDist = math.max(size.X, size.Y, size.Z) * 1.15
-			end
-			-- start in front of the model
-			U.pvYaw = 0
-			U.pvPitch = 0.05
-			U.pvDistScale = 1.0
-			U.pvUpdateCam()
-		end
-
-		local dragging, last
-		UIS.InputBegan:Connect(function(input)
+	local page = U.new("Frame", {
+		Name = "explorer",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 1, -(U.LINE_H + 22)),
+		Position = UDim2.fromOffset(0, U.LINE_H + 20),
+		ZIndex = 41,
+	}, panel)
+	U.explorerPage = page
+	do
+		local dragging, ds, sp
+		local function begin(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-			local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
-			local p = input.Position
-			if p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y then
-				dragging, last = true, p
-			end
-		end)
-		UIS.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-		end)
-		UIS.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local d = input.Position - last; last = input.Position
-				U.pvYaw -= d.X * 0.01
-				U.pvPitch = math.clamp((U.pvPitch or 0) + d.Y * 0.01, -1.2, 1.2)
-				U.pvUpdateCam()
-			elseif input.UserInputType == Enum.UserInputType.MouseWheel then
-				local panel = U.pvPanel
-				if not panel or not panel.Visible then return end
-				local ap, as = viewport.AbsolutePosition, viewport.AbsoluteSize
-				local m = UIS:GetMouseLocation()
-				if m.X < ap.X or m.X > ap.X + as.X or m.Y < ap.Y or m.Y > ap.Y + as.Y then return end
-				U.pvDistScale = math.clamp((U.pvDistScale or 1) - input.Position.Z * 0.08, 0.9, 2.5)
-				U.pvUpdateCam()
-			end
-		end)
-
-		local prevDemo = { hp = 100, maxHp = 100, dist = 0, distDir = 1, hpDir = -1, lastHp = 100 }
-		task.spawn(function()
-			while U.running do
-				task.wait(0.03)
-				local maxH = 100
-				for _, p in ipairs(Players:GetPlayers()) do
-					if p.Character then
-						local m = maxHealthOf(p.Character)
-						if m > maxH then maxH = m end
-					end
-				end
-				prevDemo.maxHp = maxH
-				-- same step rate as distance (99 steps full range)
-				prevDemo.hp = prevDemo.hp + prevDemo.hpDir * (maxH / 99)
-				if prevDemo.hp >= maxH then prevDemo.hp = maxH; prevDemo.hpDir = -1
-				elseif prevDemo.hp <= 0 then prevDemo.hp = 0; prevDemo.hpDir = 1 end
-				prevDemo.dist = prevDemo.dist + prevDemo.distDir
-				if prevDemo.dist >= 99 then prevDemo.dist = 99; prevDemo.distDir = -1
-				elseif prevDemo.dist <= 0 then prevDemo.dist = 0; prevDemo.distDir = 1 end
-			end
-		end)
-
-		local prevObj = {}
-		local function ensurePrev()
-			if prevObj.holder and prevObj.holder.Parent then return prevObj end
-			local parent = overlay or viewport.Parent
-			prevObj = {}
-			local d = { holder = create("Frame", { Parent = parent, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }), lines = {} }
-			d.fill = create("Frame", { Parent = d.holder, BorderSizePixel = 0, ZIndex = 0, Visible = false })
-			local function mkTxt()
-				local t = create("TextLabel", { Parent = d.holder, BackgroundTransparency = 1, BorderSizePixel = 0, FontFace = FONT, TextSize = FONT_SZ, TextStrokeTransparency = 1, Visible = false })
-				addOutline(t); return t
-			end
-			d.name = mkTxt(); d.name.TextXAlignment = Enum.TextXAlignment.Center; d.name.AnchorPoint = vec2(0.5, 1)
-			d.dist = mkTxt(); d.dist.TextXAlignment = Enum.TextXAlignment.Center
-			d.hpTxt = mkTxt(); d.hpTxt.TextXAlignment = Enum.TextXAlignment.Right; d.hpTxt.AnchorPoint = vec2(1, 0); d.hpTxt.AutomaticSize = Enum.AutomaticSize.XY
-			local w = healthbarWidth()
-			d.healthbar_holder = create("Frame", { Parent = d.holder, AnchorPoint = vec2(1, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0,0,0), Visible = false, Position = dim2(0,0,0,-1), Size = dim2(0, w+2, 1, 2) })
-			d.healthbar = create("Frame", { Parent = d.healthbar_holder, BorderSizePixel = 0, Position = dim2(0,1,0,1), Size = dim2(1,-2,1,-2), BackgroundColor3 = rgb(20,20,20) })
-			d.healthbar_fill = create("Frame", { Parent = d.healthbar, BorderSizePixel = 0, BackgroundColor3 = rgb(0,255,0) })
-			for i = 1, 16 do d.lines[i] = mkLine() end
-			prevObj = d
-			return d
-		end
-
-		local function updatePreviewESP()
-			local model = U.pvModel
-			local panel = U.pvPanel
-			if not model or not panel or not panel.Visible then
-				if prevObj.holder then prevObj.holder.Visible = false end
-				for _, ln in pairs(prevObj.lines or {}) do if ln then ln.Visible = false end end
-				return
-			end
-			local bx, by, bw, bh = boxSolve(model, vcam, viewport)
-			if not bx then
-				if prevObj.holder then prevObj.holder.Visible = false end
-				return
-			end
-			local d = ensurePrev()
-			local frac = math.clamp(prevDemo.hp / math.max(prevDemo.maxHp, 1), 0, 1)
-			local ap = viewport.AbsolutePosition
-			local dtDmg, dtHeal = 0, 0
-			if prevDemo.lastHp ~= nil then
-				if prevDemo.hp < prevDemo.lastHp - 0.01 then
-					prevDemo.dmgAt = tick()
-					prevDemo.healAt = nil
-				elseif prevDemo.hp > prevDemo.lastHp + 0.01 then
-					prevDemo.healAt = tick()
-					prevDemo.dmgAt = nil
-				end
-			end
-			prevDemo.lastHp = prevDemo.hp
-			if prevDemo.dmgAt then
-				local e = tick() - prevDemo.dmgAt
-				if e < 2 then dtDmg = 1 - (e / 2) else prevDemo.dmgAt = nil end
-			end
-			if prevDemo.healAt then
-				local e = tick() - prevDemo.healAt
-				if e < 2 then dtHeal = 1 - (e / 2) else prevDemo.healAt = nil end
-			end
-			paintESP(d, model, bx, by, bw, bh, {
-				frac = frac,
-				hp = prevDemo.hp,
-				hpText = tostring(math.floor(prevDemo.hp + 0.5)),
-				nameStr = "preview",
-				distStr = math.floor(prevDemo.dist + 0.5) .. "st",
-				cam = vcam,
-				dt = dtDmg,
-				dtDmg = dtDmg,
-				dtHeal = dtHeal,
-				screenOffset = vec2(ap.X, ap.Y),
-				viewportFrame = viewport,
-				localCoords = true,
-			})
-			pcall(function()
-				setHighlight(model, F.Highlight == true, { dmg = dtDmg, heal = dtHeal })
+			local objs = U.objsAtMouse()
+			if objs[1] and (objs[1]:IsA("TextButton") or objs[1]:IsA("TextBox") or objs[1].Name == "ResizeHandle") then return end
+			dragging, ds, sp = true, input.Position, panel.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
 			end)
 		end
-
-		RunService:BindToRenderStep("SM_PREVIEW_ESP", Enum.RenderPriority.Camera.Value + 2, function()
-			if not U.running then return end
-			updatePreviewESP()
-		end)
-
-		task.defer(function()
-			U.dock("pv")
-			U.syncFloatingVisibility()
-		end)
+		panel.InputBegan:Connect(begin)
+		U.track(U.UIS.InputChanged:Connect(function(input)
+			if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+			if not panel.Parent then return end
+			local d = input.Position - ds
+			panel.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		end))
 	end
-end
-
-
--- live-align preview section top with first main UI section when docked
-task.defer(function()
-	local function alignPreviewSection()
-		if not U.shell or not U.pvPanel then return end
-		local pvSection = U.pvPanel:FindFirstChild("Section")
-		if not pvSection then return end
-		local ref
-		for _, page in pairs(U.pageFrames or {}) do
-			for _, ch in ipairs(page:GetChildren()) do
-				if ch:IsA("Frame") and ch:FindFirstChildOfClass("UIStroke") then
-					ref = ch
-					break
-				end
-			end
-			if ref then break end
+	do
+		local edge = 10
+		local function rh(sz, pos)
+			return U.new("Frame", {
+				Name = "ResizeHandle", BackgroundTransparency = 1, BorderSizePixel = 0,
+				Size = sz, Position = pos, ZIndex = 50, Active = true,
+			}, panel)
 		end
-		if not ref then return end
-		local shellTop = U.shell.AbsolutePosition.Y
-		local secTopAbs = ref.AbsolutePosition.Y
-		local relY = secTopAbs - shellTop
-		if relY > 0 and math.abs(pvSection.Position.Y.Offset - relY) > 0.5 then
-			local bottomPad = U.SEC_GAP or 8
-			pvSection.Position = UDim2.fromOffset(U.SEC_GAP, relY)
-			pvSection.Size = UDim2.new(1, -U.SEC_GAP * 2, 1, -(relY + bottomPad))
+		local right = rh(UDim2.new(0, edge, 1, 0), UDim2.new(1, -math.floor(edge / 2), 0, 0))
+		local bottom = rh(UDim2.new(1, 0, 0, edge), UDim2.new(0, 0, 1, -math.floor(edge / 2)))
+		local function bind(obj, mode)
+			obj.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+				local start, sw, sh = input.Position, panel.AbsoluteSize.X, panel.AbsoluteSize.Y
+				local moving = true
+				local c1, c2
+				c1 = U.UIS.InputChanged:Connect(function(i)
+					if not moving then return end
+					if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+					local d = i.Position - start
+					local nw, nh = sw, sh
+					if mode == "right" then nw = math.clamp(sw + d.X, 220, 700) end
+					if mode == "bottom" then nh = math.clamp(sh + d.Y, 280, 800) end
+					panel.Size = UDim2.fromOffset(math.floor(nw), math.floor(nh))
+				end)
+				c2 = U.UIS.InputEnded:Connect(function(i)
+					if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+						moving = false
+						c1:Disconnect()
+						c2:Disconnect()
+					end
+				end)
+			end)
 		end
+		bind(right, "right")
+		bind(bottom, "bottom")
 	end
-	alignPreviewSection()
-	U.shell:GetPropertyChangedSignal("AbsolutePosition"):Connect(alignPreviewSection)
-	if U.pvPanel then
-		U.pvPanel:GetPropertyChangedSignal("AbsolutePosition"):Connect(alignPreviewSection)
-		U.pvPanel:GetPropertyChangedSignal("Visible"):Connect(function()
-			if U.pvPanel.Visible then task.defer(alignPreviewSection) end
-		end)
-	end
-end)
-
-
-
-do
-	local page = U.pageFrames and U.pageFrames.dex
-	if page then
-		for _, ch in ipairs(page:GetChildren()) do
-			ch:Destroy()
-		end
 
 		local RMD={["Accessory"]={o=30,i=32},["AccessoryDescription"]={o=22,i=104},["Accoutrement"]={o=20,i=32},["Actor"]={o=10,i=113},["AdGui"]={o=200,i=145},["AdPlacement"]={o=200,i=0},["AdPortal"]={o=200,i=146},["AirController"]={o=20,i=0},["AlignOrientation"]={o=30,i=100},["AlignPosition"]={o=30,i=99},["AnalyticsService"]={o=9999,i=0},["AngularVelocity"]={o=30,i=103},["Animation"]={o=220,i=60},["AnimationConstraint"]={o=30,i=0},["AnimationController"]={o=220,i=60},["AnimationTrack"]={o=220,i=60},["Animator"]={o=220,i=60},["ArcHandles"]={o=200,i=56},["AssetService"]={o=9999,i=0},["Atmosphere"]={o=5,i=28},["AtmosphereSensor"]={o=20,i=0},["Attachment"]={o=30,i=81},["AudioAnalyzer"]={o=10,i=11},["AudioChannelMixer"]={o=10,i=11},["AudioChannelSplitter"]={o=10,i=11},["AudioChorus"]={o=10,i=11},["AudioCompressor"]={o=10,i=11},["AudioDeviceInput"]={o=10,i=11},["AudioDeviceOutput"]={o=10,i=11},["AudioDistortion"]={o=10,i=11},["AudioEcho"]={o=10,i=11},["AudioEmitter"]={o=10,i=11},["AudioEqualizer"]={o=10,i=11},["AudioFDNReverb"]={o=10,i=11},["AudioFader"]={o=10,i=11},["AudioFilter"]={o=10,i=11},["AudioFlanger"]={o=10,i=11},["AudioGate"]={o=10,i=11},["AudioLimiter"]={o=10,i=11},["AudioListener"]={o=10,i=11},["AudioPitchShifter"]={o=10,i=11},["AudioPlayer"]={o=10,i=11},["AudioRecorder"]={o=10,i=11},["AudioReverb"]={o=10,i=11},["AudioSpeechToText"]={o=10,i=11},["AudioStreamReader"]={o=10,i=11},["AudioStreamWriter"]={o=10,i=11},["AudioTextToSpeech"]={o=10,i=11},["AudioTremolo"]={o=10,i=11},["AudioWindSynthesizer"]={o=10,i=11},["AuroraScript"]={o=50,i=76},["AvatarAccessoryRules"]={o=20,i=0},["AvatarAnimationRules"]={o=20,i=0},["AvatarBodyRules"]={o=20,i=0},["AvatarClothingRules"]={o=20,i=0},["AvatarCollisionRules"]={o=20,i=0},["AvatarRules"]={o=20,i=0},["Backpack"]={o=30,i=20},["BackpackItem"]={o=20,i=0},["BadgeService"]={o=9999,i=0},["BallSocketConstraint"]={o=30,i=86},["BasePart"]={o=3,i=0},["Beam"]={o=30,i=96},["BevelMesh"]={o=9999,i=0},["BillboardGui"]={o=140,i=64},["BindableEvent"]={o=50,i=67},["BindableFunction"]={o=40,i=66},["BlockMesh"]={o=30,i=8},["BloomEffect"]={o=20,i=83},["BlurEffect"]={o=20,i=83},["BodyAngularVelocity"]={o=140,i=14},["BodyColors"]={o=20,i=0},["BodyForce"]={o=140,i=14},["BodyGyro"]={o=140,i=14},["BodyPartDescription"]={o=22,i=104},["BodyPosition"]={o=140,i=14},["BodyThrust"]={o=140,i=14},["BodyVelocity"]={o=140,i=14},["Bone"]={o=30,i=114},["BoolValue"]={o=30,i=4},["BoxHandleAdornment"]={o=205,i=111},["BrickColorValue"]={o=30,i=4},["BubbleChatConfiguration"]={o=13,i=0},["BuoyancySensor"]={o=20,i=0},["CFrameValue"]={o=30,i=4},["Camera"]={o=5,i=5},["CanvasGroup"]={o=200,i=48},["ChangeHistoryService"]={o=9999,i=0},["ChannelTabsConfiguration"]={o=12,i=141},["CharacterMesh"]={o=220,i=60},["Chat"]={o=510,i=33},["ChatInputBarConfiguration"]={o=11,i=142},["ChatService"]={o=510,i=33},["ChatWindowConfiguration"]={o=10,i=141},["ChorusSoundEffect"]={o=20,i=84},["ClickDetector"]={o=30,i=41},["ClimbController"]={o=20,i=0},["Clothing"]={o=20,i=0},["Clouds"]={o=5,i=28},["CollectionService"]={o=9999,i=0},["Color3Value"]={o=30,i=4},["ColorCorrectionEffect"]={o=20,i=83},["ColorGradingEffect"]={o=20,i=83},["CompressorSoundEffect"]={o=20,i=84},["ConeHandleAdornment"]={o=205,i=110},["Configuration"]={o=220,i=58},["Constraint"]={o=30,i=86},["ContextActionService"]={o=9999,i=0},["ControlState"]={o=31,i=0},["ControllerManager"]={o=20,i=0},["ControllerPartSensor"]={o=20,i=0},["CoreGui"]={o=30,i=46},["CorePackages"]={o=30,i=20},["CornerWedgePart"]={o=120,i=1},["CustomEvent"]={o=30,i=4},["CustomEventReceiver"]={o=30,i=4},["CylinderHandleAdornment"]={o=205,i=109},["CylinderMesh"]={o=30,i=8},["CylindricalConstraint"]={o=30,i=95},["DataModel"]={o=9999,i=0},["DataModelMesh"]={o=9999,i=0},["DataStoreService"]={o=9999,i=0},["Debris"]={o=9999,i=30},["DebugSettings"]={o=20,i=0},["DebuggerBreakpoint"]={o=9999,i=0},["DebuggerManager"]={o=9999,i=0},["DebuggerWatch"]={o=9999,i=0},["Decal"]={o=40,i=7},["DepthOfFieldEffect"]={o=20,i=83},["Dialog"]={o=220,i=62},["DialogChoice"]={o=220,i=63},["DistortionSoundEffect"]={o=20,i=84},["DoubleConstrainedValue"]={o=30,i=4},["DragDetector"]={o=30,i=41},["EchoSoundEffect"]={o=20,i=84},["EditableMesh"]={o=9999,i=0},["EqualizerSoundEffect"]={o=20,i=84},["Explosion"]={o=30,i=36},["FaceControls"]={o=105,i=129},["FaceInstance"]={o=9999,i=0},["Feature"]={o=20,i=0},["FileMesh"]={o=9999,i=0},["Fire"]={o=30,i=61},["Flag"]={o=30,i=38},["FlagStand"]={o=30,i=39},["FlangeSoundEffect"]={o=20,i=84},["FloorWire"]={o=30,i=4},["FluidForceSensor"]={o=20,i=0},["Folder"]={o=10,i=77},["ForceField"]={o=30,i=37},["Frame"]={o=150,i=48},["FunctionalTest"]={o=10,i=0},["GameSettings"]={o=20,i=0},["GeneratedFolder"]={o=10,i=77},["GlobalDataStore"]={o=-1,i=0},["GlobalSettings"]={o=20,i=0},["Glue"]={o=9999,i=0},["GroundController"]={o=20,i=0},["GuiBase2d"]={o=9999,i=0},["GuiButton"]={o=160,i=52},["GuiMain"]={o=140,i=47},["GuiObject"]={o=9999,i=0},["GuiService"]={o=9999,i=0},["HandRigDescription"]={o=222,i=53},["Handles"]={o=190,i=53},["HapticEffect"]={o=100,i=0},["Hat"]={o=30,i=45},["Highlight"]={o=20,i=133},["HingeConstraint"]={o=30,i=87},["Hint"]={o=110,i=33},["Hole"]={o=20,i=0},["Hopper"]={o=20,i=0},["HopperBin"]={o=240,i=22},["HttpService"]={o=9999,i=0},["Humanoid"]={o=30,i=9},["HumanoidDescription"]={o=22,i=104},["HumanoidRigDescription"]={o=220,i=53},["IKControl"]={o=220,i=53},["ImageButton"]={o=160,i=52},["ImageHandleAdornment"]={o=205,i=108},["ImageLabel"]={o=180,i=49},["InputAction"]={o=31,i=0},["InputActionLabel"]={o=185,i=0},["InputBinding"]={o=31,i=0},["InputContext"]={o=31,i=0},["InputObject"]={o=9999,i=0},["InsertService"]={o=9999,i=0},["Instance"]={o=9999,i=0},["IntConstrainedValue"]={o=30,i=4},["IntValue"]={o=30,i=4},["Item"]={o=20,i=0},["JointInstance"]={o=200,i=34},["JointsService"]={o=9999,i=0},["Keyframe"]={o=220,i=60},["KeyframeMarker"]={o=220,i=60},["LayerCollector"]={o=9999,i=0},["Light"]={o=30,i=13},["Lighting"]={o=30,i=13},["LineForce"]={o=30,i=101},["LineHandleAdornment"]={o=205,i=107},["LinearVelocity"]={o=30,i=132},["LocalBackpack"]={o=9999,i=0},["LocalBackpackItem"]={o=9999,i=0},["LocalScript"]={o=40,i=18},["LocalizationService"]={o=530,i=92},["LocalizationTable"]={o=30,i=97},["LogService"]={o=9999,i=0},["LuaSourceContainer"]={o=9999,i=0},["MakeupDescription"]={o=22,i=104},["MarketplaceService"]={o=9999,i=46},["MaterialService"]={o=30,i=131},["MaterialVariant"]={o=41,i=130},["MeshPart"]={o=105,i=73},["Message"]={o=110,i=33},["Model"]={o=100,i=2},["ModuleScript"]={o=50,i=76},["Motor"]={o=20,i=0},["Motor6D"]={o=200,i=106},["MotorFeature"]={o=9999,i=0},["Mouse"]={o=9999,i=0},["NegateOperation"]={o=104,i=72},["NetworkClient"]={o=30,i=16},["NetworkMarker"]={o=9999,i=0},["NetworkPeer"]={o=9999,i=0},["NetworkReplicator"]={o=30,i=29},["NetworkServer"]={o=30,i=15},["NetworkSettings"]={o=20,i=0},["NoCollisionConstraint"]={o=30,i=105},["NumberPose"]={o=220,i=60},["NumberValue"]={o=30,i=4},["ObjectValue"]={o=30,i=4},["OrderedDataStore"]={o=-1,i=0},["PVInstance"]={o=9999,i=0},["PackageLink"]={o=1,i=98},["Packages"]={o=9999,i=0},["Pants"]={o=20,i=44},["ParallelRampPart"]={o=120,i=1},["Part"]={o=110,i=1},["PartPairLasso"]={o=220,i=57},["ParticleEmitter"]={o=30,i=80},["ParticleEmitter2D"]={o=30,i=80},["Path2D"]={o=31,i=0},["PathfindingLink"]={o=210,i=137},["PathfindingModifier"]={o=210,i=128},["PhysicsActivitySensor"]={o=20,i=0},["PitchShiftSoundEffect"]={o=20,i=84},["Plane"]={o=30,i=134},["PlaneConstraint"]={o=30,i=134},["Platform"]={o=30,i=35},["PlatformLibraries"]={o=30,i=46},["Player"]={o=10,i=12},["PlayerGui"]={o=130,i=46},["PlayerScripts"]={o=130,i=78},["Players"]={o=20,i=21},["Plugin"]={o=30,i=86},["PluginCapabilities"]={o=30,i=0},["PluginDebugService"]={o=30,i=46},["PluginGuiService"]={o=30,i=46},["PluginManager"]={o=9999,i=0},["PluginManagerInterface"]={o=9999,i=0},["PluginMouse"]={o=9999,i=0},["PointLight"]={o=30,i=13},["PointsService"]={o=9999,i=0},["Pose"]={o=220,i=60},["PoseBase"]={o=220,i=60},["Preloaded"]={o=30,i=70},["PrismPart"]={o=120,i=1},["PrismaticConstraint"]={o=30,i=88},["ProceduralModel"]={o=100,i=0},["ProfilingItem"]={o=9999,i=0},["ProximityPrompt"]={o=30,i=124},["ProximityPromptService"]={o=9999,i=0},["PyramidHandleAdornment"]={o=205,i=0},["PyramidPart"]={o=120,i=1},["RayValue"]={o=30,i=4},["RemoteEvent"]={o=50,i=75},["RemoteFunction"]={o=40,i=74},["RenderSettings"]={o=20,i=0},["RenderingTest"]={o=40,i=5},["ReplicatedFirst"]={o=30,i=70},["ReplicatedStorage"]={o=30,i=70},["ReverbSoundEffect"]={o=20,i=84},["RightAngleRampPart"]={o=120,i=1},["RigidConstraint"]={o=30,i=135},["RobloxPluginGuiService"]={o=30,i=46},["RobloxReplicatedStorage"]={o=9999,i=0},["RocketPropulsion"]={o=140,i=14},["RodConstraint"]={o=30,i=90},["RootInstance"]={o=9999,i=0},["RopeConstraint"]={o=30,i=89},["RotateP"]={o=9999,i=0},["RotateV"]={o=9999,i=0},["RunService"]={o=9999,i=0},["ScreenGui"]={o=140,i=47},["Script"]={o=30,i=6},["ScriptContext"]={o=9999,i=0},["ScriptDebugger"]={o=9999,i=0},["ScrollingFrame"]={o=150,i=48},["Seat"]={o=30,i=35},["Selection"]={o=9999,i=0},["SelectionBox"]={o=210,i=54},["SelectionPartLasso"]={o=220,i=57},["SelectionPointLasso"]={o=220,i=57},["SelectionSphere"]={o=210,i=54},["ServerScriptService"]={o=30,i=71},["ServerStorage"]={o=30,i=69},["ServiceProvider"]={o=9999,i=0},["Shirt"]={o=20,i=43},["ShirtGraphic"]={o=20,i=40},["SkateboardPlatform"]={o=30,i=35},["Skin"]={o=20,i=0},["Sky"]={o=5,i=28},["SlidingBallConstraint"]={o=30,i=88},["Smoke"]={o=30,i=59},["Snap"]={o=200,i=34},["Sound"]={o=10,i=11},["SoundGroup"]={o=20,i=85},["SoundService"]={o=500,i=31},["Sparkles"]={o=30,i=42},["SpawnLocation"]={o=30,i=25},["SpecialMesh"]={o=30,i=8},["SphereHandleAdornment"]={o=205,i=112},["SpotLight"]={o=30,i=13},["SpringConstraint"]={o=30,i=91},["StandalonePluginScripts"]={o=130,i=78},["StarterCharacterScripts"]={o=130,i=78},["StarterGear"]={o=30,i=20},["StarterGui"]={o=30,i=46},["StarterPack"]={o=30,i=20},["StarterPlayer"]={o=30,i=79},["StarterPlayerScripts"]={o=130,i=78},["StatsItem"]={o=9999,i=0},["Status"]={o=100,i=2},["StockSound"]={o=-1,i=0},["StringValue"]={o=30,i=4},["Studio"]={o=9999,i=0},["StudioService"]={o=9999,i=0},["StyleBase"]={o=200,i=0},["StyleDerive"]={o=200,i=0},["StyleLink"]={o=200,i=0},["StyleQuery"]={o=200,i=0},["StyleRule"]={o=200,i=0},["StyleSheet"]={o=200,i=0},["SunRaysEffect"]={o=20,i=83},["SurfaceAppearance"]={o=40,i=10},["SurfaceGui"]={o=140,i=64},["SurfaceGuiBase"]={o=140,i=64},["SurfaceLight"]={o=30,i=13},["SurfaceSelection"]={o=210,i=55},["SwimController"]={o=20,i=0},["TaskScheduler"]={o=9999,i=0},["Team"]={o=10,i=24},["Teams"]={o=140,i=23},["TeleportService"]={o=9999,i=0},["Terrain"]={o=5,i=65},["TerrainDetail"]={o=42,i=144},["TerrainRegion"]={o=20,i=65},["TestService"]={o=1000,i=68},["TextBox"]={o=170,i=51},["TextButton"]={o=170,i=51},["TextChannel"]={o=14,i=140},["TextChannelWindow"]={o=16,i=0},["TextChatCommand"]={o=15,i=138},["TextChatService"]={o=511,i=143},["TextDocument"]={o=55,i=6},["TextLabel"]={o=190,i=50},["TextSource"]={o=10,i=139},["Texture"]={o=40,i=10},["Tool"]={o=30,i=17},["Torque"]={o=30,i=103},["TorsionSpringConstraint"]={o=30,i=125},["TouchTransmitter"]={o=30,i=37},["Trail"]={o=30,i=93},["TremoloSoundEffect"]={o=20,i=84},["TriangleMeshPart"]={o=9999,i=0},["TrussPart"]={o=120,i=1},["Tween"]={o=9999,i=0},["TweenBase"]={o=9999,i=0},["TweenService"]={o=9999,i=0},["UIAspectRatioConstraint"]={o=30,i=26},["UICorner"]={o=30,i=26},["UIDragDetector"]={o=30,i=41},["UIFlexItem"]={o=130,i=26},["UIGradient"]={o=30,i=26},["UIGridLayout"]={o=30,i=26},["UIGridStyleLayout"]={o=9999,i=0},["UIListLayout"]={o=30,i=26},["UIPadding"]={o=30,i=26},["UIPageLayout"]={o=30,i=26},["UIScale"]={o=30,i=26},["UIShadow"]={o=30,i=26},["UISizeConstraint"]={o=30,i=26},["UIStroke"]={o=30,i=26},["UITableLayout"]={o=30,i=26},["UITextSizeConstraint"]={o=30,i=26},["UnionOperation"]={o=105,i=73},["UniversalConstraint"]={o=30,i=123},["UnreliableRemoteEvent"]={o=51,i=75},["UserInputService"]={o=9999,i=0},["VRService"]={o=1000,i=0},["ValueBase"]={o=30,i=4},["Vector3Value"]={o=30,i=4},["VectorForce"]={o=30,i=102},["VehicleSeat"]={o=30,i=35},["VelocityMotor"]={o=9999,i=0},["VideoDisplay"]={o=10,i=11},["VideoFrame"]={o=18,i=120},["VideoPlayer"]={o=10,i=11},["ViewportCamera"]={o=5,i=0},["ViewportFrame"]={o=30,i=52},["VoiceChatInternal"]={o=9999,i=0},["VoiceChatService"]={o=520,i=136},["WedgePart"]={o=120,i=1},["Weld"]={o=200,i=34},["WeldConstraint"]={o=30,i=94},["Wire"]={o=10,i=11},["WireframeHandleAdornment"]={o=205,i=113},["Workspace"]={o=5,i=19},["WorldModel"]={o=22,i=19},["WrapDeformer"]={o=32,i=127},["WrapLayer"]={o=32,i=126},["WrapTarget"]={o=32,i=127},["WrapTextureTransfer"]={o=33,i=0},}
 
-		local dexOn = false
+		local explorerOn = false
 		local selected = nil
 		local expanded = { [game] = true }
 
@@ -3014,8 +3032,6 @@ do
 			return e and e.o or 9999
 		end
 
-		-- Dex Vanilla3 class icons (rbxassetid://114851699900089)
-		-- 32x32 tiles, 25 columns. Icons dict is 1-based; Display uses 0-based index.
 		local ICON_MAP_ID = "rbxassetid://114851699900089"
 		local ICON_SIZE = 32
 		local ICON_COLS = 25
@@ -3023,7 +3039,6 @@ do
 		local function applyClassIcon(imageLabel, className)
 			local raw = CLASS_ICONS[className]
 			if not raw then
-				-- try RMD explorer image index as linear fallback on ClassImages
 				local e = RMD[className]
 				if e and e.i then
 					imageLabel.Image = "rbxasset://textures/ClassImages.PNG"
@@ -3036,7 +3051,6 @@ do
 			local index = math.max(0, (tonumber(raw) or 1) - 1)
 			local col = index % ICON_COLS
 			local row = math.floor(index / ICON_COLS)
-			-- set rect before and after image to avoid full-sheet flash
 			imageLabel.ImageRectSize = Vector2.new(ICON_SIZE, ICON_SIZE)
 			imageLabel.ImageRectOffset = Vector2.new(ICON_SIZE * col, ICON_SIZE * row)
 			imageLabel.Image = ICON_MAP_ID
@@ -3057,15 +3071,40 @@ do
 			return ch
 		end
 
-		-- U.section returns the inner ScrollingFrame content
-		local explList = U.section(page, "explorer", 1, 1, 1)
-		local propList = U.section(page, "properties", 2, 1, 1)
+		local explorerSection = U.section(page, 1, 1, 2)
+		local propertiesSection = U.section(page, 1, 2, 2)
+		local explList = explorerSection:AddTab("explorer")._content
+		local propList = propertiesSection:AddTab("properties")._content
 		explList.ScrollBarThickness = 0
 		explList.ScrollBarImageTransparency = 1
 		propList.ScrollBarThickness = 0
 		propList.ScrollBarImageTransparency = 1
 
-		-- clear default padding gap a bit
+		local function layoutExplorer()
+			if not page or not page.Parent then return end
+			local gap, topPad, bottomPad = 8, 4, 4
+			local width = math.max(1, page.AbsoluteSize.X - gap * 2)
+			local height = math.max(2, page.AbsoluteSize.Y - topPad - bottomPad - gap)
+			local firstHeight = math.floor(height / 2)
+			local secondHeight = height - firstHeight
+			local first = explorerSection._frame
+			local second = propertiesSection._frame
+			if first and first.Parent == page then
+				first.Position = UDim2.fromOffset(gap, topPad)
+				first.Size = UDim2.fromOffset(width, firstHeight)
+			end
+			if second and second.Parent == page then
+				second.Position = UDim2.fromOffset(gap, topPad + firstHeight + gap)
+				second.Size = UDim2.fromOffset(width, secondHeight)
+			end
+			if explorerSection.layoutTabs then explorerSection.layoutTabs() end
+			if propertiesSection.layoutTabs then propertiesSection.layoutTabs() end
+		end
+		U.layoutExplorer = layoutExplorer
+		task.defer(layoutExplorer)
+		panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
+		page:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutExplorer)
+
 		for _, list in ipairs({ explList, propList }) do
 			for _, ch in ipairs(list:GetChildren()) do
 				if ch:IsA("UIPadding") then
@@ -3076,21 +3115,6 @@ do
 				end
 			end
 		end
-
-		local search = Instance.new("TextBox")
-		search.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-		search.BorderSizePixel = 0
-		search.ClearTextOnFocus = false
-		search.FontFace = U.font
-		search.TextSize = U.TEXT_SZ
-		search.TextColor3 = U.theme.Text
-		search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-		search.PlaceholderText = "filter..."
-		search.Text = ""
-		search.Size = UDim2.new(1, 0, 0, 16)
-		search.LayoutOrder = -1000000
-		search.Parent = explList
-		U.edges(search, U.ELEMENT_BORDER, false, 3)
 
 		local function disconnectTree(inst)
 			local cns = treeConns[inst]
@@ -3239,12 +3263,6 @@ do
 			end
 		end
 
-		local function matchesFilter(inst, filter)
-			if filter == "" then return true end
-			return inst.Name:lower():find(filter, 1, true) ~= nil
-				or inst.ClassName:lower():find(filter, 1, true) ~= nil
-		end
-
 		local listOrder = 0
 		local function buildRow(inst, depth)
 			listOrder += 1
@@ -3264,22 +3282,12 @@ do
 			local hasKids = #kids > 0
 			local open = expanded[inst] == true
 
-			local arrow = Instance.new("TextLabel")
-			arrow.BackgroundTransparency = 1
-			arrow.Size = UDim2.fromOffset(10, 16)
-			arrow.Position = UDim2.fromOffset(pad, 0)
-			arrow.FontFace = U.font
-			arrow.TextSize = 10
-			arrow.TextColor3 = U.theme.Text
-			arrow.Text = hasKids and (open and "-" or "+") or " "
-			arrow.Parent = btn
-
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundColor3 = Color3.new(1, 1, 1)
 			icon.BackgroundTransparency = 1
 			icon.BorderSizePixel = 0
 			icon.Size = UDim2.fromOffset(16, 16)
-			icon.Position = UDim2.fromOffset(pad + 10, 0)
+			icon.Position = UDim2.fromOffset(pad, 0)
 			icon.ScaleType = Enum.ScaleType.Fit
 			icon.ResampleMode = Enum.ResamplerMode.Pixelated
 			icon.Parent = btn
@@ -3287,8 +3295,8 @@ do
 
 			local lab = Instance.new("TextLabel")
 			lab.BackgroundTransparency = 1
-			lab.Size = UDim2.new(1, -(pad + 28), 1, 0)
-			lab.Position = UDim2.fromOffset(pad + 28, 0)
+			lab.Size = UDim2.new(1, -(pad + 18), 1, 0)
+			lab.Position = UDim2.fromOffset(pad + 18, 0)
 			lab.FontFace = U.font
 			lab.TextSize = U.TEXT_SZ
 			lab.TextColor3 = U.theme.Text
@@ -3306,49 +3314,168 @@ do
 				refreshProps()
 			end)
 
-			
 			if open and hasKids then
 				local conns = {}
 				conns[#conns + 1] = inst.ChildAdded:Connect(function()
-					if dexOn and expanded[inst] then rebuildVisible() end
+					if explorerOn and expanded[inst] then rebuildVisible() end
 				end)
 				conns[#conns + 1] = inst.ChildRemoved:Connect(function()
-					if dexOn and expanded[inst] then rebuildVisible() end
+					if explorerOn and expanded[inst] then rebuildVisible() end
 				end)
 				treeConns[inst] = conns
-				local filter = search.Text:lower()
 				for _, ch in ipairs(kids) do
-					if filter == "" or matchesFilter(ch, filter) or expanded[ch] then
-						buildRow(ch, depth + 1)
-					end
+					buildRow(ch, depth + 1)
 				end
 			end
 		end
 
 		function rebuildVisible()
-			if not dexOn then return end
+			if not explorerOn then return end
 			clearExplorer()
 			listOrder = 0
 			buildRow(game, 0)
 		end
 
-		search:GetPropertyChangedSignal("Text"):Connect(function()
-			if dexOn then rebuildVisible() end
-		end)
-
-		U._tabListeners = U._tabListeners or {}
-		table.insert(U._tabListeners, function(name)
-			dexOn = name == "dex"
-						if dexOn then
+		U._setExplorerVisible = function(on)
+			explorerOn = on == true
+			if U.explorerPanel then
+				U.explorerPanel.Visible = explorerOn
+			end
+			if explorerOn then
 				rebuildVisible()
 				if selected then refreshProps() end
 			else
 				for inst in pairs(treeConns) do disconnectTree(inst) end
 				clearExplorer()
 			end
-		end)
-	end
+		end
+		if U.vflags and U.vflags.Explorer == true then
+			U._setExplorerVisible(true)
+		end
 end
 
+function Library:CreateWindow(opts)
+	opts = opts or {}
+	local name = opts.name
+	if name == nil then name = opts.Name end
+	U.windowTitle = (type(name) == "string" and name ~= "") and name or nil
+	U.TITLE_H = U.windowTitle and 22 or 0
+	if opts.Width then U.BODY_W = opts.Width end
+	if opts.Height then U.BODY_H = opts.Height end
+	U.bottomBarOn = type(opts.BottomBar) == "string"
+	U.bottomBarText = U.bottomBarOn and opts.BottomBar or ""
+	if opts.BottomBarText ~= nil then U.bottomBarText = opts.BottomBarText end
+	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
+		U.TAB_NAMES = {}
+		for _, t in ipairs(opts.Tabs) do
+			local n = string.lower(tostring(t))
+			if n ~= "explorer" then
+				U.TAB_NAMES[#U.TAB_NAMES + 1] = n
+			end
+		end
+	end
 
-Library:Notify({ text = "wavelength universal loaded", time = 2 })
+	if U.bottomBarUpdateConn then U.bottomBarUpdateConn:Disconnect() U.bottomBarUpdateConn = nil end
+	U._shuttingDown, U.running, U.menuOpen = false, true, true
+	U.gen = (U.gen or 0) + 1
+	U.hideTooltip()
+	if U.tooltipGui then pcall(function() U.tooltipGui:Destroy() end) U.tooltipGui, U.tooltipFrame = nil, nil end
+	for _, c in ipairs(U._conns or {}) do pcall(function() c:Disconnect() end) end
+	U._conns = {}
+	if U.bindTooltipFollow then U.bindTooltipFollow() end
+	if U.kbPanel then pcall(function() U.kbPanel:Destroy() end) end
+	U.keybindTargets, U.keybindListEntries, U._kbListen, U.flagListeners, U.setters, U.pulseReg = {}, {}, {}, {}, {}, {}
+	U.subGroups, U.toggleRows, U._subFade, U.subBusy, U.subPending, U._subAnimConns = {}, {}, {}, {}, {}, {}
+	U.themeReg = U.newReg()
+	U.openColorPicker, U.openDropdown, U.openDropdownBox, U.openSettings = nil, nil, nil, nil
+	U.wm, U.kbPanel, U.wmSnapGhost, U.kbSnapGhost = nil, nil, nil, nil
+	U.wmDocked, U.kbDocked = true, true
+	Library.Setters = U.setters
+
+	if U.gui then pcall(function() U.gui:Destroy() end) U.gui = nil end
+	U.buildShell()
+	local win = setmetatable({ _pages = {}, _sections = {}, _order = {} }, { __index = Library })
+	for _, n in ipairs(U.TAB_NAMES) do
+		win._pages[n] = U.pageFrames[n]
+		win._order[n] = 0
+	end
+
+	function win:AddTab(tabName)
+		tabName = string.lower(tostring(tabName))
+		if not U.pageFrames[tabName] then
+			U.TAB_NAMES[#U.TAB_NAMES + 1] = tabName
+			U.pageFrames[tabName] = U.new("Frame", { Name = tabName, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = not U.currentTab }, U.pages)
+			U.currentTab = U.currentTab or tabName
+		end
+		self._pages[tabName] = U.pageFrames[tabName]
+		self._order[tabName] = self._order[tabName] or 0
+
+		local tab = { Name = tabName, Window = self }
+		function tab:AddSection(a, b, c, d)
+			local sectionName, side, row, rows
+			if type(a) == "number" then
+				side, row, rows = a, b, c
+			else
+				sectionName, side, row, rows = a, b, c, d
+			end
+			side = side or 1
+			self._colCount = self._colCount or { [1] = 0, [2] = 0 }
+			if not row then
+				self._colCount[side] = (self._colCount[side] or 0) + 1
+				row = self._colCount[side]
+			else
+				self._colCount[side] = math.max(self._colCount[side] or 0, row)
+			end
+			rows = rows or self._colCount[side]
+
+			local parent = U.pageFrames[tabName]
+			local sec = U.section(parent, side, row, rows)
+			U.relayoutColumn(parent, side)
+
+			if sectionName then
+				return sec:AddTab(string.lower(tostring(sectionName)))
+			end
+			return sec
+		end
+		return tab
+	end
+
+	function win:AddSettingsTab()
+		if not U.pageFrames.config then self:AddTab("config") end
+		U.buildConfig()
+		return self
+	end
+	function win:AddExplorerTab()
+		U.buildExplorer()
+		return self
+	end
+	function win:SetBottomBar(on, text)
+		U.setBottomBar(on, text)
+		return self
+	end
+	function win:SetBottomBarText(text)
+		U.setBottomBarText(text)
+		return self
+	end
+	function win:RefreshBottomBar()
+		U.refreshBottomBar()
+		return self
+	end
+	function win:Init()
+		U.buildTabs()
+		U.bindInput()
+		U.applyBodyLayout(true)
+		for name, page in pairs(U.pageFrames or {}) do
+			if name ~= U.currentTab then U.layoutPage(page, true) end
+		end
+		task.defer(function()
+			if not U.running then return end
+			for _, page in pairs(U.pageFrames or {}) do U.layoutPage(page, true) end
+		end)
+		U.layoutBottomBar()
+	end
+	function win:Unload() U.shutdown() end
+	return win
+end
+
+return Library
