@@ -33,6 +33,7 @@ U.themeReg = U.themeReg or U.newReg()
 U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
+if U.vflags.SubItemLines == nil then U.vflags.SubItemLines = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
@@ -576,6 +577,13 @@ function U.updateSubLine(flag)
 	local line = g.line
 	local host = g.host or g.line.Parent
 	if not host then return end
+	if U.vflags.SubItemLines == false then
+		line.Visible = false
+		return
+	end
+	-- while the menu is closed everything is hidden, so visibility/size checks would wrongly
+	-- hide the line (e.g. a keybind toggling a flag). Keep its state; it is refreshed on open.
+	if U.menuOpen == false then return end
 	if not U.isGuiShown(g.parentRow) then
 		line.Visible = false
 		return
@@ -2485,6 +2493,8 @@ function U.buildConfig()
 	U.mkToggle(settingsContent, "keybinds", "KeybindsList", nextOrder(), false)
 	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
+	U.mkToggle(settingsContent, "sub-item lines", "SubItemLines", nextOrder(), true)
+	U.onFlag("SubItemLines", function() U.updateAllSubLines() end)
 
 	U.mkToggle(settingsContent, "explorer", "Explorer", nextOrder(), false)
 	U.onFlag("Explorer", function()
@@ -2877,6 +2887,10 @@ function U.bindInput()
 			if U.menuOpen then
 				U.dock("wm")
 				U.dock("kb")
+				task.defer(function()
+					U.updateAllSubLines()
+					task.defer(U.updateAllSubLines)
+				end)
 			end
 		end
 
@@ -3164,6 +3178,7 @@ function U.buildExplorer()
 		end
 
 		local function refreshProps()
+			if not explorerOn then return end
 			for _, ch in ipairs(propList:GetChildren()) do
 				if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") then
 					ch:Destroy()
@@ -3347,6 +3362,12 @@ function U.buildExplorer()
 			else
 				for inst in pairs(treeConns) do disconnectTree(inst) end
 				clearExplorer()
+				selected = nil
+				for _, ch in ipairs(propList:GetChildren()) do
+					if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") then
+						pcall(function() ch:Destroy() end)
+					end
+				end
 			end
 		end
 		if U.vflags and U.vflags.Explorer == true then
