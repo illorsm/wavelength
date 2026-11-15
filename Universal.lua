@@ -33,6 +33,7 @@ U.themeReg = U.themeReg or U.newReg()
 U.themeReg.labels = U.themeReg.labels or {}
 U.vflags = U.vflags or {}
 if U.vflags.Tooltips == nil then U.vflags.Tooltips = true end
+if U.vflags.SubItemLines == nil then U.vflags.SubItemLines = true end
 if U.vflags.NotificationPosition == nil then U.vflags.NotificationPosition = "center" end
 U.setters = U.setters or {}
 U.flagListeners = U.flagListeners or {}
@@ -576,10 +577,20 @@ function U.updateSubLine(flag)
 	local line = g.line
 	local host = g.host or g.line.Parent
 	if not host then return end
-	if not U.isGuiShown(g.parentRow) then
+
+	-- Master toggle for sub-item lines
+	if U.vflags.SubItemLines == false then
 		line.Visible = false
 		return
 	end
+
+	-- When the menu is closed (or the parent row hierarchy is hidden), keep the line hidden.
+	-- It is restored the next time the menu is opened.
+	if U.menuOpen == false or not U.isGuiShown(g.parentRow) then
+		line.Visible = false
+		return
+	end
+
 	local kids = {}
 	for _, c in ipairs(g.children) do
 		if c.Parent and c.Visible and c.AbsoluteSize.Y > 0.5 and U.isGuiShown(c) then kids[#kids + 1] = c end
@@ -2486,20 +2497,32 @@ function U.buildConfig()
 	U.mkToggle(settingsContent, "tooltips", "Tooltips", nextOrder(), true)
 	U.onFlag("Tooltips", function() if U.vflags.Tooltips == false then U.hideTooltip() end end)
 
+	U.mkToggle(settingsContent, "sub-item lines", "SubItemLines", nextOrder(), true)
+	U.onFlag("SubItemLines", function()
+		U.updateAllSubLines()
+	end)
+
 	U.mkToggle(settingsContent, "explorer", "Explorer", nextOrder(), false)
 	U.onFlag("Explorer", function()
-		if U._setExplorerVisible then
-			U._setExplorerVisible(U.vflags.Explorer == true)
-		elseif U.vflags.Explorer == true then
-			U.buildExplorer()
-			if U._setExplorerVisible then U._setExplorerVisible(true) end
-		elseif U.explorerPanel then
-			U.explorerPanel.Visible = false
+		if U.vflags.Explorer == true then
+			-- Build only on first enable
+			if not U._setExplorerVisible then
+				U.buildExplorer()
+			end
+			if U._setExplorerVisible then
+				U._setExplorerVisible(true)
+			end
+		else
+			if U._setExplorerVisible then
+				U._setExplorerVisible(false)
+			elseif U.explorerPanel then
+				U.explorerPanel.Visible = false
+			end
 		end
 	end)
 
 	U.buildFloaters()
-	pcall(function() U.buildExplorer() end)
+	-- Do not build explorer until the user enables it
 	U.queuePageLayout(p)
 
 	local function teleportTo(jobId)
@@ -2877,6 +2900,8 @@ function U.bindInput()
 			if U.menuOpen then
 				U.dock("wm")
 				U.dock("kb")
+				-- Restore sub-item lines after the shell becomes visible again
+				task.defer(U.updateAllSubLines)
 			end
 		end
 
