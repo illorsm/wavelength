@@ -3383,9 +3383,9 @@ function Library:CreateWindow(opts)
 	U.TITLE_H = U.windowTitle and 22 or 0
 	if opts.Width then U.BODY_W = opts.Width end
 	if opts.Height then U.BODY_H = opts.Height end
-	U.bottomBarOn = type(opts.BottomBar) == "string"
-	U.bottomBarText = U.bottomBarOn and opts.BottomBar or ""
-	if opts.BottomBarText ~= nil then U.bottomBarText = opts.BottomBarText end
+    U.bottomBarOn = type(opts.BottomBar) == "string" or type(opts.BottomBar) == "function"
+    U.bottomBarText = U.bottomBarOn and opts.BottomBar or ""
+    if opts.BottomBarText ~= nil then U.bottomBarText = opts.BottomBarText end
 	if type(opts.Tabs) == "table" and #opts.Tabs > 0 then
 		U.TAB_NAMES = {}
 		for _, t in ipairs(opts.Tabs) do
